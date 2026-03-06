@@ -8,7 +8,7 @@ import {
   RETRIEVE_STYLES, STRUCTURE_TYPES,
 } from '../../constants'
 import { saveEvent } from '../../db/database'
-import { identifyLureFromImage } from '../../api/claude'
+import { identifyLureForCatalog } from '../../api/claude'
 import QuickSelect from '../layout/QuickSelect'
 import MapPicker from './MapPicker'
 import { useGeolocation } from '../../hooks/useGeolocation'
@@ -83,8 +83,8 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
     if (!photoDataUrl || !settings.anthropicApiKey) return
     setIdentifying(true)
     try {
-      const result = await identifyLureFromImage(settings.anthropicApiKey, photoDataUrl)
-      setLureColor(result)
+      const result = await identifyLureForCatalog(settings.anthropicApiKey, photoDataUrl)
+      if (result.color) setLureColor(result.color)
     } catch {
       // ignore
     }

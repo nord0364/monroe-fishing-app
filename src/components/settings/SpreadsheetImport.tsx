@@ -39,15 +39,37 @@ const MATCHERS: [ColKey, string[]][] = [
   ['time',       ['time']],
   ['conditions', ['condition']],
   ['rod',        ['rod']],
-  ['lureType',   ['lure/rig', 'lure', 'rig', 'lure type', 'bait']],
-  ['color',      ['color', 'colour', 'pattern']],
-  ['lureWeight', ['lure weight', 'lure wt', 'lure wgt']],
-  ['species',    ['species', 'fish species']],
-  ['fishWeight', ['fish weight', 'fish wt', 'wt', 'weight']],
-  ['length',     ['length', 'len']],
-  ['location',   ['location', 'loc', 'area', 'spot']],
-  ['notes',      ['notes', 'note', 'comment']],
-  ['coords',     ['coord', 'gps', 'lat', 'lat/lng']],
+  ['lureType',   ['lure/rig', 'lure', 'rig', 'lure type', 'bait', 'technique']],
+  ['color',      ['color', 'colour', 'pattern', 'col']],
+  ['lureWeight', ['lure weight', 'lure wt', 'lure wgt', 'weight (lure)', 'oz']],
+  ['species',    ['species', 'fish species', 'type of fish', 'fish type']],
+  ['fishWeight', ['fish weight', 'fish wt', 'wt', 'weight', 'lbs', 'lb']],
+  ['length',     ['length', 'len', 'size', 'inches']],
+  ['location',   ['location', 'loc', 'area', 'spot', 'place', 'where']],
+  ['notes',      ['notes', 'note', 'comment', 'remarks', 'details']],
+  ['coords',     ['coord', 'gps', 'lat', 'lat/lng', 'latitude', 'longitude']],
+]
+
+// Human-readable labels for each ColKey
+const COL_LABELS: Record<ColKey, string> = {
+  lureType:   'Lure / Rig *',
+  date:       'Date',
+  time:       'Time',
+  species:    'Species',
+  fishWeight: 'Fish Weight',
+  length:     'Length',
+  color:      'Color / Pattern',
+  lureWeight: 'Lure Weight',
+  rod:        'Rod',
+  conditions: 'Conditions',
+  location:   'Location',
+  notes:      'Notes',
+  coords:     'Coordinates',
+}
+
+const COL_KEY_ORDER: ColKey[] = [
+  'lureType','date','time','species','fishWeight','length',
+  'color','lureWeight','rod','conditions','location','notes','coords',
 ]
 
 function detectColumns(headers: string[]): Partial<Record<ColKey, number>> {
@@ -193,6 +215,7 @@ const COLUMNS: WaterColumn[] = ['Surface','Subsurface top 2 ft','Mid-column','Ne
 
 export default function SpreadsheetImport({ onClose }: Props) {
   const [stage, setStage]           = useState<'pick' | 'preview' | 'importing' | 'done'>('pick')
+  const [rawData, setRawData]       = useState<string[][]>([])
   const [rows, setRows]             = useState<RowResult[]>([])
   const [colMap, setColMap]         = useState<Partial<Record<ColKey, number>>>({})
   const [headers, setHeaders]       = useState<string[]>([])
@@ -212,21 +235,25 @@ export default function SpreadsheetImport({ onClose }: Props) {
       if (parsed.length < 2) return
       const hdrs = parsed[0]
       const map  = detectColumns(hdrs)
+      const dataRows = parsed.slice(1).filter(r => r.some(c => c.trim()))
       setHeaders(hdrs)
       setColMap(map)
-      const results = parsed.slice(1)
-        .filter(r => r.some(c => c.trim()))
-        .map(r => parseRow(r, map, defaultDepth, defaultColumn))
-      setRows(results)
+      setRawData(dataRows)
+      setRows(dataRows.map(r => parseRow(r, map, defaultDepth, defaultColumn)))
       setStage('preview')
     }
     reader.readAsText(file)
   }
 
-  const reparse = (depth: WaterDepth, col: WaterColumn) => {
-    if (rows.length === 0) return
-    const results = rows.map(r => parseRow(r.raw, colMap, depth, col))
-    setRows(results)
+  const reparse = (map: Partial<Record<ColKey, number>>, depth: WaterDepth, col: WaterColumn) => {
+    setRows(rawData.map(r => parseRow(r, map, depth, col)))
+  }
+
+  const handleColChange = (key: ColKey, val: string) => {
+    const newMap = { ...colMap }
+    if (val === '') { delete newMap[key] } else { newMap[key] = parseInt(val) }
+    setColMap(newMap)
+    reparse(newMap, defaultDepth, defaultColumn)
   }
 
   const doImport = async () => {
@@ -279,17 +306,39 @@ export default function SpreadsheetImport({ onClose }: Props) {
           <h2 className="th-text font-bold text-lg flex-1">Preview Import</h2>
         </div>
 
-        {/* Column mapping detected */}
+        {/* Interactive column mapping */}
         <div className="th-surface rounded-xl border th-border p-4 mb-4">
-          <h3 className="th-text font-semibold text-sm mb-2">Detected Columns</h3>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            {(Object.keys(colMap) as ColKey[]).map(k => (
-              <div key={k} className="flex gap-1">
-                <span className="th-text-muted capitalize">{k.replace(/([A-Z])/g,' $1').toLowerCase()}:</span>
-                <span className="th-accent-text font-medium">{headers[colMap[k]!]}</span>
-              </div>
-            ))}
+          <h3 className="th-text font-semibold text-sm mb-1">Column Mapping</h3>
+          <p className="th-text-muted text-xs mb-3">
+            Auto-detected from your headers. Fix any mismatches using the dropdowns — changes update the preview instantly.
+          </p>
+          <div className="space-y-2">
+            {COL_KEY_ORDER.map(key => {
+              const mapped = colMap[key] !== undefined
+              return (
+                <div key={key} className="flex items-center gap-2">
+                  <span className={`text-xs w-28 shrink-0 ${key === 'lureType' ? 'th-text font-semibold' : 'th-text-muted'}`}>
+                    {COL_LABELS[key]}
+                  </span>
+                  <select
+                    className={`flex-1 th-surface-deep border rounded-lg px-2 py-1.5 text-xs th-text ${
+                      mapped ? 'th-border' : (key === 'lureType' ? 'border-amber-400' : 'th-border opacity-60')
+                    }`}
+                    value={colMap[key] !== undefined ? String(colMap[key]) : ''}
+                    onChange={e => handleColChange(key, e.target.value)}
+                  >
+                    <option value="">— Not mapped —</option>
+                    {headers.map((h, i) => (
+                      <option key={i} value={String(i)}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })}
           </div>
+          {colMap.lureType === undefined && (
+            <p className="text-amber-400 text-xs mt-3">⚠ Lure Type is required — rows without it will be skipped.</p>
+          )}
         </div>
 
         {/* Default values for missing required fields */}
@@ -300,7 +349,7 @@ export default function SpreadsheetImport({ onClose }: Props) {
             <select
               className="w-full th-surface-deep border th-border rounded-lg px-3 py-2.5 th-text text-sm"
               value={defaultDepth}
-              onChange={e => { setDefaultDepth(e.target.value as WaterDepth); reparse(e.target.value as WaterDepth, defaultColumn) }}
+              onChange={e => { const d = e.target.value as WaterDepth; setDefaultDepth(d); reparse(colMap, d, defaultColumn) }}
             >
               {DEPTHS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
@@ -310,7 +359,7 @@ export default function SpreadsheetImport({ onClose }: Props) {
             <select
               className="w-full th-surface-deep border th-border rounded-lg px-3 py-2.5 th-text text-sm"
               value={defaultColumn}
-              onChange={e => { setDefaultColumn(e.target.value as WaterColumn); reparse(defaultDepth, e.target.value as WaterColumn) }}
+              onChange={e => { const c = e.target.value as WaterColumn; setDefaultColumn(c); reparse(colMap, defaultDepth, c) }}
             >
               {COLUMNS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -369,20 +418,15 @@ export default function SpreadsheetImport({ onClose }: Props) {
       </div>
 
       <div className="th-surface rounded-xl border th-border p-4 mb-4 space-y-2">
-        <h3 className="th-text font-semibold text-sm">Expected Columns (CSV)</h3>
+        <h3 className="th-text font-semibold text-sm">Any Column Names Work</h3>
         <p className="th-text-muted text-xs leading-relaxed">
-          Your CSV file can include any of these columns — unrecognized columns are ignored.
-          Column order doesn't matter; headers are detected automatically.
+          After loading your file you'll see a column mapping screen where you can match your spreadsheet's columns to the right fields — even if the names are different. The app auto-detects common names.
         </p>
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {['Date','Time','Conditions','Rod','Lure/Rig','Color','Lure Weight','Species','Fish Weight','Length','Location','Notes','Coordinates'].map(c => (
-            <span key={c} className="text-xs px-2 py-1 th-surface-deep rounded border th-border th-text-muted">{c}</span>
-          ))}
-        </div>
-        <p className="th-text-muted text-xs mt-2">
-          <strong className="th-text">Fish Weight</strong> accepts: <span className="font-mono">3.5</span> (decimal lbs), <span className="font-mono">3 lb 4 oz</span>, or <span className="font-mono">3 4</span> (lbs then oz).<br/>
+        <p className="th-text-muted text-xs font-medium mt-1">Only <span className="th-text">Lure / Rig</span> is required. All others are optional.</p>
+        <p className="th-text-muted text-xs mt-1">
+          <strong className="th-text">Fish Weight</strong>: <span className="font-mono">3.5</span> (lbs), <span className="font-mono">3 lb 4 oz</span>, or <span className="font-mono">3 4</span> (lbs then oz).<br/>
           <strong className="th-text">Coordinates</strong>: <span className="font-mono">39.1234, -86.5678</span><br/>
-          <strong className="th-text">Water depth &amp; column</strong> are not in the spreadsheet — you'll set a default for all rows.
+          <strong className="th-text">Water depth &amp; column</strong> — you'll set defaults for all rows after loading.
         </p>
       </div>
 

@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import type { OwnedLure } from '../../types'
 import { getAllOwnedLures, saveOwnedLure, deleteOwnedLure } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
+import { identifyLureForCatalog, type LureIdentification } from '../../api/claude'
 
-interface Props { onClose: () => void }
+interface Props { onClose: () => void; apiKey?: string }
 
 const WEIGHTS = ['Weightless', '3/16 oz', '1/4 oz', '3/8 oz', '1/2 oz', '3/4 oz', '1 oz', 'Other']
 const LURE_TYPES = [
@@ -34,7 +35,7 @@ async function resizePhoto(file: File): Promise<string> {
   })
 }
 
-export default function LureCatalog({ onClose }: Props) {
+export default function LureCatalog({ onClose, apiKey }: Props) {
   const [lures, setLures] = useState<OwnedLure[]>([])
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<OwnedLure | null>(null)
@@ -56,7 +57,7 @@ export default function LureCatalog({ onClose }: Props) {
   }
 
   if (adding || editing) {
-    return <LureForm initial={editing ?? undefined} onSave={saved} onCancel={() => { setAdding(false); setEditing(null) }} />
+    return <LureForm initial={editing ?? undefined} apiKey={apiKey} onSave={saved} onCancel={() => { setAdding(false); setEditing(null) }} />
   }
 
   return (
@@ -101,7 +102,7 @@ export default function LureCatalog({ onClose }: Props) {
   )
 }
 
-function LureForm({ initial, onSave, onCancel }: { initial?: OwnedLure; onSave: (l: OwnedLure) => void; onCancel: () => void }) {
+function LureForm({ initial, apiKey, onSave, onCancel }: { initial?: OwnedLure; apiKey?: string; onSave: (l: OwnedLure) => void; onCancel: () => void }) {
   const [lureType, setLureType] = useState(initial?.lureType ?? '')
   const [weight, setWeight]     = useState(initial?.weight ?? '')
   const [color, setColor]       = useState(initial?.color ?? '')
@@ -109,12 +110,35 @@ function LureForm({ initial, onSave, onCancel }: { initial?: OwnedLure; onSave: 
   const [notes, setNotes]       = useState(initial?.notes ?? '')
   const [photo, setPhoto]       = useState(initial?.photoDataUrl ?? '')
   const [saving, setSaving]     = useState(false)
+  const [analyzing, setAnalyzing]     = useState(false)
+  const [aiSuggestion, setAiSuggestion] = useState<LureIdentification | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    try { setPhoto(await resizePhoto(file)) } catch {}
+    try {
+      const dataUrl = await resizePhoto(file)
+      setPhoto(dataUrl)
+      setAiSuggestion(null)
+      if (apiKey) {
+        setAnalyzing(true)
+        try {
+          const result = await identifyLureForCatalog(apiKey, dataUrl)
+          setAiSuggestion(result)
+        } catch {}
+        setAnalyzing(false)
+      }
+    } catch {}
+  }
+
+  const applyAiSuggestion = () => {
+    if (!aiSuggestion) return
+    if (aiSuggestion.lureType) setLureType(aiSuggestion.lureType)
+    if (aiSuggestion.color)    setColor(aiSuggestion.color)
+    if (aiSuggestion.brand)    setBrand(aiSuggestion.brand)
+    if (aiSuggestion.notes)    setNotes(aiSuggestion.notes)
+    setAiSuggestion(null)
   }
 
   const submit = async () => {
@@ -143,23 +167,70 @@ function LureForm({ initial, onSave, onCancel }: { initial?: OwnedLure; onSave: 
 
       <div className="space-y-4">
         {/* Photo */}
-        <div className="flex items-center gap-3">
-          {photo
-            ? <img src={photo} className="w-20 h-20 rounded-xl object-cover" alt="" />
-            : <div className="w-20 h-20 rounded-xl th-surface-deep flex items-center justify-center text-3xl">📸</div>
-          }
-          <div>
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="px-4 py-2 th-surface border th-border rounded-xl th-text text-sm font-medium"
-            >
-              {photo ? 'Retake Photo' : 'Take Photo'}
-            </button>
-            {photo && (
-              <button onClick={() => setPhoto('')} className="block mt-1 text-xs text-red-400">Remove</button>
-            )}
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="relative w-20 h-20 shrink-0">
+              {photo
+                ? <img src={photo} className="w-20 h-20 rounded-xl object-cover" alt="" />
+                : <div className="w-20 h-20 rounded-xl th-surface-deep flex items-center justify-center text-3xl">📸</div>
+              }
+              {analyzing && (
+                <div className="absolute inset-0 rounded-xl bg-black/60 flex flex-col items-center justify-center gap-1">
+                  <div className="text-white text-xs animate-pulse">🔍</div>
+                  <div className="text-white text-xs">Analyzing…</div>
+                </div>
+              )}
+            </div>
+            <div>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="px-4 py-2 th-surface border th-border rounded-xl th-text text-sm font-medium"
+              >
+                {photo ? 'Retake Photo' : 'Take Photo'}
+              </button>
+              {photo && (
+                <button onClick={() => { setPhoto(''); setAiSuggestion(null) }} className="block mt-1 text-xs text-red-400">Remove</button>
+              )}
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
+            </div>
           </div>
+
+          {/* AI suggestion banner */}
+          {aiSuggestion && !analyzing && (
+            <div className="th-surface-deep border th-border rounded-xl p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="th-text text-xs font-semibold">
+                  AI Identified{' '}
+                  <span className={`text-xs font-normal ${
+                    aiSuggestion.confidence === 'High' ? 'text-green-400'
+                    : aiSuggestion.confidence === 'Medium' ? 'text-amber-400'
+                    : 'text-red-400'
+                  }`}>({aiSuggestion.confidence} confidence)</span>
+                </span>
+                <button onClick={() => setAiSuggestion(null)} className="text-xs th-text-muted px-1">✕</button>
+              </div>
+              <div className="th-text text-sm">
+                {aiSuggestion.lureType} · <span className="th-accent-text">{aiSuggestion.color}</span>
+                {aiSuggestion.brand && <span className="th-text-muted"> · {aiSuggestion.brand}</span>}
+              </div>
+              {aiSuggestion.notes && <div className="th-text-muted text-xs italic">{aiSuggestion.notes}</div>}
+              <p className="th-text-muted text-xs">Review and adjust below before saving — color descriptions are AI-generated.</p>
+              <div className="flex gap-2 pt-0.5">
+                <button
+                  onClick={applyAiSuggestion}
+                  className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold text-center"
+                >
+                  Use These Values
+                </button>
+                <button
+                  onClick={() => setAiSuggestion(null)}
+                  className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text text-center"
+                >
+                  Enter Manually
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Lure Type */}

@@ -236,39 +236,98 @@ CATCH HISTORY CONTEXT: ${catchHistory.length} total catches logged. Top producer
 
 // ─── Lure Identification ───────────────────────────────────────────────────────
 
-export async function identifyLureFromImage(
+export interface LureIdentification {
+  lureType: string
+  color: string
+  brand?: string
+  notes?: string
+  confidence: 'High' | 'Medium' | 'Low'
+}
+
+const CATALOG_LURE_TYPES = [
+  'Spinnerbait','Swim Jig','Chatterbait','Football Jig','Flipping Jig',
+  'Wacky Rig','Texas Rig','Buzzbait','Swimbait','Crankbait',
+  'Topwater','Drop Shot','Jerkbait','Swimbait (hard)','Other',
+]
+
+function extractImage(imageDataUrl: string): { base64Data: string; mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' } {
+  const [header, base64Data] = imageDataUrl.split(',')
+  const mediaType = (header.match(/:(.*?);/)?.[1] ?? 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  return { base64Data, mediaType }
+}
+
+export async function identifyLureForCatalog(
   apiKey: string,
   imageDataUrl: string
-): Promise<string> {
+): Promise<LureIdentification> {
   const client = buildClientWithKey(apiKey)
-
-  // Extract base64 data
-  const [header, base64Data] = imageDataUrl.split(',')
-  const mediaType = (header.match(/:(.*?);/)?.[1] ?? 'image/jpeg') as
-    | 'image/jpeg'
-    | 'image/png'
-    | 'image/gif'
-    | 'image/webp'
+  const { base64Data, mediaType } = extractImage(imageDataUrl)
 
   const response = await client.messages.create({
     model: 'claude-opus-4-6',
     max_tokens: 300,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: mediaType, data: base64Data },
-          },
-          {
-            type: 'text',
-            text: 'Identify this fishing lure. Describe: primary color, secondary color, pattern name if recognizable, and any notable features (e.g. chartreuse tail, white skirt, red hook, glitter flake). Format as a short description like "chartreuse and white, green pumpkin flake, red hook" — one line, suitable for a field note.',
-          },
-        ],
-      },
-    ],
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+        { type: 'text', text: `You are identifying a fishing lure for a colorblind angler who needs accurate color descriptions. Respond with ONLY valid JSON — no markdown, no explanation before or after.
+
+Lure type options: ${CATALOG_LURE_TYPES.join(', ')}
+
+{
+  "lureType": "pick the best matching type from the list above",
+  "color": "describe colors as an angler would, e.g. 'White/Chartreuse', 'Green Pumpkin', 'Black/Blue' — be specific, this angler is colorblind and relies on your description",
+  "brand": "brand name if clearly visible on the lure or package, otherwise omit",
+  "notes": "one brief note about a distinctive feature if useful, e.g. 'chartreuse tail', 'red hook', otherwise omit",
+  "confidence": "High if lure type is clearly identifiable, Medium if uncertain, Low if image is unclear"
+}` },
+      ],
+    }],
   })
 
-  return response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  try {
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0]) as LureIdentification
+  } catch {}
+  return { lureType: 'Other', color: '', confidence: 'Low' }
+}
+
+export interface RodIdentification {
+  brand?: string
+  rodType?: 'Baitcasting' | 'Spinning'
+  notes?: string
+}
+
+export async function identifyRodFromImage(
+  apiKey: string,
+  imageDataUrl: string
+): Promise<RodIdentification> {
+  const client = buildClientWithKey(apiKey)
+  const { base64Data, mediaType } = extractImage(imageDataUrl)
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 200,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+        { type: 'text', text: `Analyze this fishing rod or reel photo. Respond ONLY with valid JSON — no markdown, no explanation.
+
+{
+  "brand": "rod or reel brand if a label is clearly visible, otherwise omit",
+  "rodType": "Baitcasting or Spinning based on the reel style — Baitcasting has a spool sitting on top, Spinning has a fixed spool hanging below. Omit if no reel is visible or unclear",
+  "notes": "one brief observation if useful, e.g. 'casting rod with low-profile reel', otherwise omit"
+}` },
+      ],
+    }],
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  try {
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0]) as RodIdentification
+  } catch {}
+  return {}
 }

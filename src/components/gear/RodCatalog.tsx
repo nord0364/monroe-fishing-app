@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import type { RodSetup } from '../../types'
 import { getAllRodSetups, saveRodSetup, deleteRodSetup } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
+import { identifyRodFromImage, type RodIdentification } from '../../api/claude'
 
-interface Props { onClose: () => void }
+interface Props { onClose: () => void; apiKey?: string }
 
 const ROD_POWERS  = ['Heavy', 'Medium-Heavy', 'Medium', 'Medium-Light', 'Light'] as const
 const ROD_ACTIONS = ['Fast', 'Moderate-Fast', 'Moderate', 'Slow'] as const
@@ -31,7 +32,7 @@ async function resizePhoto(file: File): Promise<string> {
   })
 }
 
-export default function RodCatalog({ onClose }: Props) {
+export default function RodCatalog({ onClose, apiKey }: Props) {
   const [rods, setRods] = useState<RodSetup[]>([])
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<RodSetup | null>(null)
@@ -53,7 +54,7 @@ export default function RodCatalog({ onClose }: Props) {
   }
 
   if (adding || editing) {
-    return <RodForm initial={editing ?? undefined} onSave={saved} onCancel={() => { setAdding(false); setEditing(null) }} />
+    return <RodForm initial={editing ?? undefined} apiKey={apiKey} onSave={saved} onCancel={() => { setAdding(false); setEditing(null) }} />
   }
 
   return (
@@ -104,23 +105,44 @@ export default function RodCatalog({ onClose }: Props) {
   )
 }
 
-function RodForm({ initial, onSave, onCancel }: { initial?: RodSetup; onSave: (r: RodSetup) => void; onCancel: () => void }) {
+function RodForm({ initial, apiKey, onSave, onCancel }: { initial?: RodSetup; apiKey?: string; onSave: (r: RodSetup) => void; onCancel: () => void }) {
   const [name, setName]             = useState(initial?.name ?? '')
   const [rodPower, setRodPower]     = useState<RodSetup['rodPower']>(initial?.rodPower)
   const [rodAction, setRodAction]   = useState<RodSetup['rodAction']>(initial?.rodAction)
   const [rodLength, setRodLength]   = useState(initial?.rodLength ?? '')
   const [lineType, setLineType]     = useState<RodSetup['lineType']>(initial?.lineType)
   const [lineLbs, setLineLbs]       = useState(String(initial?.lineWeightLbs ?? ''))
-  const [reelBrand, setReelBrand]   = useState(initial?.reelBrand ?? '')  // used in submit + reel input below
+  const [reelBrand, setReelBrand]   = useState(initial?.reelBrand ?? '')
   const [notes, setNotes]           = useState(initial?.notes ?? '')
   const [photo, setPhoto]           = useState(initial?.photoDataUrl ?? '')
   const [saving, setSaving]         = useState(false)
+  const [analyzing, setAnalyzing]       = useState(false)
+  const [aiSuggestion, setAiSuggestion] = useState<RodIdentification | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    try { setPhoto(await resizePhoto(file)) } catch {}
+    try {
+      const dataUrl = await resizePhoto(file)
+      setPhoto(dataUrl)
+      setAiSuggestion(null)
+      if (apiKey) {
+        setAnalyzing(true)
+        try {
+          const result = await identifyRodFromImage(apiKey, dataUrl)
+          if (result.brand || result.rodType || result.notes) setAiSuggestion(result)
+        } catch {}
+        setAnalyzing(false)
+      }
+    } catch {}
+  }
+
+  const applyAiSuggestion = () => {
+    if (!aiSuggestion) return
+    if (aiSuggestion.brand && !reelBrand) setReelBrand(aiSuggestion.brand)
+    if (aiSuggestion.notes && !notes)     setNotes(aiSuggestion.notes)
+    setAiSuggestion(null)
   }
 
   const submit = async () => {
@@ -152,18 +174,50 @@ function RodForm({ initial, onSave, onCancel }: { initial?: RodSetup; onSave: (r
 
       <div className="space-y-4">
         {/* Photo */}
-        <div className="flex items-center gap-3">
-          {photo
-            ? <img src={photo} className="w-20 h-20 rounded-xl object-cover" alt="" />
-            : <div className="w-20 h-20 rounded-xl th-surface-deep flex items-center justify-center text-3xl">📸</div>
-          }
-          <div>
-            <button onClick={() => fileRef.current?.click()} className="px-4 py-2 th-surface border th-border rounded-xl th-text text-sm font-medium">
-              {photo ? 'Retake Photo' : 'Take Photo'}
-            </button>
-            {photo && <button onClick={() => setPhoto('')} className="block mt-1 text-xs text-red-400">Remove</button>}
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="relative w-20 h-20 shrink-0">
+              {photo
+                ? <img src={photo} className="w-20 h-20 rounded-xl object-cover" alt="" />
+                : <div className="w-20 h-20 rounded-xl th-surface-deep flex items-center justify-center text-3xl">📸</div>
+              }
+              {analyzing && (
+                <div className="absolute inset-0 rounded-xl bg-black/60 flex flex-col items-center justify-center gap-1">
+                  <div className="text-white text-xs animate-pulse">🔍</div>
+                  <div className="text-white text-xs">Analyzing…</div>
+                </div>
+              )}
+            </div>
+            <div>
+              <button onClick={() => fileRef.current?.click()} className="px-4 py-2 th-surface border th-border rounded-xl th-text text-sm font-medium">
+                {photo ? 'Retake Photo' : 'Take Photo'}
+              </button>
+              {photo && <button onClick={() => { setPhoto(''); setAiSuggestion(null) }} className="block mt-1 text-xs text-red-400">Remove</button>}
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
+            </div>
           </div>
+
+          {/* AI suggestion banner */}
+          {aiSuggestion && !analyzing && (
+            <div className="th-surface-deep border th-border rounded-xl p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="th-text text-xs font-semibold">AI Identified</span>
+                <button onClick={() => setAiSuggestion(null)} className="text-xs th-text-muted px-1">✕</button>
+              </div>
+              {aiSuggestion.rodType && <div className="th-text text-sm">{aiSuggestion.rodType} rod</div>}
+              {aiSuggestion.brand   && <div className="th-text-muted text-xs">Brand: <span className="th-accent-text">{aiSuggestion.brand}</span></div>}
+              {aiSuggestion.notes   && <div className="th-text-muted text-xs italic">{aiSuggestion.notes}</div>}
+              <p className="th-text-muted text-xs">Power, action, and line specs still need to be entered manually.</p>
+              <div className="flex gap-2 pt-0.5">
+                <button onClick={applyAiSuggestion} className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold text-center">
+                  Use These Values
+                </button>
+                <button onClick={() => setAiSuggestion(null)} className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text text-center">
+                  Enter Manually
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Name */}

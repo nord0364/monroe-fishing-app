@@ -98,8 +98,8 @@ export default function Settings({ settings, onUpdate }: Props) {
 
   if (view === 'import')     return <HistoricalImport settings={settings} onClose={() => setView('main')} />
   if (view === 'csv-import') return <SpreadsheetImport onClose={() => setView('main')} />
-  if (view === 'lures')      return <LureCatalog onClose={() => setView('main')} />
-  if (view === 'rods')       return <RodCatalog  onClose={() => setView('main')} />
+  if (view === 'lures')      return <LureCatalog apiKey={apiKey} onClose={() => setView('main')} />
+  if (view === 'rods')       return <RodCatalog  apiKey={apiKey} onClose={() => setView('main')} />
 
   const currentTheme    = settings.colorTheme ?? 'auto'
   const currentFontSize = settings.fontSize ?? 'normal'
