@@ -109,8 +109,7 @@ export interface LandedFish {
   weightLbs: number
   weightOz: number
   lengthInches: number
-  waterDepth: WaterDepth
-  waterColumn: WaterColumn
+  waterColumn?: WaterColumn
   lureType: LureType
   lureWeight: LureWeight
   lureColor: string
@@ -130,8 +129,7 @@ export interface QualityStrike {
   timestamp: number
   coords?: GPSCoords
   lureType: LureType
-  waterDepth: WaterDepth
-  waterColumn: WaterColumn
+  waterColumn?: WaterColumn
   notes?: string
   isHistorical?: boolean
   historicalDate?: number

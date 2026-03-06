@@ -13,6 +13,8 @@ interface Props { settings: AppSettings }
 type Tab = 'size' | 'lure' | 'time' | 'depth' | 'history' | 'map' | 'chat'
 type Season = 'Spring' | 'Summer' | 'Fall' | 'Winter'
 
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
 const tabs: { id: Tab; label: string }[] = [
   { id: 'size',    label: 'Size' },
   { id: 'lure',    label: 'Lure' },
@@ -104,11 +106,11 @@ function HistoryView({ allFish, settings }: { allFish: LandedFish[]; settings: A
                   <span className="th-accent-text text-sm font-semibold">{r.total} catches</span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                  <div className="th-text-muted">Avg weight <span className="th-text font-medium">{r.avg}lb</span></div>
+                  <div className="th-text-muted">Avg weight <span className="th-text font-medium">{r.avg} lbs</span></div>
                   <div className="th-text-muted">Quality (≥{threshold}lb) <span className="th-text font-medium">{r.quality}</span></div>
                   <div className="th-text-muted">Top lure <span className="th-text font-medium">{r.topLure}</span></div>
                   {r.best && (
-                    <div className="th-text-muted">Best fish <span className="text-emerald-400 font-medium">{r.best.weightLbs}lb {r.best.weightOz}oz</span></div>
+                    <div className="th-text-muted">Best fish <span className="text-emerald-400 font-medium">{(r.best.weightLbs + r.best.weightOz / 16).toFixed(1)} lbs</span></div>
                   )}
                 </div>
               </div>
@@ -132,10 +134,10 @@ function HistoryView({ allFish, settings }: { allFish: LandedFish[]; settings: A
               </div>
               {r.total > 0 ? (
                 <div className="grid grid-cols-2 gap-x-4 text-xs">
-                  <div className="th-text-muted">Avg weight <span className="th-text font-medium">{r.avg}lb</span></div>
+                  <div className="th-text-muted">Avg weight <span className="th-text font-medium">{r.avg} lbs</span></div>
                   <div className="th-text-muted">Top lure <span className="th-text font-medium">{r.topLure}</span></div>
                   {r.best && (
-                    <div className="th-text-muted">Best fish <span className="text-emerald-400 font-medium">{r.best.weightLbs}lb {r.best.weightOz}oz</span></div>
+                    <div className="th-text-muted">Best fish <span className="text-emerald-400 font-medium">{(r.best.weightLbs + r.best.weightOz / 16).toFixed(1)} lbs</span></div>
                   )}
                 </div>
               ) : (
@@ -183,6 +185,7 @@ export default function PatternReview({ settings }: Props) {
   const [loading, setLoading]     = useState(true)
   const [yearFilter, setYearFilter]     = useState<number | 'all'>('all')
   const [seasonFilter, setSeasonFilter] = useState<Season | 'all'>('all')
+  const [monthFilter, setMonthFilter]   = useState<number | 'all'>('all')
 
   useEffect(() => {
     Promise.all([getLandedFish(), getAllSessions()]).then(([f, s]) => {
@@ -195,27 +198,40 @@ export default function PatternReview({ settings }: Props) {
     return [...ys].sort((a, b) => b - a)
   }, [allFish])
 
+  // Months that have data in the selected year (0-indexed)
+  const availableMonths = useMemo(() => {
+    if (yearFilter === 'all') return []
+    const ms = new Set(
+      allFish
+        .filter(f => getYear(f.timestamp) === yearFilter)
+        .map(f => new Date(f.timestamp).getMonth())
+    )
+    return [...ms].sort((a, b) => a - b)
+  }, [allFish, yearFilter])
+
   const filteredFish = useMemo(() => {
     return allFish.filter(f => {
       if (yearFilter !== 'all' && getYear(f.timestamp) !== yearFilter) return false
       if (seasonFilter !== 'all' && getSeason(f.timestamp) !== seasonFilter) return false
+      if (monthFilter !== 'all' && new Date(f.timestamp).getMonth() !== monthFilter) return false
       return true
     })
-  }, [allFish, yearFilter, seasonFilter])
+  }, [allFish, yearFilter, seasonFilter, monthFilter])
 
   const filteredSessions = useMemo(() => {
     return sessions.filter(s => {
       const ts = s.startTime ?? 0
       if (yearFilter !== 'all' && getYear(ts) !== yearFilter) return false
       if (seasonFilter !== 'all' && getSeason(ts) !== seasonFilter) return false
+      if (monthFilter !== 'all' && new Date(ts).getMonth() !== monthFilter) return false
       return true
     })
-  }, [sessions, yearFilter, seasonFilter])
+  }, [sessions, yearFilter, seasonFilter, monthFilter])
 
-  const isFiltered = yearFilter !== 'all' || seasonFilter !== 'all'
+  const isFiltered = yearFilter !== 'all' || seasonFilter !== 'all' || monthFilter !== 'all'
   const filterLabel = [
     yearFilter !== 'all' ? String(yearFilter) : '',
-    seasonFilter !== 'all' ? seasonFilter : '',
+    monthFilter !== 'all' ? MONTH_SHORT[monthFilter] : seasonFilter !== 'all' ? seasonFilter : '',
   ].filter(Boolean).join(' · ')
 
   return (
@@ -233,7 +249,7 @@ export default function PatternReview({ settings }: Props) {
       {availableYears.length > 1 && (
         <div className="flex gap-2 overflow-x-auto px-4 pb-1.5 scrollbar-hide">
           <button
-            onClick={() => setYearFilter('all')}
+            onClick={() => { setYearFilter('all'); setMonthFilter('all') }}
             className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
               yearFilter === 'all'
                 ? 'th-btn-primary border-transparent'
@@ -243,7 +259,7 @@ export default function PatternReview({ settings }: Props) {
           {availableYears.map(y => (
             <button
               key={y}
-              onClick={() => setYearFilter(yearFilter === y ? 'all' : y)}
+              onClick={() => { setYearFilter(yearFilter === y ? 'all' : y); setMonthFilter('all') }}
               className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
                 yearFilter === y
                   ? 'th-btn-primary border-transparent'
@@ -254,10 +270,35 @@ export default function PatternReview({ settings }: Props) {
         </div>
       )}
 
+      {/* Month filter — only shown when a year is selected */}
+      {yearFilter !== 'all' && availableMonths.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto px-4 pb-1.5 scrollbar-hide">
+          <button
+            onClick={() => setMonthFilter('all')}
+            className={`shrink-0 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[34px] ${
+              monthFilter === 'all'
+                ? 'th-btn-primary border-transparent'
+                : 'th-surface th-text-muted th-border'
+            }`}
+          >All Months</button>
+          {availableMonths.map(m => (
+            <button
+              key={m}
+              onClick={() => setMonthFilter(monthFilter === m ? 'all' : m)}
+              className={`shrink-0 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[34px] ${
+                monthFilter === m
+                  ? 'th-btn-primary border-transparent'
+                  : 'th-surface th-text-muted th-border'
+              }`}
+            >{MONTH_SHORT[m]}</button>
+          ))}
+        </div>
+      )}
+
       {/* Season filter */}
       <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-hide">
         <button
-          onClick={() => setSeasonFilter('all')}
+          onClick={() => { setSeasonFilter('all'); setMonthFilter('all') }}
           className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
             seasonFilter === 'all'
               ? 'bg-sky-700 text-white border-transparent'
@@ -267,7 +308,7 @@ export default function PatternReview({ settings }: Props) {
         {SEASONS.map(s => (
           <button
             key={s}
-            onClick={() => setSeasonFilter(seasonFilter === s ? 'all' : s)}
+            onClick={() => { setSeasonFilter(seasonFilter === s ? 'all' : s); setMonthFilter('all') }}
             className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
               seasonFilter === s
                 ? 'bg-sky-700 text-white border-transparent'
@@ -311,7 +352,7 @@ export default function PatternReview({ settings }: Props) {
           <div className="text-center py-12">
             <p className="th-text-muted">No catches match this filter.</p>
             <button
-              onClick={() => { setYearFilter('all'); setSeasonFilter('all') }}
+              onClick={() => { setYearFilter('all'); setSeasonFilter('all'); setMonthFilter('all') }}
               className="mt-4 px-4 py-2.5 th-surface border th-border rounded-xl th-accent-text text-sm font-medium"
             >Clear Filters</button>
           </div>

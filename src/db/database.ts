@@ -228,9 +228,9 @@ export async function exportAllDataJSON(): Promise<string> {
 export async function exportCatchesCSV(): Promise<string> {
   const events = await getLandedFish()
   const headers = [
-    'Date', 'Time', 'Session ID', 'Species', 'Weight (lbs)', 'Weight (oz)',
+    'Date', 'Time', 'Session ID', 'Species', 'Weight (lbs)',
     'Length (in)', 'Lure Type', 'Lure Weight', 'Lure Color', 'Custom Pour',
-    'Water Depth', 'Water Column', 'Retrieve Style', 'Structure',
+    'Water Column', 'Retrieve Style', 'Structure',
     'Latitude', 'Longitude', 'Notes',
   ]
   const rows = events.map(e => [
@@ -238,15 +238,13 @@ export async function exportCatchesCSV(): Promise<string> {
     new Date(e.timestamp).toLocaleTimeString(),
     e.sessionId,
     e.species,
-    e.weightLbs,
-    e.weightOz,
+    (e.weightLbs + e.weightOz / 16).toFixed(1),
     e.lengthInches,
     e.lureType,
     e.lureWeight,
     `"${e.lureColor}"`,
     e.customPour ? 'Yes' : 'No',
-    e.waterDepth,
-    e.waterColumn,
+    e.waterColumn ?? '',
     e.retrieveStyle ?? '',
     e.structure ?? '',
     e.coords?.lat ?? '',

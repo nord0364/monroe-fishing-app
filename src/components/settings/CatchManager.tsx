@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import type { LandedFish, Species, WaterDepth, WaterColumn, LureWeight } from '../../types'
+import type { LandedFish, Species, WaterColumn, LureWeight } from '../../types'
 import { getLandedFish, saveEvent, deleteEvent } from '../../db/database'
 
 interface Props { onClose: () => void }
 
 const SPECIES: Species[]         = ['Largemouth Bass','Smallmouth Bass','Crappie','Channel Catfish','Flathead Catfish','Bluegill','Walleye','White Bass/Drum','Other']
-const DEPTHS: WaterDepth[]       = ['Under 2 ft','2 to 4 ft','4 to 7 ft','7 to 12 ft','12 to 18 ft','18 ft plus']
 const COLUMNS: WaterColumn[]     = ['Surface','Subsurface top 2 ft','Mid-column','Near bottom','Bottom contact']
 const LURE_WEIGHTS: LureWeight[] = ['Weightless','3/16 oz','1/4 oz','3/8 oz','1/2 oz','3/4 oz','Other']
 const MONTH_LABELS               = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -65,8 +64,7 @@ function EditForm({ fish, onSave, onCancel }: { fish: LandedFish; onSave: (f: La
   const [lureType,    setLureType]    = useState(fish.lureType)
   const [lureColor,   setLureColor]   = useState(fish.lureColor)
   const [lureWeight,  setLureWeight]  = useState(fish.lureWeight)
-  const [waterDepth,  setWaterDepth]  = useState(fish.waterDepth)
-  const [waterColumn, setWaterColumn] = useState(fish.waterColumn)
+  const [waterColumn, setWaterColumn] = useState(fish.waterColumn ?? '')
   const [notes,       setNotes]       = useState(fish.notes ?? '')
   const [saving,      setSaving]      = useState(false)
 
@@ -78,7 +76,7 @@ function EditForm({ fish, onSave, onCancel }: { fish: LandedFish; onSave: (f: La
       timestamp: isNaN(ts) ? fish.timestamp : ts,
       species, weightLbs: parseInt(lbs)||0, weightOz: parseInt(oz)||0,
       lengthInches: parseFloat(length)||0,
-      lureType, lureColor, lureWeight, waterDepth, waterColumn,
+      lureType, lureColor, lureWeight, waterColumn: waterColumn as WaterColumn || undefined,
       notes: notes.trim() || undefined,
     }
     await saveEvent(updated)
@@ -129,14 +127,9 @@ function EditForm({ fish, onSave, onCancel }: { fish: LandedFish; onSave: (f: La
           <input className={inp} value={lureColor} onChange={e => setLureColor(e.target.value)} />
         </div>
         <div>
-          <label className="section-label">Water Depth</label>
-          <select className={inp} value={waterDepth} onChange={e => setWaterDepth(e.target.value as WaterDepth)}>
-            {DEPTHS.map(d => <option key={d}>{d}</option>)}
-          </select>
-        </div>
-        <div>
           <label className="section-label">Water Column</label>
           <select className={inp} value={waterColumn} onChange={e => setWaterColumn(e.target.value as WaterColumn)}>
+            <option value="">— None —</option>
             {COLUMNS.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
@@ -416,7 +409,7 @@ export default function CatchManager({ onClose }: Props) {
                         const isDeleting = deleteId === f.id
                         const isExpanded = expandedCatch === f.id && !selectMode
                         const isSelected = selected.has(f.id)
-                        const wt = `${f.weightLbs}lb ${f.weightOz}oz`
+                        const wt = `${(f.weightLbs + f.weightOz / 16).toFixed(1)} lbs`
                         const dt = new Date(f.timestamp).toLocaleDateString([], {
                           weekday: 'short', month: 'short', day: 'numeric',
                         })
@@ -463,8 +456,7 @@ export default function CatchManager({ onClose }: Props) {
                               <div className="border-t th-border px-4 pb-4 pt-3 space-y-3">
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                                   {([
-                                    ['Depth',    f.waterDepth],
-                                    ['Column',   f.waterColumn],
+                                    f.waterColumn ? ['Column', f.waterColumn] : null,
                                     ['Lure wt',  f.lureWeight],
                                     f.lengthInches > 0 ? ['Length', `${f.lengthInches}"`] : null,
                                     f.retrieveStyle ? ['Retrieve', f.retrieveStyle] : null,

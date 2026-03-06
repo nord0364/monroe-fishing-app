@@ -31,7 +31,7 @@ export async function generatePreSessionBriefing(
     .slice(0, 20)
 
   const catchSummary = topCatches.map(f =>
-    `${f.weightLbs}lb ${f.weightOz}oz on ${f.lureType} (${f.lureColor}), ${f.waterDepth}, ${f.waterColumn}, ${f.retrieveStyle ?? 'N/A'}, ${f.structure ?? 'N/A'}, ${new Date(f.timestamp).toLocaleDateString()}`
+    `${(f.weightLbs + f.weightOz / 16).toFixed(1)} lbs on ${f.lureType} (${f.lureColor}), ${f.waterColumn ?? 'N/A'}, ${f.retrieveStyle ?? 'N/A'}, ${f.structure ?? 'N/A'}, ${new Date(f.timestamp).toLocaleDateString()}`
   ).join('\n')
 
   const prompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana.

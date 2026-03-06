@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import type { LandedFish, WaterDepth, WaterColumn, GPSCoords, Species, LureWeight } from '../../types'
+import type { LandedFish, GPSCoords, Species, LureWeight } from '../../types'
 import { saveEvent } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
 
@@ -32,7 +32,7 @@ function parseCSV(text: string): string[][] {
 
 // ─── Column detection ─────────────────────────────────────────────────────────
 type ColKey = 'date' | 'month' | 'day' | 'year' | 'time' | 'conditions' | 'rod' | 'lureType' | 'color' |
-              'lureWeight' | 'species' | 'fishWeight' | 'length' | 'location' | 'notes' | 'coords'
+              'lureWeight' | 'species' | 'fishWeight' | 'fishWeightLb' | 'fishWeightOz' | 'length' | 'location' | 'notes' | 'coords'
 
 const MATCHERS: [ColKey, string[]][] = [
   ['date',       ['date', 'full date', 'catch date']],
@@ -45,8 +45,10 @@ const MATCHERS: [ColKey, string[]][] = [
   ['lureType',   ['lure/rig', 'lure', 'rig', 'lure type', 'bait', 'technique']],
   ['color',      ['color', 'colour', 'pattern', 'col']],
   ['lureWeight', ['lure weight', 'lure wt', 'lure wgt', 'weight (lure)', 'oz']],
-  ['species',    ['species', 'fish species', 'type of fish', 'fish type']],
-  ['fishWeight', ['fish weight', 'fish wt', 'wt', 'weight', 'lbs', 'lb']],
+  ['species',      ['species', 'fish species', 'type of fish', 'fish type']],
+  ['fishWeight',   ['fish weight', 'fish wt', 'wt', 'weight']],
+  ['fishWeightLb', ['fish weight lb', 'fish lb', 'fishweightlb', 'weight lb', 'lbs', 'lb']],
+  ['fishWeightOz', ['fish weight oz', 'fish oz', 'fishweightoz', 'weight oz', 'oz (fish)']],
   ['length',     ['length', 'len', 'size', 'inches']],
   ['location',   ['location', 'loc', 'area', 'spot', 'place', 'where']],
   ['notes',      ['notes', 'note', 'comment', 'remarks', 'details']],
@@ -62,8 +64,10 @@ const COL_LABELS: Record<ColKey, string> = {
   year:       'Year',
   time:       'Time',
   species:    'Species',
-  fishWeight: 'Fish Weight',
-  length:     'Length',
+  fishWeight:   'Fish Weight (combined)',
+  fishWeightLb: 'Fish Weight — lbs',
+  fishWeightOz: 'Fish Weight — oz',
+  length:       'Length',
   color:      'Color / Pattern',
   lureWeight: 'Lure Weight',
   rod:        'Rod',
@@ -74,7 +78,8 @@ const COL_LABELS: Record<ColKey, string> = {
 }
 
 const COL_KEY_ORDER: ColKey[] = [
-  'lureType','date','month','day','year','time','species','fishWeight','length',
+  'lureType','date','month','day','year','time','species',
+  'fishWeight','fishWeightLb','fishWeightOz','length',
   'color','lureWeight','rod','conditions','location','notes','coords',
 ]
 
@@ -196,8 +201,6 @@ interface RowResult { fish?: LandedFish; error?: string; raw: string[] }
 function parseRow(
   cols: string[],
   colMap: Partial<Record<ColKey, number>>,
-  defaultDepth: WaterDepth,
-  defaultColumn: WaterColumn
 ): RowResult {
   const get = (k: ColKey) => colMap[k] !== undefined ? (cols[colMap[k]!] ?? '').trim() : ''
 
@@ -205,7 +208,19 @@ function parseRow(
   if (!lureType) return { error: 'No lure type', raw: cols }
 
   const ts = parseTimestamp(get('date'), get('time'), get('month'), get('day'), get('year'))
-  const { lbs, oz } = parseFishWeight(get('fishWeight'))
+
+  // Weight: prefer separate lb/oz columns; fall back to combined column
+  let lbs = 0, oz = 0
+  const lbRaw = get('fishWeightLb')
+  const ozRaw = get('fishWeightOz')
+  if (lbRaw || ozRaw) {
+    lbs = parseFloat(lbRaw) || 0
+    oz  = parseFloat(ozRaw) || 0
+  } else {
+    const parsed = parseFishWeight(get('fishWeight'))
+    lbs = parsed.lbs; oz = parsed.oz
+  }
+
   const coords = parseCoords(get('coords'))
 
   // Combine supplementary fields into notes
@@ -226,8 +241,7 @@ function parseRow(
       weightLbs: lbs,
       weightOz: oz,
       lengthInches: parseFloat(get('length')) || 0,
-      waterDepth: defaultDepth,
-      waterColumn: defaultColumn,
+      waterColumn: undefined,
       lureType,
       lureWeight: get('lureWeight') ? mapLureWeight(get('lureWeight')) : 'Other',
       lureColor: get('color'),
@@ -242,17 +256,12 @@ function parseRow(
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-const DEPTHS: WaterDepth[]   = ['Under 2 ft','2 to 4 ft','4 to 7 ft','7 to 12 ft','12 to 18 ft','18 ft plus']
-const COLUMNS: WaterColumn[] = ['Surface','Subsurface top 2 ft','Mid-column','Near bottom','Bottom contact']
-
 export default function SpreadsheetImport({ onClose }: Props) {
   const [stage, setStage]           = useState<'pick' | 'preview' | 'importing' | 'done'>('pick')
   const [rawData, setRawData]       = useState<string[][]>([])
   const [rows, setRows]             = useState<RowResult[]>([])
   const [colMap, setColMap]         = useState<Partial<Record<ColKey, number>>>({})
   const [headers, setHeaders]       = useState<string[]>([])
-  const [defaultDepth, setDefaultDepth]   = useState<WaterDepth>('2 to 4 ft')
-  const [defaultColumn, setDefaultColumn] = useState<WaterColumn>('Mid-column')
   const [imported, setImported]     = useState(0)
   const [errors, setErrors]         = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -271,21 +280,21 @@ export default function SpreadsheetImport({ onClose }: Props) {
       setHeaders(hdrs)
       setColMap(map)
       setRawData(dataRows)
-      setRows(dataRows.map(r => parseRow(r, map, defaultDepth, defaultColumn)))
+      setRows(dataRows.map(r => parseRow(r, map)))
       setStage('preview')
     }
     reader.readAsText(file)
   }
 
-  const reparse = (map: Partial<Record<ColKey, number>>, depth: WaterDepth, col: WaterColumn) => {
-    setRows(rawData.map(r => parseRow(r, map, depth, col)))
+  const reparse = (map: Partial<Record<ColKey, number>>) => {
+    setRows(rawData.map(r => parseRow(r, map)))
   }
 
   const handleColChange = (key: ColKey, val: string) => {
     const newMap = { ...colMap }
     if (val === '') { delete newMap[key] } else { newMap[key] = parseInt(val) }
     setColMap(newMap)
-    reparse(newMap, defaultDepth, defaultColumn)
+    reparse(newMap)
   }
 
   const doImport = async () => {
@@ -373,31 +382,6 @@ export default function SpreadsheetImport({ onClose }: Props) {
           )}
         </div>
 
-        {/* Default values for missing required fields */}
-        <div className="th-surface rounded-xl border th-border p-4 mb-4 space-y-3">
-          <div>
-            <p className="th-text font-semibold text-sm mb-1">Default Water Depth</p>
-            <p className="th-text-muted text-xs mb-2">Applied to all imported rows (not in your spreadsheet).</p>
-            <select
-              className="w-full th-surface-deep border th-border rounded-lg px-3 py-2.5 th-text text-sm"
-              value={defaultDepth}
-              onChange={e => { const d = e.target.value as WaterDepth; setDefaultDepth(d); reparse(colMap, d, defaultColumn) }}
-            >
-              {DEPTHS.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div>
-            <p className="th-text font-semibold text-sm mb-1">Default Water Column</p>
-            <select
-              className="w-full th-surface-deep border th-border rounded-lg px-3 py-2.5 th-text text-sm"
-              value={defaultColumn}
-              onChange={e => { const c = e.target.value as WaterColumn; setDefaultColumn(c); reparse(colMap, defaultDepth, c) }}
-            >
-              {COLUMNS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        </div>
-
         {/* Summary */}
         <div className="flex gap-3 mb-4">
           <div className="flex-1 th-surface rounded-xl border th-border p-3 text-center">
@@ -420,7 +404,7 @@ export default function SpreadsheetImport({ onClose }: Props) {
               <div className="th-text-muted text-xs">{new Date(r.fish.timestamp).toLocaleDateString()}</div>
             </div>
             <div className="th-text-muted text-xs mt-0.5">
-              {r.fish.species} · {r.fish.weightLbs}lb {r.fish.weightOz}oz
+              {r.fish.species} · {(r.fish.weightLbs + r.fish.weightOz / 16).toFixed(1)} lbs
               {r.fish.lengthInches ? ` · ${r.fish.lengthInches}"` : ''}
             </div>
             {r.fish.notes && <div className="th-text-muted text-xs mt-0.5 italic truncate">{r.fish.notes}</div>}
@@ -457,9 +441,9 @@ export default function SpreadsheetImport({ onClose }: Props) {
         <p className="th-text-muted text-xs font-medium mt-1">Only <span className="th-text">Lure / Rig</span> is required. All others are optional.</p>
         <p className="th-text-muted text-xs mt-1">
           <strong className="th-text">Date</strong>: single column (<span className="font-mono">3/15/2024</span>) or separate <span className="font-mono">Month</span>, <span className="font-mono">Day</span>, <span className="font-mono">Year</span> columns — both work.<br/>
-          <strong className="th-text">Fish Weight</strong>: <span className="font-mono">3.5</span> (lbs), <span className="font-mono">3 lb 4 oz</span>, or <span className="font-mono">3 4</span> (lbs then oz).<br/>
+          <strong className="th-text">Fish Weight</strong>: single column <span className="font-mono">3.5</span> (lbs) or <span className="font-mono">3 lb 4 oz</span>, or separate <span className="font-mono">Fish Weight — lbs</span> and <span className="font-mono">Fish Weight — oz</span> columns.<br/>
           <strong className="th-text">Coordinates</strong>: <span className="font-mono">39.1234, -86.5678</span><br/>
-          <strong className="th-text">Water depth &amp; column</strong> — you'll set defaults for all rows after loading.
+          <strong className="th-text">Water column</strong> — if not in your spreadsheet it will be left blank (you can add it later).
         </p>
       </div>
 

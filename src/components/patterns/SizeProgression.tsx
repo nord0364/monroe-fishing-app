@@ -77,7 +77,7 @@ export default function SizeProgression({ fish, settings }: Props) {
               <div className="text-slate-200 text-sm font-medium">{species}</div>
               <div className="text-slate-400 text-xs">{f.lureType} · {new Date(f.timestamp).toLocaleDateString()}</div>
             </div>
-            <div className="text-emerald-400 font-bold text-base">{f.weightLbs}lb {f.weightOz}oz</div>
+            <div className="text-emerald-400 font-bold text-base">{(f.weightLbs + f.weightOz / 16).toFixed(1)} lbs</div>
           </div>
         ))}
       </div>
@@ -105,7 +105,7 @@ export default function SizeProgression({ fish, settings }: Props) {
                   labelStyle={{ color: '#94a3b8' }} itemStyle={{ color: '#e2e8f0' }}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={(val: any, _: any, props: any) =>
-                    [`${val ?? 0}lb avg (${props.payload?.count ?? ''} fish)`, 'Avg Weight'] as [string, string]}
+                    [`${val ?? 0} lbs avg (${props.payload?.count ?? ''} fish)`, 'Avg Weight'] as [string, string]}
                 />
                 <Bar dataKey="weight" fill="#10b981" radius={[4, 4, 0, 0]} name="Avg weight" />
               </BarChart>
@@ -143,7 +143,7 @@ export default function SizeProgression({ fish, settings }: Props) {
               .map(f => (
                 <div key={f.id} className="flex justify-between text-sm">
                   <span className="text-slate-400">{f.lureType} · {new Date(f.timestamp).toLocaleDateString()}</span>
-                  <span className="text-emerald-400 font-medium">{f.weightLbs}lb {f.weightOz}oz</span>
+                  <span className="text-emerald-400 font-medium">{(f.weightLbs + f.weightOz / 16).toFixed(1)} lbs</span>
                 </div>
               ))}
           </div>

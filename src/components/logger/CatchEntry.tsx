@@ -4,7 +4,7 @@ import type {
   Session, GPSCoords, AppSettings,
 } from '../../types'
 import {
-  SPECIES, WATER_DEPTHS, WATER_COLUMNS, LURE_WEIGHTS,
+  SPECIES, WATER_COLUMNS, LURE_WEIGHTS,
   RETRIEVE_STYLES, STRUCTURE_TYPES,
 } from '../../constants'
 import { saveEvent } from '../../db/database'
@@ -38,7 +38,6 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
   const [weightLbs, setWeightLbs] = useState('')
   const [weightOz, setWeightOz] = useState('')
   const [lengthIn, setLengthIn] = useState('')
-  const [waterDepth, setWaterDepth] = useState<string | null>(null)
   const [waterColumn, setWaterColumn] = useState<string | null>(null)
   const [lureType, setLureType] = useState<string | null>(null)
   const [lureWeight, setLureWeight] = useState<string | null>(null)
@@ -92,7 +91,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
   }
 
   const handleSave = async () => {
-    if (!waterDepth || !waterColumn || !lureType) return
+    if (!lureType && eventType !== 'Visual Sighting') return
     setSaving(true)
 
     const base = {
@@ -112,8 +111,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
         weightLbs: parseFloat(weightLbs) || 0,
         weightOz: parseFloat(weightOz) || 0,
         lengthInches: parseFloat(lengthIn) || 0,
-        waterDepth: waterDepth as import('../../types').WaterDepth,
-        waterColumn: waterColumn as import('../../types').WaterColumn,
+        waterColumn: waterColumn as import('../../types').WaterColumn ?? undefined,
         lureType,
         lureWeight: (lureWeight ?? 'Other') as import('../../types').LureWeight,
         lureColor,
@@ -128,8 +126,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
         ...base,
         type: 'Quality Strike — Missed',
         lureType,
-        waterDepth: waterDepth as import('../../types').WaterDepth,
-        waterColumn: waterColumn as import('../../types').WaterColumn,
+        waterColumn: waterColumn as import('../../types').WaterColumn ?? undefined,
         notes: notes || undefined,
       } as QualityStrike
     } else if (eventType === 'Follow — Did Not Strike') {
@@ -315,11 +312,10 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
         </>
       )}
 
-      {/* Shared: depth & column for fish events */}
+      {/* Shared: water column for fish events */}
       {(eventType === 'Landed Fish' || eventType === 'Quality Strike — Missed') && (
         <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
-          <span className="section-label">Where &amp; How Deep</span>
-          <QuickSelect label="depth" options={WATER_DEPTHS} value={waterDepth as import('../../types').WaterDepth} onChange={setWaterDepth} columns={2} />
+          <span className="section-label">Water Column</span>
           <QuickSelect label="column fished" options={WATER_COLUMNS} value={waterColumn as import('../../types').WaterColumn} onChange={setWaterColumn} />
         </div>
       )}
@@ -388,7 +384,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
 
       <button
         onClick={handleSave}
-        disabled={saving || (!waterDepth && eventType !== 'Visual Sighting') || (!lureType && eventType !== 'Visual Sighting')}
+        disabled={saving || (!lureType && eventType !== 'Visual Sighting')}
         className="w-full py-5 th-btn-primary rounded-2xl font-bold text-lg active:scale-[0.98] transition-transform disabled:opacity-40 shadow-lg"
       >
         {saving ? 'Saving…' : 'Log Event'}

@@ -8,6 +8,7 @@ interface Props {
   briefing: AIBriefing
   apiKey: string
   onGoToLogger: () => void
+  onNewBriefing?: () => void
 }
 
 const CONFIDENCE_BADGE: Record<string, string> = {
@@ -16,7 +17,7 @@ const CONFIDENCE_BADGE: Record<string, string> = {
   Low:    'bg-slate-700 th-text-muted',
 }
 
-export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger }: Props) {
+export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger, onNewBriefing }: Props) {
   const [expandedRec, setExpandedRec]     = useState<number | null>(null)
   const [expandedSec, setExpandedSec]     = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -194,12 +195,22 @@ export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger
             Ask
           </button>
         </div>
-        <button
-          onClick={onGoToLogger}
-          className="w-full py-2.5 th-surface border th-border rounded-xl th-text text-sm font-medium"
-        >
-          📝 Go to Logger
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onGoToLogger}
+            className="flex-1 py-2.5 th-surface border th-border rounded-xl th-text text-sm font-medium"
+          >
+            📝 Logger
+          </button>
+          {onNewBriefing && (
+            <button
+              onClick={onNewBriefing}
+              className="flex-1 py-2.5 th-surface border th-border rounded-xl th-text-muted text-sm font-medium"
+            >
+              🔭 New Briefing
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

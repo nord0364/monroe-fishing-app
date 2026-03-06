@@ -84,7 +84,7 @@ export default function LurePerformance({ fish, settings }: Props) {
             {avgByLure.map(item => (
               <div key={item.lure} className="flex items-center justify-between">
                 <span className="text-slate-400 text-sm">{item.lure} <span className="text-slate-600">({item.count})</span></span>
-                <span className="text-slate-200 text-sm font-medium">{item.avg}lb avg</span>
+                <span className="text-slate-200 text-sm font-medium">{item.avg} lbs avg</span>
               </div>
             ))}
           </div>

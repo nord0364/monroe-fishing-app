@@ -218,6 +218,21 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
     }
   }
 
+  const resetBriefing = () => {
+    setBriefingData(null)
+    setBriefingSession(null)
+    setConditions({})
+    setLaunchSite('')
+    setWaterClarity(null)
+    setBaroTrend(null)
+    setWaterLevelVsNormal(null)
+    setBaroTrendAuto(false)
+    setWaterLevelAuto(false)
+    setLoadError('')
+    setApiError('')
+    setStep('idle')
+  }
+
   // ── Ready ───────────────────────────────────────────────────────────────────
   if (step === 'ready' && briefingData) {
     const session = briefingSession ?? activeSession
@@ -228,6 +243,7 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
           briefing={briefingData}
           apiKey={settings.anthropicApiKey}
           onGoToLogger={onGoToLogger}
+          onNewBriefing={resetBriefing}
         />
       )
     }
@@ -240,10 +256,10 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
           onGoToLogger={onGoToLogger}
         />
         <button
-          onClick={() => { setBriefingData(null); setBriefingSession(null); setStep('idle') }}
+          onClick={resetBriefing}
           className="w-full mt-3 py-3 th-surface border th-border rounded-xl th-text-muted text-sm"
         >
-          Start a New Session
+          🔭 Plan Another Trip
         </button>
       </div>
     )

@@ -79,6 +79,8 @@ export default function BriefingView({
   }
 
   const condChips = [
+    { icon: '🌅', value: conditions.sunrise ? `Sunrise ${conditions.sunrise}` : undefined },
+    { icon: '🌇', value: conditions.sunset  ? `Sunset ${conditions.sunset}`   : undefined },
     { icon: '🌡', value: conditions.airTempF   != null ? `${conditions.airTempF}°F air`   : undefined },
     { icon: '💧', value: conditions.waterTempF != null ? `${conditions.waterTempF}°F water` : undefined },
     { icon: '💨', value: conditions.windSpeedMph != null
@@ -90,6 +92,7 @@ export default function BriefingView({
     { icon: '🌊', value: conditions.waterLevelVsNormal ? `${conditions.waterLevelVsNormal} water` : undefined },
     { icon: '👁', value: conditions.waterClarity },
     { icon: '🌙', value: conditions.moonPhase },
+    { icon: '✨', value: conditions.moonIlluminationPct != null ? `${conditions.moonIlluminationPct}% illum.` : undefined },
   ]
 
   return (

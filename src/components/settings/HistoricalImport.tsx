@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { LandedFish, AppSettings } from '../../types'
-import { SPECIES, WATER_DEPTHS, WATER_COLUMNS, LURE_WEIGHTS, RETRIEVE_STYLES, STRUCTURE_TYPES } from '../../constants'
+import { SPECIES, WATER_COLUMNS, LURE_WEIGHTS, RETRIEVE_STYLES, STRUCTURE_TYPES } from '../../constants'
 import { saveEvent } from '../../db/database'
 import QuickSelect from '../layout/QuickSelect'
 import { nanoid } from '../logger/nanoid'
@@ -16,7 +16,6 @@ export default function HistoricalImport({ settings, onClose }: Props) {
   const [weightLbs, setWeightLbs] = useState('')
   const [weightOz, setWeightOz] = useState('')
   const [lengthIn, setLengthIn] = useState('')
-  const [waterDepth, setWaterDepth] = useState<string | null>(null)
   const [waterColumn, setWaterColumn] = useState<string | null>(null)
   const [lureType, setLureType] = useState<string | null>(null)
   const [lureWeight, setLureWeight] = useState<string | null>(null)
@@ -34,7 +33,7 @@ export default function HistoricalImport({ settings, onClose }: Props) {
     'Drop Shot', 'Other']
 
   const handleSave = async () => {
-    if (!date || !waterDepth || !waterColumn || !lureType) return
+    if (!date || !lureType) return
     setSaving(true)
     const ts = new Date(date).getTime() || Date.now()
     const event: LandedFish = {
@@ -46,8 +45,7 @@ export default function HistoricalImport({ settings, onClose }: Props) {
       weightLbs: parseFloat(weightLbs) || 0,
       weightOz: parseFloat(weightOz) || 0,
       lengthInches: parseFloat(lengthIn) || 0,
-      waterDepth: waterDepth as import('../../types').WaterDepth,
-      waterColumn: waterColumn as import('../../types').WaterColumn,
+      waterColumn: waterColumn as import('../../types').WaterColumn ?? undefined,
       lureType,
       lureWeight: (lureWeight ?? 'Other') as import('../../types').LureWeight,
       lureColor,
@@ -128,7 +126,6 @@ export default function HistoricalImport({ settings, onClose }: Props) {
           placeholder="e.g. chartreuse white" value={lureColor} onChange={e => setLureColor(e.target.value)} />
       </div>
 
-      <QuickSelect label="Water Depth" options={WATER_DEPTHS} value={waterDepth as import('../../types').WaterDepth} onChange={setWaterDepth} />
       <QuickSelect label="Water Column" options={WATER_COLUMNS} value={waterColumn as import('../../types').WaterColumn} onChange={setWaterColumn} />
       <QuickSelect label="Retrieve Style" options={RETRIEVE_STYLES} value={retrieveStyle as import('../../types').RetrieveStyle} onChange={setRetrieveStyle} columns={2} />
       <QuickSelect label="Structure / Cover" options={STRUCTURE_TYPES} value={structure as import('../../types').StructureCover} onChange={setStructure} columns={2} />
@@ -155,7 +152,7 @@ export default function HistoricalImport({ settings, onClose }: Props) {
 
       <button
         onClick={handleSave}
-        disabled={saving || !date || !waterDepth || !waterColumn || !lureType}
+        disabled={saving || !date || !lureType}
         className="w-full py-4 bg-emerald-600 rounded-xl text-white font-semibold text-lg active:bg-emerald-700 disabled:opacity-40"
       >
         {saving ? 'Saving…' : 'Save & Log Another'}
