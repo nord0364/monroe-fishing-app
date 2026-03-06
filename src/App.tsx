@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Session, AppSettings } from './types'
-import { getSettings, saveSettings, exportAllDataJSON } from './db/database'
+import { getSettings, saveSettings, exportAllDataFull } from './db/database'
 import { loadGoogleIdentityServices, syncToGoogleDrive, getDriveStatus } from './api/googleDrive'
 import BottomNav from './components/layout/BottomNav'
 import type { NavTab } from './components/layout/BottomNav'
@@ -88,7 +88,7 @@ export default function App() {
     if (syncTimer.current) clearTimeout(syncTimer.current)
     syncTimer.current = setTimeout(async () => {
       try {
-        const json = await exportAllDataJSON()
+        const json = await exportAllDataFull()
         await syncToGoogleDrive(json)
       } catch {}
     }, 2000)

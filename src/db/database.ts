@@ -105,6 +105,9 @@ export async function deleteEvent(id: string): Promise<void> {
   await db.delete('events', id)
 }
 
+// updateEvent is an alias for saveEvent (put handles both insert and update)
+export { saveEvent as updateEvent }
+
 export async function getLandedFish() {
   const events = await getAllEvents()
   return events.filter(e => e.type === 'Landed Fish') as import('../types').LandedFish[]
@@ -165,6 +168,37 @@ export async function deleteRodSetup(id: string): Promise<void> {
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────
+
+// Full export including photos — used for Drive backup so data restores across devices
+export async function exportAllDataFull(): Promise<string> {
+  const [sessions, events, settings, ownedLures, rodSetups] = await Promise.all([
+    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(),
+  ])
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    version: 2,
+    sessions, events, ownedLures, rodSetups,
+    settings: { ...settings, anthropicApiKey: '[REDACTED]' },
+  }, null, 2)
+}
+
+// Merge-import from backup (upserts; never deletes; skips photo placeholders)
+export async function bulkImportData(data: {
+  sessions?: Session[]; events?: CatchEvent[]
+  ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]
+}): Promise<{ sessions: number; events: number }> {
+  const db = await getDB()
+  let sc = 0, ec = 0
+  for (const s of data.sessions ?? [])   { await db.put('sessions', s); sc++ }
+  for (const e of data.events   ?? [])   { await db.put('events',   e); ec++ }
+  for (const l of data.ownedLures ?? []) {
+    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]') await db.put('ownedLures', l)
+  }
+  for (const r of data.rodSetups  ?? []) {
+    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') await db.put('rodSetups', r)
+  }
+  return { sessions: sc, events: ec }
+}
 
 export async function exportAllDataJSON(): Promise<string> {
   const [sessions, events, settings, ownedLures, rodSetups] = await Promise.all([

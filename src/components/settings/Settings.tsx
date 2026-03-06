@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
 import type { AppSettings, ColorTheme, FontSize } from '../../types'
-import { saveSettings, exportAllDataJSON, exportCatchesCSV } from '../../db/database'
+import { saveSettings, exportAllDataJSON, exportCatchesCSV, bulkImportData } from '../../db/database'
 import {
   getDriveStatus, wasEverConnected, onDriveStatusChange,
   connectGoogleDrive, disconnectGoogleDrive, syncToGoogleDrive,
-  type DriveStatus,
+  downloadBackupFromDrive, type DriveStatus,
 } from '../../api/googleDrive'
 import HistoricalImport from './HistoricalImport'
 import SpreadsheetImport from './SpreadsheetImport'
 import LureCatalog from '../gear/LureCatalog'
 import RodCatalog from '../gear/RodCatalog'
+import CatchManager from './CatchManager'
 
 interface Props {
   settings: AppSettings
@@ -30,7 +31,7 @@ const FONT_OPTIONS: { value: FontSize; label: string }[] = [
   { value: 'large',  label: 'XL' },
 ]
 
-type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods'
+type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods' | 'catches'
 
 export default function Settings({ settings, onUpdate }: Props) {
   const [view, setView]         = useState<View>('main')
@@ -42,6 +43,9 @@ export default function Settings({ settings, onUpdate }: Props) {
   const [driveConnecting, setDriveConnecting] = useState(false)
   const [driveSyncing, setDriveSyncing] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
+  const [restoreState, setRestoreState] = useState<'idle' | 'fetching' | 'confirm' | 'importing' | 'done' | 'error'>('idle')
+  const [restorePreview, setRestorePreview] = useState<{ modifiedTime: string; sessions: number; catches: number; json: string } | null>(null)
+  const [restoreResult, setRestoreResult] = useState<{ sessions: number; events: number } | null>(null)
 
   useEffect(() => onDriveStatusChange(s => {
     setDriveStatus(s)
@@ -62,6 +66,37 @@ export default function Settings({ settings, onUpdate }: Props) {
       setLastSyncTime(Date.now())
     } catch {}
     setDriveSyncing(false)
+  }
+
+  const handleRestoreFetch = async () => {
+    setRestoreState('fetching')
+    try {
+      const { json, modifiedTime } = await downloadBackupFromDrive()
+      const data = JSON.parse(json)
+      setRestorePreview({
+        modifiedTime,
+        sessions: data.sessions?.length ?? 0,
+        catches:  data.events?.filter((e: { type: string }) => e.type === 'Landed Fish').length ?? 0,
+        json,
+      })
+      setRestoreState('confirm')
+    } catch (err) {
+      console.error(err)
+      setRestoreState('error')
+    }
+  }
+
+  const handleRestoreConfirm = async () => {
+    if (!restorePreview) return
+    setRestoreState('importing')
+    try {
+      const data = JSON.parse(restorePreview.json)
+      const result = await bulkImportData(data)
+      setRestoreResult(result)
+      setRestoreState('done')
+    } catch {
+      setRestoreState('error')
+    }
   }
 
   const handleSave = async () => {
@@ -126,6 +161,7 @@ export default function Settings({ settings, onUpdate }: Props) {
     a.click(); URL.revokeObjectURL(url)
   }
 
+  if (view === 'catches')    return <CatchManager onClose={() => setView('main')} />
   if (view === 'import')     return <HistoricalImport settings={settings} onClose={() => setView('main')} />
   if (view === 'csv-import') return <SpreadsheetImport onClose={() => setView('main')} />
   if (view === 'lures')      return <LureCatalog apiKey={apiKey} onClose={() => setView('main')} />
@@ -272,11 +308,14 @@ export default function Settings({ settings, onUpdate }: Props) {
         </div>
       </div>
 
-      {/* ── Historical Import ────────────────────────────────────────────── */}
+      {/* ── Catch Data ───────────────────────────────────────────────────── */}
       <div className="th-surface rounded-xl p-4 border th-border">
-        <h2 className="font-semibold th-text text-sm mb-1">Historical Data Import</h2>
-        <p className="th-text-muted text-xs mb-3">Seed your database with prior season catches to improve AI recommendations immediately.</p>
+        <h2 className="font-semibold th-text text-sm mb-1">Catch Data</h2>
+        <p className="th-text-muted text-xs mb-3">Browse your catch log to fix inaccurate entries or remove duplicates.</p>
         <div className="flex flex-col gap-2">
+          <button onClick={() => setView('catches')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
+            Browse / Edit Catches
+          </button>
           <button onClick={() => setView('csv-import')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
             Import from Spreadsheet (CSV)
           </button>
@@ -341,6 +380,65 @@ export default function Settings({ settings, onUpdate }: Props) {
                 className="px-4 py-2.5 th-surface border th-border rounded-xl text-sm th-text">
                 Disconnect
               </button>
+            </div>
+
+            {/* Restore from Drive */}
+            <div className="pt-1 border-t th-border">
+              <p className="th-text-muted text-xs mb-2">
+                On a new device? Restore your data from the Drive backup to sync across devices.
+              </p>
+              {restoreState === 'idle' && (
+                <button onClick={handleRestoreFetch}
+                  className="w-full py-2.5 th-surface-deep border th-border rounded-xl text-sm th-text font-medium">
+                  ↓ Restore from Google Drive
+                </button>
+              )}
+              {restoreState === 'fetching' && (
+                <p className="text-xs th-text-muted text-center animate-pulse">Fetching backup…</p>
+              )}
+              {restoreState === 'confirm' && restorePreview && (
+                <div className="th-surface-deep rounded-xl border th-border p-3 space-y-2">
+                  <p className="th-text text-sm font-semibold">Backup found</p>
+                  <p className="th-text-muted text-xs">
+                    Saved: {new Date(restorePreview.modifiedTime).toLocaleString()}<br />
+                    {restorePreview.sessions} sessions · {restorePreview.catches} catches
+                  </p>
+                  <p className="th-text-muted text-xs">Existing data is kept — this merges, not overwrites.</p>
+                  <div className="flex gap-2">
+                    <button onClick={handleRestoreConfirm}
+                      className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold">
+                      Import
+                    </button>
+                    <button onClick={() => setRestoreState('idle')}
+                      className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {restoreState === 'importing' && (
+                <p className="text-xs th-text-muted text-center animate-pulse">Importing…</p>
+              )}
+              {restoreState === 'done' && restoreResult && (
+                <div className="th-surface-deep rounded-xl border th-border p-3">
+                  <p className="text-green-400 text-sm font-semibold">✓ Import complete</p>
+                  <p className="th-text-muted text-xs mt-1">
+                    {restoreResult.sessions} sessions · {restoreResult.events} catches merged.
+                  </p>
+                  <p className="th-text-muted text-xs mt-1">Reload the app to see all restored data.</p>
+                  <button onClick={() => window.location.reload()}
+                    className="mt-2 w-full py-2 th-btn-primary rounded-lg text-xs font-semibold">
+                    Reload Now
+                  </button>
+                </div>
+              )}
+              {restoreState === 'error' && (
+                <div className="space-y-1">
+                  <p className="text-red-400 text-xs">Restore failed. Make sure Drive is connected and a backup exists.</p>
+                  <button onClick={() => setRestoreState('idle')}
+                    className="text-xs th-accent-text underline">Try again</button>
+                </div>
+              )}
             </div>
           </>
         )}

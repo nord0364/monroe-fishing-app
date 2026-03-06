@@ -163,6 +163,23 @@ async function getOrCreateFolder(): Promise<string> {
   return _folder
 }
 
+// ── Restore ───────────────────────────────────────────────────────────────────
+// Downloads fishing-backup.json from Drive. Connects if token expired.
+export async function downloadBackupFromDrive(): Promise<{ json: string; modifiedTime: string }> {
+  if (!hasValidToken()) await connectGoogleDrive()
+  const folder = await getOrCreateFolder()
+  const q  = encodeURIComponent(`name='fishing-backup.json' and '${folder}' in parents and trashed=false`)
+  const sr = await driveGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)`)
+  const sd = await sr.json() as { files?: { id: string; modifiedTime: string }[] }
+  if (!sd.files?.length) throw new Error('No backup found in Google Drive')
+  const { id, modifiedTime } = sd.files[0]
+  const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
+    headers: { Authorization: `Bearer ${_token}` },
+  })
+  if (!fr.ok) throw new Error('Download failed')
+  return { json: await fr.text(), modifiedTime }
+}
+
 // ── Sync ──────────────────────────────────────────────────────────────────────
 export async function syncToGoogleDrive(jsonData: string): Promise<void> {
   if (_inflight) return

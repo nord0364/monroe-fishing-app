@@ -6,10 +6,11 @@ import LurePerformance from './LurePerformance'
 import TimeWindows from './TimeWindows'
 import DepthStructure from './DepthStructure'
 import AIChat from './AIChat'
+import CatchMap from './CatchMap'
 
 interface Props { settings: AppSettings }
 
-type Tab = 'size' | 'lure' | 'time' | 'depth' | 'history' | 'chat'
+type Tab = 'size' | 'lure' | 'time' | 'depth' | 'history' | 'map' | 'chat'
 type Season = 'Spring' | 'Summer' | 'Fall' | 'Winter'
 
 const tabs: { id: Tab; label: string }[] = [
@@ -18,6 +19,7 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'time',    label: 'Time' },
   { id: 'depth',   label: 'Depth' },
   { id: 'history', label: 'History' },
+  { id: 'map',     label: '🗺 Map' },
   { id: 'chat',    label: '🤖 Chat' },
 ]
 
@@ -293,6 +295,9 @@ export default function PatternReview({ settings }: Props) {
           </div>
         ) : tab === 'history' ? (
           <HistoryView allFish={allFish} settings={settings} />
+        ) : tab === 'map' ? (
+          // key forces Leaflet remount when filters change
+          <CatchMap key={`${yearFilter}-${seasonFilter}`} fish={filteredFish} settings={settings} />
         ) : filteredFish.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-slate-400">No catches match this filter.</p>
