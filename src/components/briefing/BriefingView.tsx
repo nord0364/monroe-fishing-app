@@ -45,6 +45,32 @@ function CondChip({ icon, value }: { icon: string; value?: string | number }) {
   )
 }
 
+// Pick the most natural-sounding available voice
+function getBestVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis?.getVoices() ?? []
+  if (!voices.length) return null
+  const enUS  = voices.filter(v => v.lang === 'en-US' || v.lang === 'en_US')
+  const enAny = voices.filter(v => v.lang.startsWith('en'))
+  // Prefer neural / enhanced / Google voices in that order
+  const pick = (pool: SpeechSynthesisVoice[]) =>
+    pool.find(v => /natural|neural|enhanced/i.test(v.name)) ??
+    pool.find(v => /google/i.test(v.name)) ??
+    pool.find(v => /microsoft/i.test(v.name)) ??
+    pool[0] ?? null
+  return pick(enUS) ?? pick(enAny) ?? null
+}
+
+// Strip markdown / emoji so they don't get read aloud verbatim
+function cleanForSpeech(text: string): string {
+  return text
+    .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')  // emoji
+    .replace(/[*_#`]/g, '')
+    .replace(/·/g, ',')
+    .replace(/—/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 export default function BriefingView({
   briefing, conditions, launchSite, sessionDate, onGoToLogger,
 }: Props) {
@@ -55,8 +81,12 @@ export default function BriefingView({
     if (!window.speechSynthesis) return
     window.speechSynthesis.cancel()
     if (speakingId === id) { setSpeakingId(null); return }
-    const utt = new SpeechSynthesisUtterance(text)
-    utt.rate = 0.88
+    const utt = new SpeechSynthesisUtterance(cleanForSpeech(text))
+    utt.rate   = 0.9
+    utt.pitch  = 0.97
+    utt.volume = 1.0
+    const voice = getBestVoice()
+    if (voice) utt.voice = voice
     utt.onend   = () => setSpeakingId(null)
     utt.onerror = () => setSpeakingId(null)
     setSpeakingId(id)
@@ -67,14 +97,16 @@ export default function BriefingView({
 
   const buildFullText = () => {
     const parts: string[] = []
-    if (briefing.conditionsSummary) parts.push(`Today's conditions: ${briefing.conditionsSummary}.`)
-    briefing.recommendations.forEach(r => {
-      parts.push(`Recommendation ${r.rank}: ${r.lureType}, ${r.weight}, ${r.color}. ${r.depthBand}. ${r.retrieveStyle}. ${r.reasoning}.`)
+    if (briefing.conditionsSummary) parts.push(briefing.conditionsSummary)
+    briefing.recommendations.forEach((r, i) => {
+      const intro = i === 0 ? 'Your top pick is' : i === 1 ? 'Second option,' : 'Third,'
+      parts.push(`${intro} ${r.lureType} in ${r.color}, ${r.weight}. ${r.depthBand}. ${r.retrieveStyle}. ${r.reasoning}.`)
+      if (r.suggestedRod) parts.push(`Suggested rod: ${r.suggestedRod}.`)
     })
     if (briefing.startingArea)   parts.push(`Where to start: ${briefing.startingArea}`)
     if (briefing.primaryPattern) parts.push(`Primary pattern: ${briefing.primaryPattern}`)
-    if (briefing.backupPattern)  parts.push(`Backup plan: ${briefing.backupPattern}`)
-    if (briefing.narrative)      parts.push(`Field notes: ${briefing.narrative}`)
+    if (briefing.backupPattern)  parts.push(`If that's not working: ${briefing.backupPattern}`)
+    if (briefing.narrative)      parts.push(briefing.narrative)
     return parts.join(' ')
   }
 

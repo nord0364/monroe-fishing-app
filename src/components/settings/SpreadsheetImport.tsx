@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import type { LandedFish, GPSCoords, Species, LureWeight } from '../../types'
+import type { LandedFish, GPSCoords, Species, LureWeight, WaterColumn } from '../../types'
 import { saveEvent } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
 
@@ -32,54 +32,59 @@ function parseCSV(text: string): string[][] {
 
 // ─── Column detection ─────────────────────────────────────────────────────────
 type ColKey = 'date' | 'month' | 'day' | 'year' | 'time' | 'conditions' | 'rod' | 'lureType' | 'color' |
-              'lureWeight' | 'species' | 'fishWeight' | 'fishWeightLb' | 'fishWeightOz' | 'length' | 'location' | 'notes' | 'coords'
+              'lureWeight' | 'species' | 'fishWeight' | 'fishWeightLb' | 'fishWeightOz' |
+              'waterColumn' | 'length' | 'location' | 'notes' | 'coords'
 
 const MATCHERS: [ColKey, string[]][] = [
-  ['date',       ['date', 'full date', 'catch date']],
-  ['month',      ['month', 'mo', 'mon']],
-  ['day',        ['day', 'dy', 'dom', 'date (day)']],
-  ['year',       ['year', 'yr', 'yyyy', 'yy']],
-  ['time',       ['time', 'catch time', 'time of day']],
-  ['conditions', ['condition']],
-  ['rod',        ['rod']],
-  ['lureType',   ['lure/rig', 'lure', 'rig', 'lure type', 'bait', 'technique']],
-  ['color',      ['color', 'colour', 'pattern', 'col']],
-  ['lureWeight', ['lure weight', 'lure wt', 'lure wgt', 'weight (lure)', 'oz']],
-  ['species',      ['species', 'fish species', 'type of fish', 'fish type']],
+  ['date',         ['date', 'full date', 'catch date']],
+  ['month',        ['month', 'mo', 'mon']],
+  ['day',          ['day', 'dy', 'dom', 'date (day)']],
+  ['year',         ['year', 'yr', 'yyyy', 'yy']],
+  ['time',         ['time', 'catch time', 'time of day']],
+  ['conditions',   ['condition']],
+  ['rod',          ['rod']],
+  ['lureType',     ['lure/rig', 'lure', 'rig', 'lure type', 'bait', 'technique']],
+  ['color',        ['color', 'colour', 'pattern', 'col']],
+  // fish weight columns before lureWeight to avoid 'oz'/'lb' ambiguity
+  ['fishWeightLb', ['fish weight lb', 'fish lb', 'fishweightlb', 'weight lb', 'fish lbs', 'lbs', 'lb']],
+  ['fishWeightOz', ['fish weight oz', 'fish oz', 'fishweightoz', 'weight oz', 'oz (fish)', 'oz']],
   ['fishWeight',   ['fish weight', 'fish wt', 'wt', 'weight']],
-  ['fishWeightLb', ['fish weight lb', 'fish lb', 'fishweightlb', 'weight lb', 'lbs', 'lb']],
-  ['fishWeightOz', ['fish weight oz', 'fish oz', 'fishweightoz', 'weight oz', 'oz (fish)']],
-  ['length',     ['length', 'len', 'size', 'inches']],
-  ['location',   ['location', 'loc', 'area', 'spot', 'place', 'where']],
-  ['notes',      ['notes', 'note', 'comment', 'remarks', 'details']],
-  ['coords',     ['coord', 'gps', 'lat', 'lat/lng', 'latitude', 'longitude']],
+  ['lureWeight',   ['lure weight', 'lure wt', 'lure wgt', 'weight (lure)']],
+  ['species',      ['species', 'fish species', 'type of fish', 'fish type']],
+  ['waterColumn',  ['water column', 'water col', 'column fished', 'w column', 'watercolumn']],
+  ['length',       ['length', 'len', 'size', 'inches']],
+  ['location',     ['location', 'loc', 'area', 'spot', 'place', 'where']],
+  ['notes',        ['notes', 'note', 'comment', 'remarks', 'details']],
+  ['coords',       ['coord', 'gps', 'lat', 'lat/lng', 'latitude', 'longitude']],
 ]
 
 // Human-readable labels for each ColKey
 const COL_LABELS: Record<ColKey, string> = {
-  lureType:   'Lure / Rig *',
-  date:       'Date (combined)',
-  month:      'Month',
-  day:        'Day',
-  year:       'Year',
-  time:       'Time',
-  species:    'Species',
-  fishWeight:   'Fish Weight (combined)',
-  fishWeightLb: 'Fish Weight — lbs',
-  fishWeightOz: 'Fish Weight — oz',
-  length:       'Length',
-  color:      'Color / Pattern',
-  lureWeight: 'Lure Weight',
-  rod:        'Rod',
-  conditions: 'Conditions',
-  location:   'Location',
-  notes:      'Notes',
-  coords:     'Coordinates',
+  lureType:     'Lure / Rig *',
+  date:         'Date (combined)',
+  month:        'Month',
+  day:          'Day',
+  year:         'Year',
+  time:         'Time',
+  species:      'Species',
+  fishWeight:   'Fish Weight (combined lbs)',
+  fishWeightLb: 'Fish Weight — lb column',
+  fishWeightOz: 'Fish Weight — oz column',
+  waterColumn:  'Water Column',
+  length:       'Length (inches)',
+  color:        'Color / Pattern',
+  lureWeight:   'Lure Weight',
+  rod:          'Rod',
+  conditions:   'Conditions',
+  location:     'Location',
+  notes:        'Notes',
+  coords:       'Coordinates',
 }
 
 const COL_KEY_ORDER: ColKey[] = [
   'lureType','date','month','day','year','time','species',
-  'fishWeight','fishWeightLb','fishWeightOz','length',
+  'fishWeight','fishWeightLb','fishWeightOz',
+  'waterColumn','length',
   'color','lureWeight','rod','conditions','location','notes','coords',
 ]
 
@@ -241,7 +246,7 @@ function parseRow(
       weightLbs: lbs,
       weightOz: oz,
       lengthInches: parseFloat(get('length')) || 0,
-      waterColumn: undefined,
+      waterColumn: (get('waterColumn') as WaterColumn) || undefined,
       lureType,
       lureWeight: get('lureWeight') ? mapLureWeight(get('lureWeight')) : 'Other',
       lureColor: get('color'),
