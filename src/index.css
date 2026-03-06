@@ -125,6 +125,27 @@
   color: var(--th-text-muted);
 }
 
+/* white — bright light mode for full-sun outdoor use */
+[data-theme="white"] {
+  --th-base:            #f0f4f8;
+  --th-surface:         #ffffff;
+  --th-surface-deep:    #e8edf2;
+  --th-border:          #cbd5e1;
+  --th-border-muted:    #e2e8f0;
+  --th-text:            #0f172a;
+  --th-text-muted:      #475569;
+  --th-accent:          #0369a1;
+  --th-accent-active:   #0284c7;
+  --th-accent-text:     #0369a1;
+  --th-accent-subtle:   rgba(3, 105, 161, 0.12);
+  --th-nav-bg:          #ffffff;
+  --th-nav-border:      #cbd5e1;
+  --th-banner-bg:       #0369a1;
+  --th-banner-text:     #ffffff;
+  --th-badge-high-bg:   #dcfce7;
+  --th-badge-high-text: #15803d;
+}
+
 /* ─── Base resets for mobile-first PWA ───────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;

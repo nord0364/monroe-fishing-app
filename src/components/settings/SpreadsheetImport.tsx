@@ -31,12 +31,15 @@ function parseCSV(text: string): string[][] {
 }
 
 // ─── Column detection ─────────────────────────────────────────────────────────
-type ColKey = 'date' | 'time' | 'conditions' | 'rod' | 'lureType' | 'color' |
+type ColKey = 'date' | 'month' | 'day' | 'year' | 'time' | 'conditions' | 'rod' | 'lureType' | 'color' |
               'lureWeight' | 'species' | 'fishWeight' | 'length' | 'location' | 'notes' | 'coords'
 
 const MATCHERS: [ColKey, string[]][] = [
-  ['date',       ['date']],
-  ['time',       ['time']],
+  ['date',       ['date', 'full date', 'catch date']],
+  ['month',      ['month', 'mo', 'mon']],
+  ['day',        ['day', 'dy', 'dom', 'date (day)']],
+  ['year',       ['year', 'yr', 'yyyy', 'yy']],
+  ['time',       ['time', 'catch time', 'time of day']],
   ['conditions', ['condition']],
   ['rod',        ['rod']],
   ['lureType',   ['lure/rig', 'lure', 'rig', 'lure type', 'bait', 'technique']],
@@ -53,7 +56,10 @@ const MATCHERS: [ColKey, string[]][] = [
 // Human-readable labels for each ColKey
 const COL_LABELS: Record<ColKey, string> = {
   lureType:   'Lure / Rig *',
-  date:       'Date',
+  date:       'Date (combined)',
+  month:      'Month',
+  day:        'Day',
+  year:       'Year',
   time:       'Time',
   species:    'Species',
   fishWeight: 'Fish Weight',
@@ -68,7 +74,7 @@ const COL_LABELS: Record<ColKey, string> = {
 }
 
 const COL_KEY_ORDER: ColKey[] = [
-  'lureType','date','time','species','fishWeight','length',
+  'lureType','date','month','day','year','time','species','fishWeight','length',
   'color','lureWeight','rod','conditions','location','notes','coords',
 ]
 
@@ -127,27 +133,53 @@ function parseFishWeight(s: string): { lbs: number; oz: number } {
   return { lbs: 0, oz: 0 }
 }
 
-function parseTimestamp(dateStr: string, timeStr: string): number {
+function applyTime(base: Date, timeStr: string): Date {
+  if (!timeStr) return base
+  const tm = timeStr.match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i)
+  if (tm) {
+    let h = parseInt(tm[1])
+    if (tm[3]?.toUpperCase() === 'PM' && h < 12) h += 12
+    if (tm[3]?.toUpperCase() === 'AM' && h === 12) h = 0
+    base.setHours(h, parseInt(tm[2]), 0, 0)
+  }
+  return base
+}
+
+function parseTimestamp(
+  dateStr: string, timeStr: string,
+  monthStr?: string, dayStr?: string, yearStr?: string,
+): number {
+  // Build from separate month/day/year columns when no combined date present
+  if (!dateStr && (monthStr || dayStr || yearStr)) {
+    const rawMonth = monthStr?.trim() ?? ''
+    const rawDay   = dayStr?.trim() ?? '1'
+    const rawYear  = yearStr?.trim() ?? String(new Date().getFullYear())
+
+    // Month can be numeric (3), abbreviated (Mar), or full (March)
+    const MONTH_NAMES = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+    let m = parseInt(rawMonth) - 1  // 0-based
+    if (isNaN(m)) {
+      const idx = MONTH_NAMES.findIndex(n => rawMonth.toLowerCase().startsWith(n))
+      m = idx >= 0 ? idx : 0
+    }
+    let y = parseInt(rawYear)
+    if (y < 100) y += 2000
+    const d = parseInt(rawDay) || 1
+    const base = new Date(y, m, d, 7, 0, 0, 0)  // default 7 AM
+    if (!isNaN(base.getTime())) return applyTime(base, timeStr).getTime()
+  }
+
+  // Combined date field
   if (!dateStr) return Date.now()
   const combined = timeStr ? `${dateStr} ${timeStr}` : dateStr
-  // Try standard parse
   const d = new Date(combined)
   if (!isNaN(d.getTime())) return d.getTime()
   // Try MM/DD/YYYY
   const mdy = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)
   if (mdy) {
     const year = parseInt(mdy[3]) < 100 ? 2000 + parseInt(mdy[3]) : parseInt(mdy[3])
-    const base = new Date(year, parseInt(mdy[1]) - 1, parseInt(mdy[2]))
-    if (timeStr) {
-      const tm = timeStr.match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i)
-      if (tm) {
-        let h = parseInt(tm[1])
-        if (tm[3]?.toUpperCase() === 'PM' && h < 12) h += 12
-        if (tm[3]?.toUpperCase() === 'AM' && h === 12) h = 0
-        base.setHours(h, parseInt(tm[2]))
-      }
-    }
-    if (!isNaN(base.getTime())) return base.getTime()
+    const base = new Date(year, parseInt(mdy[1]) - 1, parseInt(mdy[2]), 7, 0, 0, 0)
+    if (!isNaN(base.getTime())) return applyTime(base, timeStr).getTime()
   }
   return Date.now()
 }
@@ -172,7 +204,7 @@ function parseRow(
   const lureType = get('lureType')
   if (!lureType) return { error: 'No lure type', raw: cols }
 
-  const ts = parseTimestamp(get('date'), get('time'))
+  const ts = parseTimestamp(get('date'), get('time'), get('month'), get('day'), get('year'))
   const { lbs, oz } = parseFishWeight(get('fishWeight'))
   const coords = parseCoords(get('coords'))
 
@@ -424,6 +456,7 @@ export default function SpreadsheetImport({ onClose }: Props) {
         </p>
         <p className="th-text-muted text-xs font-medium mt-1">Only <span className="th-text">Lure / Rig</span> is required. All others are optional.</p>
         <p className="th-text-muted text-xs mt-1">
+          <strong className="th-text">Date</strong>: single column (<span className="font-mono">3/15/2024</span>) or separate <span className="font-mono">Month</span>, <span className="font-mono">Day</span>, <span className="font-mono">Year</span> columns — both work.<br/>
           <strong className="th-text">Fish Weight</strong>: <span className="font-mono">3.5</span> (lbs), <span className="font-mono">3 lb 4 oz</span>, or <span className="font-mono">3 4</span> (lbs then oz).<br/>
           <strong className="th-text">Coordinates</strong>: <span className="font-mono">39.1234, -86.5678</span><br/>
           <strong className="th-text">Water depth &amp; column</strong> — you'll set defaults for all rows after loading.

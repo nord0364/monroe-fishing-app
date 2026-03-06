@@ -23,6 +23,7 @@ const THEME_OPTIONS: { value: ColorTheme; label: string; desc: string }[] = [
   { value: 'dawn',     label: '🌄 Dawn',     desc: 'Warm amber morning' },
   { value: 'daylight', label: '☀️ Daylight', desc: 'Navy + sky blue' },
   { value: 'dusk',     label: '🌇 Dusk',     desc: 'Warm orange evening' },
+  { value: 'white',    label: '☀ White',    desc: 'High-contrast for full sun' },
 ]
 
 const FONT_OPTIONS: { value: FontSize; label: string }[] = [

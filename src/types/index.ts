@@ -196,11 +196,14 @@ export interface Session {
   notes?: string
   aiBriefing?: string
   aiBriefingStructured?: AIBriefing
+  // Set when planning ahead (briefing generated before session date)
+  plannedDate?: number    // ms timestamp of the planned session date
+  plannedWindow?: string  // e.g. "6:00 AM – 11:00 AM"
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
-export type ColorTheme = 'auto' | 'midnight' | 'dawn' | 'daylight' | 'dusk'
+export type ColorTheme = 'auto' | 'midnight' | 'dawn' | 'daylight' | 'dusk' | 'white'
 export type FontSize = 'small' | 'normal' | 'large'
 
 export interface AppSettings {

@@ -14,7 +14,8 @@ export async function generatePreSessionBriefing(
   catchHistory: LandedFish[],
   ownedLures?: OwnedLure[],
   rodSetups?: RodSetup[],
-  onChunk?: (text: string) => void
+  onChunk?: (text: string) => void,
+  sessionContext?: string,
 ): Promise<AIBriefing> {
   const client = buildClientWithKey(apiKey)
 
@@ -36,7 +37,7 @@ export async function generatePreSessionBriefing(
   const prompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana.
 
 CURRENT CONDITIONS:
-- Date/Time: ${new Date().toLocaleString()}
+- Date/Time: ${sessionContext ?? new Date().toLocaleString()}
 - Sunrise: ${conditions.sunrise ?? 'N/A'} | Sunset: ${conditions.sunset ?? 'N/A'}
 - Moon Phase: ${conditions.moonPhase ?? 'N/A'} (${conditions.moonIlluminationPct ?? '?'}% illumination)
 - Moonrise: ${conditions.moonrise ?? 'N/A'} | Moonset: ${conditions.moonset ?? 'N/A'}

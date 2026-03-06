@@ -95,9 +95,69 @@ async function enrichFromNWS(base: Partial<EnvironmentalConditions>): Promise<Pa
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 export async function fetchWeather(): Promise<Partial<EnvironmentalConditions>> {
-  // Open-Meteo is primary — fast, no auth, global
   const base = await fetchFromOpenMeteo()
-
-  // Optionally enrich baro from NWS station observations (better accuracy, non-blocking)
   return enrichFromNWS(base).catch(() => base)
+}
+
+/** Hourly forecast for a specific date, averaged across [startHour, endHour]. */
+export async function fetchForecastWeather(
+  targetDate: Date,
+  startHour: number,
+  endHour: number,
+): Promise<Partial<EnvironmentalConditions>> {
+  const { lat, lng } = LAKE_MONROE_COORDS
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const dateStr = `${targetDate.getFullYear()}-${pad(targetDate.getMonth() + 1)}-${pad(targetDate.getDate())}`
+
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
+    `&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,surface_pressure` +
+    `&timezone=America%2FIndiana%2FIndianapolis` +
+    `&temperature_unit=fahrenheit&wind_speed_unit=mph` +
+    `&start_date=${dateStr}&end_date=${dateStr}`
+
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Open-Meteo forecast failed')
+  const data = await res.json()
+
+  // Indices whose local hour falls within [startHour, endHour]
+  const times: string[] = data.hourly?.time ?? []
+  const indices = times.reduce<number[]>((acc, t, i) => {
+    const h = parseInt(t.slice(11, 13))  // "2025-03-07T06:00" → 6
+    if (h >= startHour && h <= endHour) acc.push(i)
+    return acc
+  }, [])
+
+  if (indices.length === 0) throw new Error('No forecast data for target window')
+
+  const get = (key: string): number[] =>
+    indices
+      .map(i => (data.hourly?.[key] as unknown[])?.[i])
+      .filter((v): v is number => typeof v === 'number')
+
+  const avg = (arr: number[]) =>
+    arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : undefined
+
+  const temps     = get('temperature_2m')
+  const winds     = get('wind_speed_10m')
+  const dirs      = get('wind_direction_10m')
+  const codes     = get('weather_code')
+  const pressures = get('surface_pressure')
+
+  const airTempF         = avg(temps)    != null ? Math.round(avg(temps)!)  : undefined
+  const windSpeedMph     = avg(winds)    != null ? Math.round(avg(winds)!)  : undefined
+  const avgDir           = avg(dirs)
+  const windDirection    = avgDir        != null ? degToCompass(avgDir)      : undefined
+  const midCode          = codes[Math.floor(codes.length / 2)]
+  const skyCondition     = midCode       != null ? wmoCodeToSky(midCode)    : undefined
+  const baroHpa          = avg(pressures)
+  const baroPressureInHg = baroHpa       != null ? +(baroHpa * 0.02953).toFixed(2) : undefined
+
+  let baroTrend: BaroTrend | undefined
+  if (pressures.length >= 2) {
+    const delta = (pressures[pressures.length - 1] - pressures[0]) * 0.02953
+    baroTrend = delta > 0.02 ? 'Rising' : delta < -0.02 ? 'Falling' : 'Steady'
+  }
+
+  return { airTempF, windSpeedMph, windDirection, skyCondition, baroPressureInHg, baroTrend }
 }

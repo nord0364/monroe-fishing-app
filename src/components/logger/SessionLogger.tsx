@@ -57,6 +57,7 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
   const [expandedId, setExpandedId]   = useState<string | null>(null)
   const [deleteId, setDeleteId]       = useState<string | null>(null)
   const [deleting, setDeleting]       = useState(false)
+  const [openMonths, setOpenMonths]   = useState<Set<string>>(new Set())
 
   useEffect(() => { loadData() }, [activeSession])
 
@@ -73,6 +74,16 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
       counts[e.sessionId] = (counts[e.sessionId] ?? 0) + 1
     }
     setEventCounts(counts)
+    // Auto-open the most recent month on first load
+    setOpenMonths(prev => {
+      if (prev.size > 0) return prev
+      const grouped = groupSessions(all)
+      if (grouped.length > 0 && grouped[0].months.length > 0) {
+        const { year, months } = grouped[0]
+        return new Set([`${year}-${months[0].month}`])
+      }
+      return prev
+    })
   }
 
   const endSession = async () => {
@@ -154,8 +165,8 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
                 {activeSession.launchSite}
               </div>
               <div className="th-text-muted text-xs mt-0.5">
-                Started {new Date(activeSession.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                {' · '}{events.length} event{events.length !== 1 ? 's' : ''}
+                {new Date(activeSession.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                {' — now · '}{events.length} event{events.length !== 1 ? 's' : ''}
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -226,125 +237,140 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
         <div key={year}>
           {/* Year divider */}
           <div className="px-4 py-2 flex items-center gap-3">
-            <span className="text-base font-bold th-text-muted tracking-wide">{year}</span>
+            <span className="text-sm font-bold th-text-muted tracking-wider">{year}</span>
             <div className="flex-1 h-px th-border" />
           </div>
 
-          {months.map(({ month, label, sessions: mSessions }) => (
-            <div key={month} className="mb-1">
-              {/* Month label */}
-              <div className="px-4 py-1.5">
-                <span className="text-xs font-semibold th-text-muted uppercase tracking-widest">
-                  {label} · {mSessions.length} session{mSessions.length !== 1 ? 's' : ''}
-                </span>
-              </div>
+          {months.map(({ month, label, sessions: mSessions }) => {
+            const monthKey  = `${year}-${month}`
+            const isMonthOpen = openMonths.has(monthKey)
+            const toggleMonth = () => setOpenMonths(prev => {
+              const n = new Set(prev)
+              n.has(monthKey) ? n.delete(monthKey) : n.add(monthKey)
+              return n
+            })
 
-              {/* Session cards */}
-              <div className="space-y-1 px-3">
-                {mSessions.map(s => {
-                  const isExpanded = expandedId === s.id
-                  const isDeleting = deleteId === s.id
-                  const count = eventCounts[s.id] ?? 0
-                  const dateStr = new Date(s.date).toLocaleDateString([], {
-                    weekday: 'short', month: 'short', day: 'numeric',
-                  })
-                  const startStr = new Date(s.startTime).toLocaleTimeString([], {
-                    hour: '2-digit', minute: '2-digit',
-                  })
-                  const duration = s.endTime
-                    ? formatDuration(s.endTime - s.startTime)
-                    : null
+            return (
+              <div key={month} className="mb-1">
+                {/* Month accordion header */}
+                <button
+                  onClick={toggleMonth}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left min-h-[44px]"
+                >
+                  <span className="text-xs font-bold th-text-muted uppercase tracking-widest">
+                    {label} · {mSessions.length} session{mSessions.length !== 1 ? 's' : ''}
+                  </span>
+                  <span className="th-text-muted text-xs ml-2">
+                    {isMonthOpen ? '▲' : '▼'}
+                  </span>
+                </button>
 
-                  return (
-                    <div
-                      key={s.id}
-                      className="th-surface rounded-2xl border th-border overflow-hidden"
-                    >
-                      {/* Row — tap to expand */}
-                      <button
-                        className="w-full flex items-center justify-between px-4 py-3.5 text-left gap-3 min-h-[60px]"
-                        onClick={() => {
-                          setExpandedId(isExpanded ? null : s.id)
-                          setDeleteId(null)
-                        }}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2">
-                            <span className="th-text font-semibold text-sm">{dateStr}</span>
-                            {count > 0 && (
-                              <span className="th-accent-text text-xs font-medium">{count} events</span>
-                            )}
-                          </div>
-                          <div className="th-text-muted text-xs mt-0.5 truncate">
-                            {s.launchSite}
-                            {duration && <span> · {startStr} · {duration}</span>}
-                          </div>
-                        </div>
-                        <span className="th-text-muted text-sm shrink-0">
-                          {isExpanded ? '▲' : s.aiBriefingStructured ? '📋' : '▼'}
-                        </span>
-                      </button>
+                {/* Session cards — only when month is open */}
+                {isMonthOpen && (
+                  <div className="space-y-1 px-3 pb-1">
+                    {mSessions.map(s => {
+                      const isExpanded = expandedId === s.id
+                      const isDeleting = deleteId === s.id
+                      const count      = eventCounts[s.id] ?? 0
 
-                      {/* Expanded content */}
-                      {isExpanded && (
-                        <div className="border-t th-border">
-                          {/* Delete confirmation */}
-                          {isDeleting ? (
-                            <div className="p-4">
-                              <p className="th-text text-sm mb-4 font-medium">
-                                Delete this session and all its catch records? This cannot be undone.
-                              </p>
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={() => handleDelete(s.id)}
-                                  disabled={deleting}
-                                  className="flex-1 py-3 bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-50"
-                                >
-                                  {deleting ? 'Deleting…' : 'Yes, Delete'}
-                                </button>
-                                <button
-                                  onClick={() => setDeleteId(null)}
-                                  className="flex-1 py-3 th-surface border th-border rounded-xl th-text text-sm"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="p-4">
-                                {s.aiBriefingStructured ? (
-                                  <BriefingView
-                                    briefing={s.aiBriefingStructured}
-                                    conditions={s.conditions}
-                                    launchSite={s.launchSite}
-                                    sessionDate={s.date}
-                                  />
-                                ) : (
-                                  <SessionConditionsDisplay
-                                    conditions={s.conditions}
-                                    narrative={s.aiBriefing}
-                                  />
+                      // Display date from plannedDate if set, else session date
+                      const displayDate = s.plannedDate ?? s.date
+                      const dateStr = new Date(displayDate).toLocaleDateString([], {
+                        weekday: 'short', month: 'short', day: 'numeric',
+                      })
+
+                      const startStr = new Date(s.startTime).toLocaleTimeString([], {
+                        hour: 'numeric', minute: '2-digit',
+                      })
+                      const endStr = s.endTime
+                        ? new Date(s.endTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                        : null
+                      const duration = s.endTime ? formatDuration(s.endTime - s.startTime) : null
+                      const timeLabel = s.plannedWindow
+                        ? `Planned ${s.plannedWindow}`
+                        : endStr
+                          ? `${startStr} – ${endStr} · ${duration}`
+                          : startStr
+
+                      return (
+                        <div key={s.id} className="th-surface rounded-2xl border th-border overflow-hidden">
+                          {/* Row */}
+                          <button
+                            className="w-full flex items-start justify-between px-4 py-3 text-left gap-3 min-h-[56px]"
+                            onClick={() => { setExpandedId(isExpanded ? null : s.id); setDeleteId(null) }}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="th-text font-semibold text-sm">{dateStr}</span>
+                                {s.plannedDate && (
+                                  <span className="text-amber-400 text-xs font-semibold">Planned</span>
+                                )}
+                                {count > 0 && (
+                                  <span className="th-accent-text text-xs font-medium">{count} event{count !== 1 ? 's' : ''}</span>
                                 )}
                               </div>
-                              <div className="px-4 pb-4">
-                                <button
-                                  onClick={() => setDeleteId(s.id)}
-                                  className="w-full py-2.5 border border-red-800/60 text-red-400 rounded-xl text-sm font-medium"
-                                >
-                                  Delete Session
-                                </button>
-                              </div>
-                            </>
+                              <div className="th-text-muted text-xs mt-0.5 truncate">{s.launchSite}</div>
+                              <div className="th-text text-xs mt-1 font-medium opacity-70">{timeLabel}</div>
+                            </div>
+                            <span className="th-text-muted text-sm shrink-0 mt-0.5">
+                              {isExpanded ? '▲' : s.aiBriefingStructured ? '📋' : '▼'}
+                            </span>
+                          </button>
+
+                          {/* Expanded content */}
+                          {isExpanded && (
+                            <div className="border-t th-border">
+                              {isDeleting ? (
+                                <div className="p-4">
+                                  <p className="th-text text-sm mb-4 font-medium">
+                                    Delete this session and all its catch records? This cannot be undone.
+                                  </p>
+                                  <div className="flex gap-3">
+                                    <button onClick={() => handleDelete(s.id)} disabled={deleting}
+                                      className="flex-1 py-3 bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">
+                                      {deleting ? 'Deleting…' : 'Yes, Delete'}
+                                    </button>
+                                    <button onClick={() => setDeleteId(null)}
+                                      className="flex-1 py-3 th-surface border th-border rounded-xl th-text text-sm">
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="p-4">
+                                    {s.aiBriefingStructured ? (
+                                      <BriefingView
+                                        briefing={s.aiBriefingStructured}
+                                        conditions={s.conditions}
+                                        launchSite={s.launchSite}
+                                        sessionDate={displayDate}
+                                      />
+                                    ) : (
+                                      <SessionConditionsDisplay
+                                        conditions={s.conditions}
+                                        narrative={s.aiBriefing}
+                                      />
+                                    )}
+                                  </div>
+                                  <div className="px-4 pb-4">
+                                    <button onClick={() => setDeleteId(s.id)}
+                                      className="w-full py-2.5 border border-red-800/60 text-red-400 rounded-xl text-sm font-medium">
+                                      Delete Session
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       ))}
     </div>
@@ -353,7 +379,7 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
 
 // ── Event card ───────────────────────────────────────────────────────────────
 function EventCard({ event }: { event: CatchEvent }) {
-  const time = new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const time = new Date(event.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   const icons: Record<string, string> = {
     'Landed Fish':               '🐟',
     'Quality Strike — Missed':   '⚡',
@@ -366,9 +392,9 @@ function EventCard({ event }: { event: CatchEvent }) {
       <div className="flex items-start gap-3">
         <span className="text-2xl mt-0.5 shrink-0">{icons[event.type]}</span>
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline justify-between gap-2">
+          <div className="flex items-center justify-between gap-2">
             <span className="th-text text-sm font-semibold">{event.type}</span>
-            <span className="th-text-muted text-xs shrink-0">{time}</span>
+            <span className="th-text font-semibold text-xs shrink-0 opacity-60">{time}</span>
           </div>
           {event.type === 'Landed Fish' && (
             <div className="th-text-muted text-xs mt-1 space-y-0.5">
