@@ -1,0 +1,182 @@
+@import "tailwindcss";
+
+/* ─── Theme tokens ────────────────────────────────────────────────────────── */
+/* midnight (default) */
+:root {
+  --th-base:            #020617;
+  --th-surface:         #1e293b;
+  --th-surface-deep:    #0f172a;
+  --th-border:          #334155;
+  --th-border-muted:    #1e293b;
+  --th-text:            #f1f5f9;
+  --th-text-muted:      #94a3b8;
+  --th-accent:          #059669;
+  --th-accent-active:   #047857;
+  --th-accent-text:     #34d399;
+  --th-accent-subtle:   rgba(5, 150, 105, 0.15);
+  --th-nav-bg:          #0f172a;
+  --th-nav-border:      #334155;
+  --th-banner-bg:       #065f46;
+  --th-banner-text:     #a7f3d0;
+  --th-badge-high-bg:   #064e3b;
+  --th-badge-high-text: #6ee7b7;
+}
+
+/* dawn — warm amber morning */
+[data-theme="dawn"] {
+  --th-base:            #0d0a05;
+  --th-surface:         #1f1a0e;
+  --th-surface-deep:    #130f08;
+  --th-border:          #3d3020;
+  --th-border-muted:    #1f1a0e;
+  --th-text:            #f5f0e8;
+  --th-text-muted:      #a89878;
+  --th-accent:          #b45309;
+  --th-accent-active:   #92400e;
+  --th-accent-text:     #fbbf24;
+  --th-accent-subtle:   rgba(180, 83, 9, 0.18);
+  --th-nav-bg:          #130f08;
+  --th-nav-border:      #3d3020;
+  --th-banner-bg:       #78350f;
+  --th-banner-text:     #fde68a;
+  --th-badge-high-bg:   #451a03;
+  --th-badge-high-text: #fcd34d;
+}
+
+/* daylight — high-contrast navy + sky */
+[data-theme="daylight"] {
+  --th-base:            #050d18;
+  --th-surface:         #0d1f35;
+  --th-surface-deep:    #081525;
+  --th-border:          #1e4068;
+  --th-border-muted:    #0d1f35;
+  --th-text:            #e8f4ff;
+  --th-text-muted:      #6ba8c4;
+  --th-accent:          #0284c7;
+  --th-accent-active:   #0369a1;
+  --th-accent-text:     #38bdf8;
+  --th-accent-subtle:   rgba(2, 132, 199, 0.15);
+  --th-nav-bg:          #081525;
+  --th-nav-border:      #1e4068;
+  --th-banner-bg:       #0c4a6e;
+  --th-banner-text:     #bae6fd;
+  --th-badge-high-bg:   #082f49;
+  --th-badge-high-text: #7dd3fc;
+}
+
+/* dusk — warm orange evening */
+[data-theme="dusk"] {
+  --th-base:            #0d0805;
+  --th-surface:         #1f1209;
+  --th-surface-deep:    #130b05;
+  --th-border:          #3d1f0d;
+  --th-border-muted:    #1f1209;
+  --th-text:            #f5ede8;
+  --th-text-muted:      #b08870;
+  --th-accent:          #c2410c;
+  --th-accent-active:   #9a3412;
+  --th-accent-text:     #fb923c;
+  --th-accent-subtle:   rgba(194, 65, 12, 0.18);
+  --th-nav-bg:          #130b05;
+  --th-nav-border:      #3d1f0d;
+  --th-banner-bg:       #7c2d12;
+  --th-banner-text:     #fed7aa;
+  --th-badge-high-bg:   #431407;
+  --th-badge-high-text: #fdba74;
+}
+
+/* ─── Semantic utility classes ───────────────────────────────────────────── */
+.th-base         { background-color: var(--th-base); }
+.th-surface      { background-color: var(--th-surface); }
+.th-surface-deep { background-color: var(--th-surface-deep); }
+.th-border       { border-color: var(--th-border); }
+.th-text         { color: var(--th-text); }
+.th-text-muted   { color: var(--th-text-muted); }
+.th-accent-text  { color: var(--th-accent-text); }
+.th-nav-bg       { background-color: var(--th-nav-bg); }
+.th-nav-border   { border-color: var(--th-nav-border); }
+
+.th-btn-primary {
+  background-color: var(--th-accent);
+  color: #fff;
+}
+.th-btn-primary:active {
+  background-color: var(--th-accent-active);
+}
+
+.th-btn-selected {
+  background-color: var(--th-accent);
+  color: #fff;
+  box-shadow: 0 4px 12px var(--th-accent-subtle);
+}
+
+.th-banner {
+  background-color: var(--th-banner-bg);
+  color: var(--th-banner-text);
+}
+
+.th-badge-high {
+  background-color: var(--th-badge-high-bg);
+  color: var(--th-badge-high-text);
+}
+
+.th-nav-active  { color: var(--th-accent-text); }
+.th-nav-inactive {
+  color: var(--th-text-muted);
+}
+
+/* ─── Base resets for mobile-first PWA ───────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--th-base, #020617);
+  color: var(--th-text, #f1f5f9);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Safe area for notched phones */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Leaflet map needs explicit height */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #0f172a;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tap highlight removal for touch devices */
+button, a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Remove default button styles */
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+/* Prevent zoom on input focus (iOS) */
+input, textarea, select {
+  font-size: 16px;
+}
