@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { AIBriefing, EnvironmentalConditions } from '../../types'
 
 interface Props {
@@ -24,19 +24,39 @@ function ConditionChip({ icon, value }: { icon: string; value?: string | number 
   )
 }
 
-function Section({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+function SpeakButton({ active, onPress }: { active: boolean; onPress: () => void }) {
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onPress() }}
+      className={`ml-2 shrink-0 px-1.5 py-0.5 rounded text-base transition-opacity ${active ? 'opacity-100' : 'opacity-40 hover:opacity-80'}`}
+      title={active ? 'Stop reading' : 'Read aloud'}
+    >
+      {active ? '⏹' : '🔊'}
+    </button>
+  )
+}
+
+function Section({
+  title, icon, children, speakText, speakingId, currentSpeakingId, onSpeak,
+}: {
+  title: string; icon: string; children: React.ReactNode
+  speakText?: string; speakingId?: string; currentSpeakingId?: string | null; onSpeak?: (text: string, id: string) => void
+}) {
   const [open, setOpen] = useState(true)
+  const isActive = !!speakingId && currentSpeakingId === speakingId
   return (
     <div className="th-surface rounded-xl border th-border overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left"
-      >
-        <span className="font-semibold th-text text-sm flex items-center gap-2">
-          <span>{icon}</span>{title}
-        </span>
-        <span className="th-text-muted text-xs">{open ? '▲' : '▼'}</span>
-      </button>
+      <div className="flex items-center px-4 py-3">
+        <button onClick={() => setOpen(o => !o)} className="flex-1 text-left flex items-center gap-2">
+          <span className="font-semibold th-text text-sm flex items-center gap-2">
+            <span>{icon}</span>{title}
+          </span>
+          <span className="th-text-muted text-xs ml-2">{open ? '▲' : '▼'}</span>
+        </button>
+        {speakText && speakingId && onSpeak && (
+          <SpeakButton active={isActive} onPress={() => onSpeak(speakText, speakingId)} />
+        )}
+      </div>
       {open && <div className="px-4 pb-4">{children}</div>}
     </div>
   )
@@ -44,6 +64,34 @@ function Section({ title, icon, children }: { title: string; icon: string; child
 
 export default function BriefingView({ briefing, conditions, launchSite, sessionDate, onGoToLogger }: Props) {
   const [expandedRec, setExpandedRec] = useState<number | null>(null)
+  const [speakingId, setSpeakingId] = useState<string | null>(null)
+
+  const speak = useCallback((text: string, id: string) => {
+    if (!window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    if (speakingId === id) { setSpeakingId(null); return }
+    const utt = new SpeechSynthesisUtterance(text)
+    utt.rate = 0.88
+    utt.onend   = () => setSpeakingId(null)
+    utt.onerror = () => setSpeakingId(null)
+    setSpeakingId(id)
+    window.speechSynthesis.speak(utt)
+  }, [speakingId])
+
+  useEffect(() => () => { window.speechSynthesis?.cancel() }, [])
+
+  const buildFullText = () => {
+    const parts: string[] = []
+    if (briefing.conditionsSummary) parts.push(`Conditions summary: ${briefing.conditionsSummary}.`)
+    briefing.recommendations.forEach(r => {
+      parts.push(`Recommendation ${r.rank}: ${r.lureType}, ${r.weight}, ${r.color}. Depth: ${r.depthBand}. Retrieve: ${r.retrieveStyle}. ${r.reasoning}.`)
+    })
+    if (briefing.startingArea)   parts.push(`Where to start: ${briefing.startingArea}`)
+    if (briefing.primaryPattern) parts.push(`Primary pattern: ${briefing.primaryPattern}`)
+    if (briefing.backupPattern)  parts.push(`Backup plan: ${briefing.backupPattern}`)
+    if (briefing.narrative)      parts.push(`Field notes: ${briefing.narrative}`)
+    return parts.join(' ')
+  }
 
   const condChips = [
     { icon: '🌡', value: conditions.airTempF != null ? `${conditions.airTempF}°F air` : undefined },
@@ -67,6 +115,16 @@ export default function BriefingView({ briefing, conditions, launchSite, session
               {sessionDate ? new Date(sessionDate).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : ''} · {launchSite}
             </div>
           </div>
+          {window.speechSynthesis && (
+            <button
+              onClick={() => speak(buildFullText(), 'full')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border th-border th-surface-deep text-sm font-medium transition-colors ${
+                speakingId === 'full' ? 'th-accent-text' : 'th-text-muted'
+              }`}
+            >
+              {speakingId === 'full' ? '⏹ Stop' : '🔊 Read All'}
+            </button>
+          )}
         </div>
         {/* Conditions strip */}
         <div className="flex flex-wrap gap-1.5">
@@ -82,6 +140,8 @@ export default function BriefingView({ briefing, conditions, launchSite, session
         <h3 className="text-xs font-semibold th-text-muted uppercase tracking-wide px-1">Recommendations</h3>
         {briefing.recommendations.map(rec => {
           const isOpen = expandedRec === rec.rank
+          const recText = `Recommendation ${rec.rank}: ${rec.lureType}, ${rec.weight}, ${rec.color}. Depth: ${rec.depthBand}. Retrieve: ${rec.retrieveStyle}. ${rec.reasoning}.${rec.suggestedRod ? ` Suggested rod: ${rec.suggestedRod}.` : ''}`
+          const recId = `rec-${rec.rank}`
           return (
             <div key={rec.rank} className="th-surface rounded-xl border th-border overflow-hidden">
               <button
@@ -92,6 +152,9 @@ export default function BriefingView({ briefing, conditions, launchSite, session
                   <span className={`text-xs font-bold px-2 py-0.5 rounded ${CONFIDENCE_STYLE[rec.confidence] ?? ''}`}>
                     #{rec.rank} {rec.confidence}
                   </span>
+                  {window.speechSynthesis && (
+                    <SpeakButton active={speakingId === recId} onPress={() => speak(recText, recId)} />
+                  )}
                 </div>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="th-text font-semibold text-base">{rec.lureType}</span>
@@ -127,25 +190,29 @@ export default function BriefingView({ briefing, conditions, launchSite, session
 
       {/* Structured sections */}
       {briefing.startingArea && (
-        <Section title="Where to Start" icon="📍">
+        <Section title="Where to Start" icon="📍"
+          speakText={briefing.startingArea} speakingId="start" currentSpeakingId={speakingId} onSpeak={speak}>
           <p className="th-text text-sm leading-relaxed">{briefing.startingArea}</p>
         </Section>
       )}
 
       {briefing.primaryPattern && (
-        <Section title="Primary Pattern" icon="🎣">
+        <Section title="Primary Pattern" icon="🎣"
+          speakText={briefing.primaryPattern} speakingId="primary" currentSpeakingId={speakingId} onSpeak={speak}>
           <p className="th-text text-sm leading-relaxed">{briefing.primaryPattern}</p>
         </Section>
       )}
 
       {briefing.backupPattern && (
-        <Section title="Backup Plan" icon="🔄">
+        <Section title="Backup Plan" icon="🔄"
+          speakText={briefing.backupPattern} speakingId="backup" currentSpeakingId={speakingId} onSpeak={speak}>
           <p className="th-text text-sm leading-relaxed">{briefing.backupPattern}</p>
         </Section>
       )}
 
       {briefing.narrative && (
-        <Section title="Field Notes" icon="📋">
+        <Section title="Field Notes" icon="📋"
+          speakText={briefing.narrative} speakingId="notes" currentSpeakingId={speakingId} onSpeak={speak}>
           <p className="th-text text-sm leading-relaxed">{briefing.narrative}</p>
         </Section>
       )}

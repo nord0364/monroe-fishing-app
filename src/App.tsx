@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Session, AppSettings } from './types'
-import { getSettings, saveSettings } from './db/database'
+import { getSettings, saveSettings, exportAllDataJSON } from './db/database'
+import { loadGoogleIdentityServices, syncToGoogleDrive, getDriveStatus } from './api/googleDrive'
 import BottomNav from './components/layout/BottomNav'
 import type { NavTab } from './components/layout/BottomNav'
 import PreSessionBriefing from './components/briefing/PreSessionBriefing'
 import SessionLogger from './components/logger/SessionLogger'
 import PatternReview from './components/patterns/PatternReview'
 import Settings from './components/settings/Settings'
+
+const GOOGLE_CLIENT_ID = '739245351229-s64vg3piu45jrhg98ovqi7ik51k5rfpm.apps.googleusercontent.com'
 
 // Persist active session across app refreshes
 const SESSION_STORAGE_KEY = 'active-session'
@@ -36,7 +39,7 @@ function getAutoTheme(): string {
   return 'midnight'
 }
 
-const FONT_SIZES: Record<string, string> = { small: '14px', normal: '16px', large: '18px' }
+const FONT_SIZES: Record<string, string> = { small: '17px', normal: '20px', large: '24px' }
 
 function applyTheme(settings: AppSettings) {
   const theme = !settings.colorTheme || settings.colorTheme === 'auto'
@@ -69,9 +72,27 @@ export default function App() {
     })
   }, [])
 
+  // Load Google Identity Services on startup
+  useEffect(() => {
+    loadGoogleIdentityServices(GOOGLE_CLIENT_ID).catch(() => {})
+  }, [])
+
   useEffect(() => {
     if (ready) applyTheme(settings)
   }, [settings, ready])
+
+  // Debounced Drive sync — fires 2 s after last session change
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const triggerDriveSync = useCallback(() => {
+    if (getDriveStatus() !== 'connected') return
+    if (syncTimer.current) clearTimeout(syncTimer.current)
+    syncTimer.current = setTimeout(async () => {
+      try {
+        const json = await exportAllDataJSON()
+        await syncToGoogleDrive(json)
+      } catch {}
+    }, 2000)
+  }, [])
 
   const handleSessionStart = (session: Session) => {
     setActiveSession(session)
@@ -82,6 +103,7 @@ export default function App() {
   const handleSessionChanged = (session: Session | null) => {
     setActiveSession(session)
     persistSession(session)
+    triggerDriveSync()
   }
 
   const handleSettingsUpdate = (s: AppSettings) => {

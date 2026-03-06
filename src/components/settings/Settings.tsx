@@ -1,6 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { AppSettings, ColorTheme, FontSize } from '../../types'
 import { saveSettings, exportAllDataJSON, exportCatchesCSV } from '../../db/database'
+import {
+  getDriveStatus, wasEverConnected, onDriveStatusChange,
+  connectGoogleDrive, disconnectGoogleDrive, syncToGoogleDrive,
+  type DriveStatus,
+} from '../../api/googleDrive'
 import HistoricalImport from './HistoricalImport'
 import SpreadsheetImport from './SpreadsheetImport'
 import LureCatalog from '../gear/LureCatalog'
@@ -20,9 +25,9 @@ const THEME_OPTIONS: { value: ColorTheme; label: string; desc: string }[] = [
 ]
 
 const FONT_OPTIONS: { value: FontSize; label: string }[] = [
-  { value: 'small',  label: 'Small' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'large',  label: 'Large' },
+  { value: 'small',  label: 'Regular' },
+  { value: 'normal', label: 'Large' },
+  { value: 'large',  label: 'XL' },
 ]
 
 type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods'
@@ -33,6 +38,31 @@ export default function Settings({ settings, onUpdate }: Props) {
   const [threshold, setThreshold] = useState(String(settings.sizeThresholdLbs))
   const [newLure, setNewLure]   = useState('')
   const [saved, setSaved]       = useState(false)
+  const [driveStatus, setDriveStatus]   = useState<DriveStatus>(getDriveStatus())
+  const [driveConnecting, setDriveConnecting] = useState(false)
+  const [driveSyncing, setDriveSyncing] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
+
+  useEffect(() => onDriveStatusChange(s => {
+    setDriveStatus(s)
+    if (s === 'connected') setDriveSyncing(false)
+  }), [])
+
+  const handleDriveConnect = async () => {
+    setDriveConnecting(true)
+    try { await connectGoogleDrive() } catch {}
+    setDriveConnecting(false)
+  }
+
+  const handleDriveSyncNow = async () => {
+    setDriveSyncing(true)
+    try {
+      const json = await exportAllDataJSON()
+      await syncToGoogleDrive(json)
+      setLastSyncTime(Date.now())
+    } catch {}
+    setDriveSyncing(false)
+  }
 
   const handleSave = async () => {
     const updated: AppSettings = {
@@ -254,6 +284,66 @@ export default function Settings({ settings, onUpdate }: Props) {
             Enter Historical Catches Manually
           </button>
         </div>
+      </div>
+
+      {/* ── Google Drive ─────────────────────────────────────────────────── */}
+      <div className="th-surface rounded-xl p-4 border th-border space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold th-text text-sm">Google Drive Backup</h2>
+          {driveStatus === 'connected' && <span className="text-xs text-green-400 font-medium">✓ Connected</span>}
+          {driveStatus === 'syncing'   && <span className="text-xs text-sky-400 font-medium animate-pulse">↑ Syncing…</span>}
+          {driveStatus === 'expired'   && <span className="text-xs text-amber-400 font-medium">⚠ Reconnect needed</span>}
+          {driveStatus === 'error'     && <span className="text-xs text-red-400 font-medium">✕ Sync error</span>}
+        </div>
+
+        {(driveStatus === 'disconnected' && !wasEverConnected()) ? (
+          <>
+            <p className="th-text-muted text-xs leading-relaxed">
+              Silently backs up all catches, sessions, and gear to a <strong className="th-text">Monroe Fishing App</strong> folder in your Google Drive after each session. Only files this app created are accessible — nothing else in your Drive is visible to the app.
+            </p>
+            <button
+              onClick={handleDriveConnect}
+              disabled={driveConnecting}
+              className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-50"
+            >
+              {driveConnecting ? 'Connecting…' : '🔗 Connect Google Drive'}
+            </button>
+          </>
+        ) : (driveStatus === 'expired' || (driveStatus === 'disconnected' && wasEverConnected())) ? (
+          <>
+            <p className="th-text-muted text-xs">Access token expired. Reconnect to resume automatic backups.</p>
+            <div className="flex gap-2">
+              <button onClick={handleDriveConnect} disabled={driveConnecting}
+                className="flex-1 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-50">
+                {driveConnecting ? 'Reconnecting…' : '🔗 Reconnect'}
+              </button>
+              <button onClick={disconnectGoogleDrive}
+                className="px-4 py-2.5 th-surface border th-border rounded-xl text-sm th-text">
+                Disconnect
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="th-text-muted text-xs">
+              Auto-syncs 2 s after each catch or session end.{' '}
+              {lastSyncTime ? `Last sync: ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Syncs to Monroe Fishing App folder.'}
+            </p>
+            {driveStatus === 'error' && (
+              <p className="text-red-400 text-xs">Last sync failed. Check your connection and try again.</p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={handleDriveSyncNow} disabled={driveSyncing || driveStatus === 'syncing'}
+                className="flex-1 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-50">
+                {driveSyncing || driveStatus === 'syncing' ? '↑ Syncing…' : '↑ Sync Now'}
+              </button>
+              <button onClick={disconnectGoogleDrive}
+                className="px-4 py-2.5 th-surface border th-border rounded-xl text-sm th-text">
+                Disconnect
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Export ───────────────────────────────────────────────────────── */}
