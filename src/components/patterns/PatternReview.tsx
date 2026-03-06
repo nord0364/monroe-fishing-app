@@ -221,8 +221,8 @@ export default function PatternReview({ settings }: Props) {
   return (
     <div className="flex flex-col pb-24" style={{ minHeight: 'calc(100vh - 60px)' }}>
       <div className="px-4 pt-4 pb-2">
-        <h1 className="text-xl font-bold text-slate-100 mb-1">Pattern Review</h1>
-        <p className="text-slate-400 text-xs">
+        <h1 className="text-xl font-bold th-text mb-0.5">Pattern Review</h1>
+        <p className="th-text-muted text-xs">
           {isFiltered
             ? `${filteredFish.length} catches · ${filterLabel}`
             : `${allFish.length} total catches`}
@@ -231,19 +231,23 @@ export default function PatternReview({ settings }: Props) {
 
       {/* Year filter */}
       {availableYears.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto px-4 pb-1 scrollbar-hide">
+        <div className="flex gap-2 overflow-x-auto px-4 pb-1.5 scrollbar-hide">
           <button
             onClick={() => setYearFilter('all')}
-            className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              yearFilter === 'all' ? 'bg-emerald-600 text-white border-transparent' : 'bg-slate-800 text-slate-400 border-slate-700'
+            className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
+              yearFilter === 'all'
+                ? 'th-btn-primary border-transparent'
+                : 'th-surface th-text-muted th-border'
             }`}
           >All Years</button>
           {availableYears.map(y => (
             <button
               key={y}
               onClick={() => setYearFilter(yearFilter === y ? 'all' : y)}
-              className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                yearFilter === y ? 'bg-emerald-600 text-white border-transparent' : 'bg-slate-800 text-slate-400 border-slate-700'
+              className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
+                yearFilter === y
+                  ? 'th-btn-primary border-transparent'
+                  : 'th-surface th-text-muted th-border'
               }`}
             >{y}</button>
           ))}
@@ -251,32 +255,38 @@ export default function PatternReview({ settings }: Props) {
       )}
 
       {/* Season filter */}
-      <div className="flex gap-1.5 overflow-x-auto px-4 pb-2 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-hide">
         <button
           onClick={() => setSeasonFilter('all')}
-          className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-            seasonFilter === 'all' ? 'bg-sky-700 text-white border-transparent' : 'bg-slate-800 text-slate-400 border-slate-700'
+          className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
+            seasonFilter === 'all'
+              ? 'bg-sky-700 text-white border-transparent'
+              : 'th-surface th-text-muted th-border'
           }`}
         >All Seasons</button>
         {SEASONS.map(s => (
           <button
             key={s}
             onClick={() => setSeasonFilter(seasonFilter === s ? 'all' : s)}
-            className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              seasonFilter === s ? 'bg-sky-700 text-white border-transparent' : 'bg-slate-800 text-slate-400 border-slate-700'
+            className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
+              seasonFilter === s
+                ? 'bg-sky-700 text-white border-transparent'
+                : 'th-surface th-text-muted th-border'
             }`}
           >{SEASON_ICON[s]} {s}</button>
         ))}
       </div>
 
       {/* Tab bar */}
-      <div className="flex overflow-x-auto gap-1 px-4 pb-2 scrollbar-hide">
+      <div className="flex overflow-x-auto gap-1.5 px-4 pb-3 scrollbar-hide">
         {tabs.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              tab === t.id ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+            className={`shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-colors min-h-[42px] ${
+              tab === t.id
+                ? 'th-btn-primary shadow-lg'
+                : 'th-surface th-text-muted th-border border'
             }`}
           >
             {t.label}
@@ -284,35 +294,34 @@ export default function PatternReview({ settings }: Props) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pt-2">
+      <div className="flex-1 overflow-y-auto px-4 pt-1">
         {loading ? (
-          <div className="text-center py-12 text-slate-400">Loading…</div>
+          <div className="text-center py-12 th-text-muted">Loading…</div>
         ) : allFish.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-3">🎣</div>
-            <p className="text-slate-400">No catches logged yet.</p>
-            <p className="text-slate-500 text-sm mt-1">Start a session or import historical data.</p>
+          <div className="text-center py-16">
+            <div className="text-5xl mb-4">🎣</div>
+            <p className="th-text-muted">No catches logged yet.</p>
+            <p className="th-text-muted text-sm mt-1">Start a session or import historical data.</p>
           </div>
         ) : tab === 'history' ? (
           <HistoryView allFish={allFish} settings={settings} />
         ) : tab === 'map' ? (
-          // key forces Leaflet remount when filters change
           <CatchMap key={`${yearFilter}-${seasonFilter}`} fish={filteredFish} settings={settings} />
         ) : filteredFish.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-slate-400">No catches match this filter.</p>
+            <p className="th-text-muted">No catches match this filter.</p>
             <button
               onClick={() => { setYearFilter('all'); setSeasonFilter('all') }}
-              className="mt-3 text-sm th-accent-text underline"
-            >Clear filters</button>
+              className="mt-4 px-4 py-2.5 th-surface border th-border rounded-xl th-accent-text text-sm font-medium"
+            >Clear Filters</button>
           </div>
         ) : (
           <>
-            {tab === 'size' && <SizeProgression fish={filteredFish} settings={settings} />}
-            {tab === 'lure' && <LurePerformance fish={filteredFish} settings={settings} />}
-            {tab === 'time' && <TimeWindows fish={filteredFish} sessions={filteredSessions} />}
+            {tab === 'size'  && <SizeProgression fish={filteredFish} settings={settings} />}
+            {tab === 'lure'  && <LurePerformance fish={filteredFish} settings={settings} />}
+            {tab === 'time'  && <TimeWindows fish={filteredFish} sessions={filteredSessions} />}
             {tab === 'depth' && <DepthStructure fish={filteredFish} settings={settings} />}
-            {tab === 'chat' && <AIChat fish={filteredFish} sessions={filteredSessions} settings={settings} />}
+            {tab === 'chat'  && <AIChat fish={filteredFish} sessions={filteredSessions} settings={settings} />}
           </>
         )}
       </div>

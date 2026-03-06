@@ -82,6 +82,13 @@ export async function deleteSession(id: string): Promise<void> {
   await db.delete('sessions', id)
 }
 
+export async function deleteSessionWithEvents(sessionId: string): Promise<void> {
+  const db = await getDB()
+  const events = await db.getAllFromIndex('events', 'by-session', sessionId)
+  await db.delete('sessions', sessionId)
+  for (const e of events) await db.delete('events', e.id)
+}
+
 // ─── Events ───────────────────────────────────────────────────────────────────
 
 export async function saveEvent(event: CatchEvent): Promise<void> {

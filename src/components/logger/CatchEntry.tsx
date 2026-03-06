@@ -173,20 +173,20 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
   }
 
   return (
-    <div className="p-4 pb-8 space-y-5 max-w-lg mx-auto">
+    <div className="p-4 pb-10 space-y-5 max-w-lg mx-auto">
       {/* Event Type */}
       <div>
-        <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Event Type</label>
+        <span className="section-label">What happened?</span>
         <div className="flex flex-col gap-2">
           {EVENT_TYPES.map(et => (
             <button
               key={et}
               type="button"
               onClick={() => setEventType(et)}
-              className={`px-3 py-3 rounded-lg text-sm font-medium text-left min-h-[48px] transition-all ${
+              className={`px-4 py-3.5 rounded-2xl text-sm font-semibold text-left min-h-[52px] transition-all border ${
                 eventType === et
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-800 text-slate-300 border border-slate-700'
+                  ? 'th-btn-primary border-transparent shadow-md'
+                  : 'th-surface th-text-muted th-border'
               }`}
             >
               {et}
@@ -196,22 +196,22 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
       </div>
 
       {/* GPS */}
-      <div className="bg-slate-800 rounded-xl p-3 flex items-center justify-between gap-3">
+      <div className="th-surface rounded-2xl border th-border p-3.5 flex items-center justify-between gap-3 min-h-[52px]">
         <div className="text-sm">
           {coords ? (
-            <span className="text-emerald-400">
+            <span className="th-accent-text font-medium">
               📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
               {coords.manual ? ' (manual)' : ''}
             </span>
           ) : gpsLoading ? (
-            <span className="text-slate-400">Getting GPS…</span>
+            <span className="th-text-muted">Getting GPS…</span>
           ) : (
             <span className="text-amber-400">{gpsError ?? 'No GPS'}</span>
           )}
         </div>
         <button
           onClick={() => setShowMap(true)}
-          className="px-3 py-2 bg-slate-700 rounded-lg text-xs text-slate-300 shrink-0"
+          className="px-3 py-2.5 th-surface-deep border th-border rounded-xl th-text-muted text-xs font-medium shrink-0 min-h-[40px]"
         >
           📌 Place Pin
         </button>
@@ -220,91 +220,96 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
       {/* Landed Fish fields */}
       {eventType === 'Landed Fish' && (
         <>
-          <QuickSelect label="Species" options={SPECIES} value={species as import('../../types').Species} onChange={setSpecies} />
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Weight (lbs)</label>
-              <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100 text-base"
-                value={weightLbs} onChange={e => setWeightLbs(e.target.value)} placeholder="3" inputMode="decimal" />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">oz</label>
-              <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100 text-base"
-                value={weightOz} onChange={e => setWeightOz(e.target.value)} placeholder="4" inputMode="decimal" />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Length (in)</label>
-              <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100 text-base"
-                value={lengthIn} onChange={e => setLengthIn(e.target.value)} placeholder="17" inputMode="decimal" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Lure Type</label>
-            <div className="grid grid-cols-2 gap-2">
-              {lureTypes.map(lt => (
-                <button key={lt} type="button" onClick={() => setLureType(lt)}
-                  className={`px-3 py-3 rounded-lg text-sm font-medium text-center min-h-[48px] transition-all ${
-                    lureType === lt ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
-                  {lt}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <QuickSelect label="Lure Weight" options={LURE_WEIGHTS} value={lureWeight as import('../../types').LureWeight} onChange={setLureWeight} columns={3} />
-
-          <div>
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Lure Color / Pattern</label>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100"
-                placeholder="e.g. chartreuse white"
-                value={lureColor}
-                onChange={e => setLureColor(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-3 bg-slate-700 rounded-lg text-slate-300 text-xl"
-                title="Photo identify"
-              >
-                📷
-              </button>
-            </div>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
-            {photoDataUrl && (
-              <div className="mt-2 flex items-center gap-2">
-                <img src={photoDataUrl} className="w-16 h-16 object-cover rounded-lg" alt="lure" />
-                <button
-                  onClick={identifyLure}
-                  disabled={identifying || !settings.anthropicApiKey}
-                  className="px-3 py-2 bg-emerald-700 rounded-lg text-white text-sm disabled:opacity-40"
-                >
-                  {identifying ? '…' : '🤖 Identify'}
-                </button>
+          {/* Fish details section */}
+          <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
+            <span className="section-label">Fish Details</span>
+            <QuickSelect label="Species" options={SPECIES} value={species as import('../../types').Species} onChange={setSpecies} />
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="section-label">lbs</label>
+                <input type="number" className="w-full th-surface-deep border th-border rounded-xl px-3 py-3 th-text text-base"
+                  value={weightLbs} onChange={e => setWeightLbs(e.target.value)} placeholder="3" inputMode="decimal" />
               </div>
-            )}
+              <div>
+                <label className="section-label">oz</label>
+                <input type="number" className="w-full th-surface-deep border th-border rounded-xl px-3 py-3 th-text text-base"
+                  value={weightOz} onChange={e => setWeightOz(e.target.value)} placeholder="4" inputMode="decimal" />
+              </div>
+              <div>
+                <label className="section-label">length (in)</label>
+                <input type="number" className="w-full th-surface-deep border th-border rounded-xl px-3 py-3 th-text text-base"
+                  value={lengthIn} onChange={e => setLengthIn(e.target.value)} placeholder="17" inputMode="decimal" />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Custom Pour</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setCustomPour(true)}
-                className={`flex-1 py-3 rounded-lg text-sm font-medium text-center transition-all ${
-                  customPour ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'
-                }`}
-              >Yes</button>
-              <button
-                type="button"
-                onClick={() => setCustomPour(false)}
-                className={`flex-1 py-3 rounded-lg text-sm font-medium text-center transition-all ${
-                  !customPour ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'
-                }`}
-              >No</button>
+          {/* Lure section */}
+          <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
+            <span className="section-label">Lure Setup</span>
+            <div>
+              <span className="section-label">type</span>
+              <div className="grid grid-cols-2 gap-2">
+                {lureTypes.map(lt => (
+                  <button key={lt} type="button" onClick={() => setLureType(lt)}
+                    className={`px-3 py-3 rounded-xl text-sm font-semibold text-center min-h-[48px] transition-all border ${
+                      lureType === lt
+                        ? 'th-btn-primary border-transparent'
+                        : 'th-surface-deep th-text-muted th-border'}`}>
+                    {lt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <QuickSelect label="weight" options={LURE_WEIGHTS} value={lureWeight as import('../../types').LureWeight} onChange={setLureWeight} columns={3} />
+
+            <div>
+              <span className="section-label">color / pattern</span>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 th-surface-deep border th-border rounded-xl px-3 py-3 th-text"
+                  placeholder="e.g. chartreuse white"
+                  value={lureColor}
+                  onChange={e => setLureColor(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-3 th-surface-deep border th-border rounded-xl th-text-muted text-xl min-w-[52px]"
+                  title="Photo identify"
+                >📷</button>
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
+              {photoDataUrl && (
+                <div className="mt-2 flex items-center gap-2">
+                  <img src={photoDataUrl} className="w-14 h-14 object-cover rounded-xl" alt="lure" />
+                  <button
+                    onClick={identifyLure}
+                    disabled={identifying || !settings.anthropicApiKey}
+                    className="px-4 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-40"
+                  >
+                    {identifying ? '…' : '🤖 Identify Color'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <span className="section-label">custom pour?</span>
+              <div className="flex gap-2">
+                {['Yes', 'No'].map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setCustomPour(v === 'Yes')}
+                    className={`flex-1 py-3 rounded-xl text-sm font-semibold text-center border transition-all ${
+                      (v === 'Yes') === customPour
+                        ? 'th-btn-primary border-transparent'
+                        : 'th-surface-deep th-text-muted th-border'
+                    }`}
+                  >{v}</button>
+                ))}
+              </div>
             </div>
           </div>
         </>
@@ -312,21 +317,24 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
 
       {/* Shared: depth & column for fish events */}
       {(eventType === 'Landed Fish' || eventType === 'Quality Strike — Missed') && (
-        <>
-          <QuickSelect label="Water Depth" options={WATER_DEPTHS} value={waterDepth as import('../../types').WaterDepth} onChange={setWaterDepth} columns={2} />
-          <QuickSelect label="Column Fished" options={WATER_COLUMNS} value={waterColumn as import('../../types').WaterColumn} onChange={setWaterColumn} />
-        </>
+        <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
+          <span className="section-label">Where &amp; How Deep</span>
+          <QuickSelect label="depth" options={WATER_DEPTHS} value={waterDepth as import('../../types').WaterDepth} onChange={setWaterDepth} columns={2} />
+          <QuickSelect label="column fished" options={WATER_COLUMNS} value={waterColumn as import('../../types').WaterColumn} onChange={setWaterColumn} />
+        </div>
       )}
 
       {/* Lure for non-visual events */}
       {(eventType === 'Quality Strike — Missed' || eventType === 'Follow — Did Not Strike') && (
         <div>
-          <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Lure Type</label>
+          <span className="section-label">Lure Type</span>
           <div className="grid grid-cols-2 gap-2">
             {lureTypes.map(lt => (
               <button key={lt} type="button" onClick={() => setLureType(lt)}
-                className={`px-3 py-3 rounded-lg text-sm font-medium text-center min-h-[48px] ${
-                  lureType === lt ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
+                className={`px-3 py-3 rounded-xl text-sm font-semibold text-center min-h-[48px] border transition-all ${
+                  lureType === lt
+                    ? 'th-btn-primary border-transparent'
+                    : 'th-surface th-text-muted th-border'}`}>
                 {lt}
               </button>
             ))}
@@ -334,14 +342,13 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
         </div>
       )}
 
-      {/* Retrieve Style (landed fish, optional) */}
+      {/* Retrieve + Structure (optional, landed fish) */}
       {eventType === 'Landed Fish' && (
-        <QuickSelect label="Retrieve Style (optional)" options={RETRIEVE_STYLES} value={retrieveStyle as import('../../types').RetrieveStyle} onChange={setRetrieveStyle} columns={2} />
-      )}
-
-      {/* Structure (landed fish, optional) */}
-      {eventType === 'Landed Fish' && (
-        <QuickSelect label="Structure / Cover (optional)" options={STRUCTURE_TYPES} value={structure as import('../../types').StructureCover} onChange={setStructure} columns={2} />
+        <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
+          <span className="section-label">Technique (optional)</span>
+          <QuickSelect label="retrieve style" options={RETRIEVE_STYLES} value={retrieveStyle as import('../../types').RetrieveStyle} onChange={setRetrieveStyle} columns={2} />
+          <QuickSelect label="structure / cover" options={STRUCTURE_TYPES} value={structure as import('../../types').StructureCover} onChange={setStructure} columns={2} />
+        </div>
       )}
 
       {/* Estimated size for follows and sightings */}
@@ -358,9 +365,9 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
       {/* Behavior for sightings */}
       {eventType === 'Visual Sighting' && (
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Behavior</label>
+          <span className="section-label">Behavior</span>
           <input
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100"
+            className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text"
             placeholder="e.g. schooling, chasing bait"
             value={behavior}
             onChange={e => setBehavior(e.target.value)}
@@ -370,9 +377,9 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
 
       {/* Notes */}
       <div>
-        <label className="block text-xs text-slate-400 mb-1">Notes (optional)</label>
+        <span className="section-label">Notes (optional)</span>
         <textarea
-          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100 min-h-[80px] resize-none"
+          className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text min-h-[80px] resize-none"
           placeholder="Use mic key on keyboard to dictate…"
           value={notes}
           onChange={e => setNotes(e.target.value)}
@@ -382,7 +389,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
       <button
         onClick={handleSave}
         disabled={saving || (!waterDepth && eventType !== 'Visual Sighting') || (!lureType && eventType !== 'Visual Sighting')}
-        className="w-full py-4 bg-emerald-600 rounded-xl text-white font-semibold text-lg active:bg-emerald-700 disabled:opacity-40 shadow-lg"
+        className="w-full py-5 th-btn-primary rounded-2xl font-bold text-lg active:scale-[0.98] transition-transform disabled:opacity-40 shadow-lg"
       >
         {saving ? 'Saving…' : 'Log Event'}
       </button>

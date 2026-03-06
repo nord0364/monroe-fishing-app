@@ -133,9 +133,9 @@ export default function App() {
       {activeSession && tab !== 'logger' && (
         <button
           onClick={() => setTab('logger')}
-          className="fixed top-0 inset-x-0 z-40 py-2 px-4 th-banner text-xs text-center font-medium"
+          className="fixed top-0 inset-x-0 z-40 py-3 px-4 th-banner text-sm text-center font-semibold tracking-wide"
         >
-          🎣 Session active — {activeSession.launchSite} · Tap to log
+          🎣 {activeSession.launchSite} · Session active — tap to log
         </button>
       )}
 

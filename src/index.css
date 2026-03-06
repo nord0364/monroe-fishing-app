@@ -180,3 +180,34 @@ button {
 input, textarea, select {
   font-size: 16px;
 }
+
+/* Focus ring — accessible + on-brand */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--th-accent-text);
+  outline-offset: 2px;
+}
+
+/* Smooth press scale for buttons */
+button:active {
+  transition: transform 60ms ease;
+}
+
+/* Section label utility */
+.section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--th-text-muted);
+  margin-bottom: 0.375rem;
+  display: block;
+}
+
+/* Card divider */
+.card-divider {
+  height: 1px;
+  background: var(--th-border);
+  margin: 0 -1rem;
+}
