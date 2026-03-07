@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import type { LandedFish, GPSCoords, Species, LureWeight, WaterColumn } from '../../types'
+import type { LandedFish, GPSCoords, Species, LureWeight } from '../../types'
 import { saveEvent } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
 
@@ -33,7 +33,7 @@ function parseCSV(text: string): string[][] {
 // ─── Column detection ─────────────────────────────────────────────────────────
 type ColKey = 'date' | 'month' | 'day' | 'year' | 'time' | 'conditions' | 'rod' | 'lureType' | 'color' |
               'lureWeight' | 'species' | 'fishWeight' | 'fishWeightLb' | 'fishWeightOz' |
-              'waterColumn' | 'length' | 'location' | 'notes' | 'coords'
+              'length' | 'location' | 'notes' | 'coords'
 
 const MATCHERS: [ColKey, string[]][] = [
   ['date',         ['date', 'full date', 'catch date']],
@@ -51,7 +51,6 @@ const MATCHERS: [ColKey, string[]][] = [
   ['fishWeight',   ['fish weight', 'fish wt', 'wt', 'weight']],
   ['lureWeight',   ['lure weight', 'lure wt', 'lure wgt', 'weight (lure)']],
   ['species',      ['species', 'fish species', 'type of fish', 'fish type']],
-  ['waterColumn',  ['water column', 'water col', 'column fished', 'w column', 'watercolumn']],
   ['length',       ['length', 'len', 'size', 'inches']],
   ['location',     ['location', 'loc', 'area', 'spot', 'place', 'where']],
   ['notes',        ['notes', 'note', 'comment', 'remarks', 'details']],
@@ -70,7 +69,6 @@ const COL_LABELS: Record<ColKey, string> = {
   fishWeight:   'Fish Weight (combined lbs)',
   fishWeightLb: 'Fish Weight — lb column',
   fishWeightOz: 'Fish Weight — oz column',
-  waterColumn:  'Water Column',
   length:       'Length (inches)',
   color:        'Color / Pattern',
   lureWeight:   'Lure Weight',
@@ -245,7 +243,6 @@ function parseRow(
       weightLbs: lbs,
       weightOz: oz,
       lengthInches: parseFloat(get('length')) || 0,
-      waterColumn: (get('waterColumn') as WaterColumn) || undefined,
       lureType,
       lureWeight: get('lureWeight') ? mapLureWeight(get('lureWeight')) : 'Other',
       lureColor: get('color'),
@@ -446,8 +443,7 @@ export default function SpreadsheetImport({ onClose }: Props) {
         <p className="th-text-muted text-xs mt-1">
           <strong className="th-text">Date</strong>: single column (<span className="font-mono">3/15/2024</span>) or separate <span className="font-mono">Month</span>, <span className="font-mono">Day</span>, <span className="font-mono">Year</span> columns — both work.<br/>
           <strong className="th-text">Fish Weight</strong>: single column <span className="font-mono">3.5</span> (lbs) or <span className="font-mono">3 lb 4 oz</span>, or separate <span className="font-mono">Fish Weight — lbs</span> and <span className="font-mono">Fish Weight — oz</span> columns.<br/>
-          <strong className="th-text">Coordinates</strong>: <span className="font-mono">39.1234, -86.5678</span><br/>
-          <strong className="th-text">Water column</strong> — if not in your spreadsheet it will be left blank (you can add it later).
+          <strong className="th-text">Coordinates</strong>: <span className="font-mono">39.1234, -86.5678</span>
         </p>
       </div>
 

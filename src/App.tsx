@@ -53,6 +53,7 @@ export default function App() {
   })
   const [activeSession, setActiveSession] = useState<Session | null>(loadPersistedSession)
   const [ready, setReady] = useState(false)
+  const [showSplash, setShowSplash] = useState(true)
 
   useEffect(() => {
     getSettings().then(s => { setSettings(s); applyTheme(s); setReady(true) })
@@ -102,13 +103,17 @@ export default function App() {
     )
   }
 
-  // Welcome screen on first launch before API key is set
-  if (!settings.anthropicApiKey && !settings.onboardingDone) {
+  // Welcome/splash screen — shown on every app load until user taps in
+  if (showSplash) {
     return (
       <div className="th-base min-h-screen">
-        <WelcomeScreen onGetStarted={() => {
-          const updated = { ...settings, onboardingDone: true }
-          saveSettings(updated); setSettings(updated); setTab('settings')
+        <WelcomeScreen hasApiKey={!!settings.anthropicApiKey} onGetStarted={() => {
+          setShowSplash(false)
+          if (!settings.onboardingDone) {
+            const updated = { ...settings, onboardingDone: true }
+            saveSettings(updated); setSettings(updated)
+          }
+          setTab(settings.anthropicApiKey ? 'briefing' : 'settings')
         }} />
       </div>
     )
@@ -156,7 +161,7 @@ export default function App() {
 }
 
 // ── Welcome screen ─────────────────────────────────────────────────────────────
-function WelcomeScreen({ onGetStarted }: { onGetStarted: () => void }) {
+function WelcomeScreen({ onGetStarted, hasApiKey }: { onGetStarted: () => void; hasApiKey?: boolean }) {
   const features = [
     { icon: '🤖', title: 'AI Briefings',   desc: 'Pre-session strategy powered by Claude' },
     { icon: '🎣', title: 'On-Water Guide', desc: 'Live coaching, voice tips, and lure swaps' },
@@ -191,11 +196,13 @@ function WelcomeScreen({ onGetStarted }: { onGetStarted: () => void }) {
           onClick={onGetStarted}
           className="w-full py-4 th-btn-primary rounded-2xl font-bold text-base shadow-lg"
         >
-          Get Started — Add API Key
+          {hasApiKey ? 'Enter App' : 'Get Started — Add API Key'}
         </button>
-        <p className="th-text-muted text-xs text-center leading-relaxed">
-          Requires a free Anthropic API key.{'\n'}No subscription. No per-session charges.
-        </p>
+        {!hasApiKey && (
+          <p className="th-text-muted text-xs text-center leading-relaxed">
+            Requires a free Anthropic API key. No subscription. No per-session charges.
+          </p>
+        )}
       </div>
     </div>
   )
