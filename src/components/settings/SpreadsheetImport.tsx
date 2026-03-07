@@ -84,8 +84,7 @@ const COL_LABELS: Record<ColKey, string> = {
 const COL_KEY_ORDER: ColKey[] = [
   'lureType','date','month','day','year','time','species',
   'fishWeight','fishWeightLb','fishWeightOz',
-  'waterColumn','length',
-  'color','lureWeight','rod','conditions','location','notes','coords',
+  'length','color','lureWeight','rod','conditions','location','notes','coords',
 ]
 
 function detectColumns(headers: string[]): Partial<Record<ColKey, number>> {

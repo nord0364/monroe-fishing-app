@@ -4,13 +4,12 @@ import { getLandedFish, getAllSessions } from '../../db/database'
 import SizeProgression from './SizeProgression'
 import LurePerformance from './LurePerformance'
 import TimeWindows from './TimeWindows'
-import DepthStructure from './DepthStructure'
 import AIChat from './AIChat'
 import CatchMap from './CatchMap'
 
 interface Props { settings: AppSettings }
 
-type Tab = 'size' | 'lure' | 'time' | 'depth' | 'history' | 'map' | 'chat'
+type Tab = 'size' | 'lure' | 'time' | 'history' | 'map' | 'chat'
 type Season = 'Spring' | 'Summer' | 'Fall' | 'Winter'
 
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -19,7 +18,6 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'size',    label: 'Size' },
   { id: 'lure',    label: 'Lure' },
   { id: 'time',    label: 'Time' },
-  { id: 'depth',   label: 'Depth' },
   { id: 'history', label: 'History' },
   { id: 'map',     label: '🗺 Map' },
   { id: 'chat',    label: '🤖 Chat' },
@@ -301,7 +299,7 @@ export default function PatternReview({ settings }: Props) {
           onClick={() => { setSeasonFilter('all'); setMonthFilter('all') }}
           className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
             seasonFilter === 'all'
-              ? 'bg-sky-700 text-white border-transparent'
+              ? 'th-btn-primary border-transparent'
               : 'th-surface th-text-muted th-border'
           }`}
         >All Seasons</button>
@@ -311,7 +309,7 @@ export default function PatternReview({ settings }: Props) {
             onClick={() => { setSeasonFilter(seasonFilter === s ? 'all' : s); setMonthFilter('all') }}
             className={`shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors min-h-[38px] ${
               seasonFilter === s
-                ? 'bg-sky-700 text-white border-transparent'
+                ? 'th-btn-primary border-transparent'
                 : 'th-surface th-text-muted th-border'
             }`}
           >{SEASON_ICON[s]} {s}</button>
@@ -358,11 +356,10 @@ export default function PatternReview({ settings }: Props) {
           </div>
         ) : (
           <>
-            {tab === 'size'  && <SizeProgression fish={filteredFish} settings={settings} />}
-            {tab === 'lure'  && <LurePerformance fish={filteredFish} settings={settings} />}
-            {tab === 'time'  && <TimeWindows fish={filteredFish} sessions={filteredSessions} />}
-            {tab === 'depth' && <DepthStructure fish={filteredFish} settings={settings} />}
-            {tab === 'chat'  && <AIChat fish={filteredFish} sessions={filteredSessions} settings={settings} />}
+            {tab === 'size'    && <SizeProgression fish={filteredFish} settings={settings} />}
+            {tab === 'lure'    && <LurePerformance fish={filteredFish} settings={settings} />}
+            {tab === 'time'    && <TimeWindows fish={filteredFish} sessions={filteredSessions} />}
+            {tab === 'chat'    && <AIChat fish={filteredFish} sessions={filteredSessions} settings={settings} />}
           </>
         )}
       </div>

@@ -58,28 +58,24 @@ export default function HistoricalImport({ settings, onClose }: Props) {
     }
     await saveEvent(event)
     setSaved(s => s + 1)
-    // Reset form (keep date, species, lure settings)
-    setWeightLbs('')
-    setWeightOz('')
-    setLengthIn('')
-    setNotes('')
+    setWeightLbs(''); setWeightOz(''); setLengthIn(''); setNotes('')
     setSaving(false)
   }
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto space-y-4">
       <div className="flex items-center gap-3 mb-2">
-        <button onClick={onClose} className="text-emerald-400 font-medium text-sm">← Back</button>
-        <h1 className="text-lg font-bold text-slate-100">Historical Import</h1>
-        {saved > 0 && <span className="ml-auto text-emerald-400 text-sm">{saved} saved</span>}
+        <button onClick={onClose} className="th-accent-text font-medium text-sm">← Back</button>
+        <h1 className="th-text text-lg font-bold flex-1">Historical Import</h1>
+        {saved > 0 && <span className="th-accent-text text-sm font-semibold">{saved} saved</span>}
       </div>
-      <p className="text-slate-400 text-sm">Enter prior season catches to build your pattern database.</p>
+      <p className="th-text-muted text-sm">Enter prior season catches to build your pattern database.</p>
 
       <div>
-        <label className="block text-xs text-slate-400 mb-1">Date of Catch</label>
+        <label className="section-label">Date of Catch</label>
         <input
           type="date"
-          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100"
+          className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text"
           value={date}
           onChange={e => setDate(e.target.value)}
         />
@@ -89,29 +85,32 @@ export default function HistoricalImport({ settings, onClose }: Props) {
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs text-slate-400 mb-1">lbs</label>
-          <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100"
+          <label className="section-label">lbs</label>
+          <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text"
             value={weightLbs} onChange={e => setWeightLbs(e.target.value)} placeholder="3" inputMode="decimal" />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">oz</label>
-          <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100"
+          <label className="section-label">oz</label>
+          <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text"
             value={weightOz} onChange={e => setWeightOz(e.target.value)} placeholder="4" inputMode="decimal" />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">in</label>
-          <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100"
+          <label className="section-label">in</label>
+          <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text"
             value={lengthIn} onChange={e => setLengthIn(e.target.value)} placeholder="17" inputMode="decimal" />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Lure Type</label>
+        <label className="section-label">Lure Type</label>
         <div className="grid grid-cols-2 gap-2">
           {lureTypes.map(lt => (
             <button key={lt} type="button" onClick={() => setLureType(lt)}
-              className={`px-3 py-3 rounded-lg text-sm font-medium text-center min-h-[48px] ${
-                lureType === lt ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
+              className={`px-3 py-3 rounded-xl text-sm font-medium min-h-[48px] border transition-all ${
+                lureType === lt
+                  ? 'th-btn-primary border-transparent'
+                  : 'th-surface th-text-muted th-border'
+              }`}>
               {lt}
             </button>
           ))}
@@ -121,39 +120,41 @@ export default function HistoricalImport({ settings, onClose }: Props) {
       <QuickSelect label="Lure Weight" options={LURE_WEIGHTS} value={lureWeight as import('../../types').LureWeight} onChange={setLureWeight} columns={3} />
 
       <div>
-        <label className="block text-xs text-slate-400 mb-1">Lure Color</label>
-        <input className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100"
+        <label className="section-label">Lure Color</label>
+        <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text"
           placeholder="e.g. chartreuse white" value={lureColor} onChange={e => setLureColor(e.target.value)} />
       </div>
 
-      <QuickSelect label="Water Column" options={WATER_COLUMNS} value={waterColumn as import('../../types').WaterColumn} onChange={setWaterColumn} />
-      <QuickSelect label="Retrieve Style" options={RETRIEVE_STYLES} value={retrieveStyle as import('../../types').RetrieveStyle} onChange={setRetrieveStyle} columns={2} />
-      <QuickSelect label="Structure / Cover" options={STRUCTURE_TYPES} value={structure as import('../../types').StructureCover} onChange={setStructure} columns={2} />
+      <QuickSelect label="Water Column (optional)" options={WATER_COLUMNS} value={waterColumn as import('../../types').WaterColumn} onChange={setWaterColumn} />
+      <QuickSelect label="Retrieve Style (optional)" options={RETRIEVE_STYLES} value={retrieveStyle as import('../../types').RetrieveStyle} onChange={setRetrieveStyle} columns={2} />
+      <QuickSelect label="Structure / Cover (optional)" options={STRUCTURE_TYPES} value={structure as import('../../types').StructureCover} onChange={setStructure} columns={2} />
 
       <div>
-        <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Custom Pour</label>
+        <label className="section-label">Custom Pour?</label>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setCustomPour(true)}
-            className={`flex-1 py-3 rounded-lg text-sm font-medium text-center transition-all ${
-              customPour ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'
-            }`}>Yes</button>
-          <button type="button" onClick={() => setCustomPour(false)}
-            className={`flex-1 py-3 rounded-lg text-sm font-medium text-center transition-all ${
-              !customPour ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'
-            }`}>No</button>
+          {(['Yes', 'No'] as const).map(v => (
+            <button key={v} type="button" onClick={() => setCustomPour(v === 'Yes')}
+              className={`flex-1 py-3 rounded-xl text-sm font-medium border transition-all ${
+                (v === 'Yes') === customPour
+                  ? 'th-btn-primary border-transparent'
+                  : 'th-surface th-text-muted th-border'
+              }`}>
+              {v}
+            </button>
+          ))}
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-slate-400 mb-1">Notes</label>
-        <textarea className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100 min-h-[60px] resize-none"
+        <label className="section-label">Notes (optional)</label>
+        <textarea className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text min-h-[60px] resize-none"
           value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes" />
       </div>
 
       <button
         onClick={handleSave}
         disabled={saving || !date || !lureType}
-        className="w-full py-4 bg-emerald-600 rounded-xl text-white font-semibold text-lg active:bg-emerald-700 disabled:opacity-40"
+        className="w-full py-4 th-btn-primary rounded-xl font-semibold text-lg disabled:opacity-40"
       >
         {saving ? 'Saving…' : 'Save & Log Another'}
       </button>
