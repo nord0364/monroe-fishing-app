@@ -4,7 +4,7 @@ import type {
   Session, GPSCoords, AppSettings,
 } from '../../types'
 import {
-  SPECIES, WATER_COLUMNS, LURE_WEIGHTS,
+  SPECIES, WATER_DEPTHS, WATER_COLUMNS, LURE_WEIGHTS,
   RETRIEVE_STYLES, STRUCTURE_TYPES,
 } from '../../constants'
 import { saveEvent } from '../../db/database'
@@ -38,6 +38,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
   const [weightLbs, setWeightLbs] = useState('')
   const [weightOz, setWeightOz] = useState('')
   const [lengthIn, setLengthIn] = useState('')
+  const [waterDepth, setWaterDepth] = useState<string | null>(null)
   const [waterColumn, setWaterColumn] = useState<string | null>(null)
   const [lureType, setLureType] = useState<string | null>(null)
   const [lureWeight, setLureWeight] = useState<string | null>(null)
@@ -57,7 +58,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
   const lureTypes = [...(settings.customLureTypes ?? []),
     'Spinnerbait', 'Swim Jig', 'Chatterbait', 'Football Jig', 'Flipping Jig',
     'Wacky Rig', 'Texas Rig', 'Buzzbait', 'Swimbait', 'Crankbait', 'Topwater',
-    'Drop Shot', 'Other']
+    'Drop Shot', 'Spoon', 'Other']
 
   useEffect(() => {
     getPosition()
@@ -111,6 +112,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
         weightLbs: parseFloat(weightLbs) || 0,
         weightOz: parseFloat(weightOz) || 0,
         lengthInches: parseFloat(lengthIn) || 0,
+        waterDepth: waterDepth as import('../../types').WaterDepth ?? undefined,
         waterColumn: waterColumn as import('../../types').WaterColumn ?? undefined,
         lureType,
         lureWeight: (lureWeight ?? 'Other') as import('../../types').LureWeight,
@@ -126,6 +128,7 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
         ...base,
         type: 'Quality Strike — Missed',
         lureType,
+        waterDepth: waterDepth as import('../../types').WaterDepth ?? undefined,
         waterColumn: waterColumn as import('../../types').WaterColumn ?? undefined,
         notes: notes || undefined,
       } as QualityStrike
@@ -312,10 +315,11 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
         </>
       )}
 
-      {/* Shared: water column for fish events */}
+      {/* Shared: water depth + column for fish events */}
       {(eventType === 'Landed Fish' || eventType === 'Quality Strike — Missed') && (
         <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
-          <span className="section-label">Water Column</span>
+          <span className="section-label">Water Zone</span>
+          <QuickSelect label="depth band" options={WATER_DEPTHS} value={waterDepth as import('../../types').WaterDepth} onChange={setWaterDepth} columns={2} />
           <QuickSelect label="column fished" options={WATER_COLUMNS} value={waterColumn as import('../../types').WaterColumn} onChange={setWaterColumn} />
         </div>
       )}

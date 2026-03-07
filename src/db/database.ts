@@ -1,6 +1,9 @@
 import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
-import type { Session, CatchEvent, AppSettings, OwnedLure, RodSetup } from '../types'
+import type {
+  Session, CatchEvent, AppSettings, OwnedLure, RodSetup,
+  DebriefConversation, PersonalBestPin,
+} from '../types'
 
 interface FishingDB extends DBSchema {
   sessions: {
@@ -31,13 +34,23 @@ interface FishingDB extends DBSchema {
     value: RodSetup
     indexes: { 'by-added': number }
   }
+  debriefs: {
+    key: string
+    value: DebriefConversation
+    indexes: { 'by-session': string; 'by-updated': number }
+  }
+  personalBests: {
+    key: string
+    value: PersonalBestPin
+    indexes: { 'by-species': string }
+  }
 }
 
 let _db: IDBPDatabase<FishingDB> | null = null
 
 async function getDB(): Promise<IDBPDatabase<FishingDB>> {
   if (_db) return _db
-  _db = await openDB<FishingDB>('fishing-tracker', 2, {
+  _db = await openDB<FishingDB>('fishing-tracker', 3, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) {
         const sessionsStore = db.createObjectStore('sessions', { keyPath: 'id' })
@@ -53,6 +66,13 @@ async function getDB(): Promise<IDBPDatabase<FishingDB>> {
         lureStore.createIndex('by-added', 'addedAt')
         const rodStore = db.createObjectStore('rodSetups', { keyPath: 'id' })
         rodStore.createIndex('by-added', 'addedAt')
+      }
+      if (oldVersion < 3) {
+        const debriefStore = db.createObjectStore('debriefs', { keyPath: 'id' })
+        debriefStore.createIndex('by-session', 'sessionId')
+        debriefStore.createIndex('by-updated', 'updatedAt')
+        const pbStore = db.createObjectStore('personalBests', { keyPath: 'id' })
+        pbStore.createIndex('by-species', 'species')
       }
     },
   })
@@ -87,6 +107,13 @@ export async function deleteSessionWithEvents(sessionId: string): Promise<void> 
   const events = await db.getAllFromIndex('events', 'by-session', sessionId)
   await db.delete('sessions', sessionId)
   for (const e of events) await db.delete('events', e.id)
+  // Also delete any debrief for this session
+  const debriefs = await db.getAllFromIndex('debriefs', 'by-session', sessionId)
+  for (const d of debriefs) await db.delete('debriefs', d.id)
+}
+
+export async function bulkDeleteSessions(sessionIds: string[]): Promise<void> {
+  for (const id of sessionIds) await deleteSessionWithEvents(id)
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────
@@ -112,12 +139,63 @@ export async function deleteEvent(id: string): Promise<void> {
   await db.delete('events', id)
 }
 
+export async function bulkDeleteEvents(eventIds: string[]): Promise<void> {
+  const db = await getDB()
+  for (const id of eventIds) await db.delete('events', id)
+}
+
 // updateEvent is an alias for saveEvent (put handles both insert and update)
 export { saveEvent as updateEvent }
 
 export async function getLandedFish() {
   const events = await getAllEvents()
   return events.filter(e => e.type === 'Landed Fish') as import('../types').LandedFish[]
+}
+
+// ─── Debriefs ─────────────────────────────────────────────────────────────────
+
+export async function saveDebrief(debrief: DebriefConversation): Promise<void> {
+  const db = await getDB()
+  await db.put('debriefs', debrief)
+}
+
+export async function getDebriefForSession(sessionId: string): Promise<DebriefConversation | undefined> {
+  const db = await getDB()
+  const results = await db.getAllFromIndex('debriefs', 'by-session', sessionId)
+  return results[0]
+}
+
+export async function getAllDebriefs(): Promise<DebriefConversation[]> {
+  const db = await getDB()
+  const all = await db.getAllFromIndex('debriefs', 'by-updated')
+  return all.reverse()
+}
+
+export async function deleteDebrief(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('debriefs', id)
+}
+
+export async function bulkDeleteDebriefs(ids: string[]): Promise<void> {
+  const db = await getDB()
+  for (const id of ids) await db.delete('debriefs', id)
+}
+
+// ─── Personal Bests ───────────────────────────────────────────────────────────
+
+export async function savePersonalBest(pb: PersonalBestPin): Promise<void> {
+  const db = await getDB()
+  await db.put('personalBests', pb)
+}
+
+export async function getAllPersonalBests(): Promise<PersonalBestPin[]> {
+  const db = await getDB()
+  return db.getAll('personalBests')
+}
+
+export async function deletePersonalBest(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('personalBests', id)
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -127,12 +205,22 @@ const SETTINGS_KEY = 'app-settings'
 export async function getSettings(): Promise<AppSettings> {
   const db = await getDB()
   const s = await db.get('settings', SETTINGS_KEY)
-  return s ?? {
+  const base: AppSettings = s ?? {
     anthropicApiKey: '',
     sizeThresholdLbs: 3,
     customLureTypes: [],
     onboardingDone: false,
   }
+  // Migrate old colorTheme values to new system
+  if (base.colorTheme) {
+    const old = base.colorTheme as string
+    if (['midnight', 'dawn', 'daylight', 'dusk', 'auto'].includes(old)) {
+      base.colorTheme = 'adaptive'
+    } else if (old === 'white') {
+      base.colorTheme = 'light'
+    }
+  }
+  return base
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
@@ -158,6 +246,11 @@ export async function deleteOwnedLure(id: string): Promise<void> {
   await db.delete('ownedLures', id)
 }
 
+export async function bulkDeleteOwnedLures(ids: string[]): Promise<void> {
+  const db = await getDB()
+  for (const id of ids) await db.delete('ownedLures', id)
+}
+
 export async function saveRodSetup(rod: RodSetup): Promise<void> {
   const db = await getDB()
   await db.put('rodSetups', rod)
@@ -176,23 +269,78 @@ export async function deleteRodSetup(id: string): Promise<void> {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
-// Full export including photos — used for Drive backup so data restores across devices
 export async function exportAllDataFull(): Promise<string> {
-  const [sessions, events, settings, ownedLures, rodSetups] = await Promise.all([
-    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(),
+  const [sessions, events, settings, ownedLures, rodSetups, debriefs] = await Promise.all([
+    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(), getAllDebriefs(),
   ])
   return JSON.stringify({
     exportedAt: new Date().toISOString(),
-    version: 2,
-    sessions, events, ownedLures, rodSetups,
+    version: 3,
+    sessions, events, ownedLures, rodSetups, debriefs,
     settings: { ...settings, anthropicApiKey: '[REDACTED]' },
   }, null, 2)
 }
 
-// Merge-import from backup (upserts; never deletes; skips photo placeholders)
+export async function exportAllDataJSON(): Promise<string> {
+  const [sessions, events, settings, ownedLures, rodSetups, debriefs] = await Promise.all([
+    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(), getAllDebriefs(),
+  ])
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    version: 3,
+    sessions,
+    events,
+    ownedLures: ownedLures.map(l => ({ ...l, photoDataUrl: l.photoDataUrl ? '[photo]' : undefined })),
+    rodSetups:  rodSetups.map(r => ({ ...r, photoDataUrl: r.photoDataUrl ? '[photo]' : undefined })),
+    debriefs,
+    settings: { ...settings, anthropicApiKey: '[REDACTED]' },
+  }, null, 2)
+}
+
+export async function exportTackleJSON(): Promise<string> {
+  const lures = await getAllOwnedLures()
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    version: 1,
+    tackle: lures.map(l => ({ ...l, photoDataUrl: l.photoDataUrl ? '[photo]' : undefined })),
+  }, null, 2)
+}
+
+export async function exportCatchesCSV(): Promise<string> {
+  const events = await getLandedFish()
+  const headers = [
+    'Date', 'Time', 'Session ID', 'Species', 'Weight (lbs)',
+    'Length (in)', 'Lure Type', 'Lure Weight', 'Lure Color', 'Custom Pour',
+    'Water Depth', 'Water Column', 'Retrieve Style', 'Structure',
+    'Latitude', 'Longitude', 'Notes',
+  ]
+  const rows = events.map(e => [
+    new Date(e.timestamp).toLocaleDateString(),
+    new Date(e.timestamp).toLocaleTimeString(),
+    e.sessionId,
+    e.species,
+    (e.weightLbs + e.weightOz / 16).toFixed(1),
+    e.lengthInches,
+    e.lureType,
+    e.lureWeight,
+    `"${e.lureColor}"`,
+    e.customPour ? 'Yes' : 'No',
+    e.waterDepth ?? '',
+    e.waterColumn ?? '',
+    e.retrieveStyle ?? '',
+    e.structure ?? '',
+    e.coords?.lat ?? '',
+    e.coords?.lng ?? '',
+    `"${(e.notes ?? '').replace(/"/g, '""')}"`,
+  ])
+  return [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+}
+
+// Merge-import from backup
 export async function bulkImportData(data: {
   sessions?: Session[]; events?: CatchEvent[]
   ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]
+  debriefs?: DebriefConversation[]
 }): Promise<{ sessions: number; events: number }> {
   const db = await getDB()
   let sc = 0, ec = 0
@@ -207,52 +355,8 @@ export async function bulkImportData(data: {
     if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
       await db.put('rodSetups', { ...r, addedAt: r.addedAt ?? now })
   }
+  for (const d of data.debriefs ?? []) {
+    await db.put('debriefs', d)
+  }
   return { sessions: sc, events: ec }
-}
-
-export async function exportAllDataJSON(): Promise<string> {
-  const [sessions, events, settings, ownedLures, rodSetups] = await Promise.all([
-    getAllSessions(),
-    getAllEvents(),
-    getSettings(),
-    getAllOwnedLures(),
-    getAllRodSetups(),
-  ])
-  return JSON.stringify({
-    exportedAt: new Date().toISOString(),
-    sessions,
-    events,
-    ownedLures: ownedLures.map(l => ({ ...l, photoDataUrl: l.photoDataUrl ? '[photo]' : undefined })),
-    rodSetups:  rodSetups.map(r => ({ ...r, photoDataUrl: r.photoDataUrl ? '[photo]' : undefined })),
-    settings: { ...settings, anthropicApiKey: '[REDACTED]' },
-  }, null, 2)
-}
-
-export async function exportCatchesCSV(): Promise<string> {
-  const events = await getLandedFish()
-  const headers = [
-    'Date', 'Time', 'Session ID', 'Species', 'Weight (lbs)',
-    'Length (in)', 'Lure Type', 'Lure Weight', 'Lure Color', 'Custom Pour',
-    'Water Column', 'Retrieve Style', 'Structure',
-    'Latitude', 'Longitude', 'Notes',
-  ]
-  const rows = events.map(e => [
-    new Date(e.timestamp).toLocaleDateString(),
-    new Date(e.timestamp).toLocaleTimeString(),
-    e.sessionId,
-    e.species,
-    (e.weightLbs + e.weightOz / 16).toFixed(1),
-    e.lengthInches,
-    e.lureType,
-    e.lureWeight,
-    `"${e.lureColor}"`,
-    e.customPour ? 'Yes' : 'No',
-    e.waterColumn ?? '',
-    e.retrieveStyle ?? '',
-    e.structure ?? '',
-    e.coords?.lat ?? '',
-    e.coords?.lng ?? '',
-    `"${(e.notes ?? '').replace(/"/g, '""')}"`,
-  ])
-  return [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
 }

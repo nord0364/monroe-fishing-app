@@ -39,6 +39,7 @@ export type LureType =
   | 'Crankbait'
   | 'Topwater'
   | 'Drop Shot'
+  | 'Spoon'
   | 'Other'
   | string
 
@@ -90,6 +91,18 @@ export type LaunchSite =
   | 'Fairfax SRA'
   | 'Other'
 
+// ─── Tackle Types ─────────────────────────────────────────────────────────────
+
+export type TackleCategory = 'lure' | 'hook' | 'spoon'
+
+export type TackleOrigin = 'Hand Poured by Me' | 'Homemade — Other' | 'Store Bought'
+
+export type TackleCondition = 'New' | 'Good' | 'Retired'
+
+export type HookStyle = 'Worm Hook' | 'EWG' | 'Wacky' | 'Ned' | 'Drop Shot' | 'Treble' | 'Other'
+
+export type SpoonStyle = 'Casting' | 'Trolling' | 'Jigging'
+
 // ─── Catch Entry ─────────────────────────────────────────────────────────────
 
 export interface GPSCoords {
@@ -109,11 +122,13 @@ export interface LandedFish {
   weightLbs: number
   weightOz: number
   lengthInches: number
+  waterDepth?: WaterDepth
   waterColumn?: WaterColumn
   lureType: LureType
   lureWeight: LureWeight
   lureColor: string
   customPour: boolean
+  homemade?: boolean
   retrieveStyle?: RetrieveStyle
   structure?: StructureCover
   photoDataUrl?: string
@@ -129,6 +144,7 @@ export interface QualityStrike {
   timestamp: number
   coords?: GPSCoords
   lureType: LureType
+  waterDepth?: WaterDepth
   waterColumn?: WaterColumn
   notes?: string
   isHistorical?: boolean
@@ -194,15 +210,39 @@ export interface Session {
   notes?: string
   aiBriefing?: string
   aiBriefingStructured?: AIBriefing
-  // Set when planning ahead (briefing generated before session date)
-  plannedDate?: number    // ms timestamp of the planned session date
-  plannedWindow?: string  // e.g. "6:00 AM – 11:00 AM"
+  plannedDate?: number
+  plannedWindow?: string
+}
+
+// ─── Debrief ─────────────────────────────────────────────────────────────────
+
+export interface DebriefMessage {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+}
+
+export interface DebriefConversation {
+  id: string
+  sessionId: string
+  sessionDate: number        // For accordion grouping
+  sessionLaunchSite: string  // For display
+  messages: DebriefMessage[]
+  createdAt: number
+  updatedAt: number
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
-export type ColorTheme = 'auto' | 'midnight' | 'dawn' | 'daylight' | 'dusk' | 'white'
+export type ColorTheme = 'adaptive' | 'dark' | 'light' | 'auto'
 export type FontSize = 'small' | 'normal' | 'large'
+
+export interface SunriseSunsetCache {
+  sunrise: string   // "6:15 AM"
+  sunset: string    // "8:20 PM"
+  date: string      // "2026-03-07"
+  fetchedAt: number
+}
 
 export interface AppSettings {
   anthropicApiKey: string
@@ -211,18 +251,34 @@ export interface AppSettings {
   onboardingDone: boolean
   colorTheme?: ColorTheme
   fontSize?: FontSize
+  sunriseSunsetCache?: SunriseSunsetCache
 }
 
 // ─── Gear Catalog ─────────────────────────────────────────────────────────────
 
 export interface OwnedLure {
   id: string
-  lureType: string
-  weight: string
-  color: string
+  category?: TackleCategory      // undefined = 'lure' for legacy records
+  // Lure + Spoon shared fields
+  lureType?: string              // required for lures/spoons; undefined for hooks
+  subType?: string               // e.g. "Hard" for swimbait, "Weighted" for wacky rig
+  weight?: string                // legacy field kept; optional for hooks
+  weightNA?: boolean             // weight not applicable (e.g. topwater frog)
+  color: string                  // primary color (required, legacy compat)
+  secondaryColor?: string
+  bladeConfig?: string           // for spinnerbaits and chatterbaits
   brand?: string
-  notes?: string
+  origin?: TackleOrigin          // 3-way: Hand Poured by Me | Homemade — Other | Store Bought
+  condition?: TackleCondition
+  // Hook-specific fields
+  hookStyle?: HookStyle
+  hookSize?: string              // e.g. "3/0", "5/0"
+  quantity?: number
+  // Spoon-specific fields
+  spoonStyle?: SpoonStyle
+  // Shared
   photoDataUrl?: string
+  notes?: string
   addedAt: number
 }
 
@@ -238,6 +294,21 @@ export interface RodSetup {
   notes?: string
   photoDataUrl?: string
   addedAt: number
+}
+
+// ─── Personal Bests ───────────────────────────────────────────────────────────
+
+export interface PersonalBestPin {
+  id: string
+  species: Species
+  sessionId: string
+  eventId: string
+  weightLbs: number
+  weightOz: number
+  lengthInches?: number
+  notes?: string           // "caught by length, no scale"
+  isPinned: boolean        // user-designated override
+  pinnedAt?: number
 }
 
 // ─── AI Response ─────────────────────────────────────────────────────────────

@@ -1,88 +1,156 @@
 @import "tailwindcss";
 
-/* ─── Theme tokens ────────────────────────────────────────────────────────── */
-/* midnight (default) */
-:root {
-  --th-base:            #020617;
-  --th-surface:         #1e293b;
-  --th-surface-deep:    #0f172a;
-  --th-border:          #334155;
-  --th-border-muted:    #1e293b;
-  --th-text:            #f1f5f9;
-  --th-text-muted:      #94a3b8;
+/* ─── Theme System ─────────────────────────────────────────────────────────── */
+/*
+  4 user-facing themes:
+  • adaptive  — dark mode that shifts across 4 phases tied to sunrise/sunset
+  • dark      — fixed intentional polished dark (no time shift)
+  • light     — clean intentional light theme for full-sun outdoor use
+  • auto      — follows phone system setting (dark or light)
+
+  Adaptive phases (set via JS on <html data-theme="...">):
+  • adaptive-predawn   — before sunrise: deep dark, eye-friendly, warm-shifted
+  • adaptive-daytime   — mid-day: sharp, high-contrast dark for bright conditions
+  • adaptive-golden    — dawn/dusk window: warm amber character
+  • adaptive-night     — after sunset: clean minimal dark, easy on eyes
+
+  All other tokens (dark, light) are set directly on data-theme.
+*/
+
+/* ── Default / dark theme ──────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"],
+[data-theme="adaptive-night"] {
+  --th-base:            #0b1120;
+  --th-surface:         #162032;
+  --th-surface-deep:    #0d1726;
+  --th-border:          #253548;
+  --th-border-muted:    #162032;
+  --th-text:            #e8f0f8;
+  --th-text-muted:      #7a9ab5;
   --th-accent:          #059669;
   --th-accent-active:   #047857;
   --th-accent-text:     #34d399;
-  --th-accent-subtle:   rgba(5, 150, 105, 0.15);
-  --th-nav-bg:          #0f172a;
-  --th-nav-border:      #334155;
+  --th-accent-subtle:   rgba(5, 150, 105, 0.14);
+  --th-nav-bg:          #0d1726;
+  --th-nav-border:      #253548;
   --th-banner-bg:       #065f46;
   --th-banner-text:     #a7f3d0;
   --th-badge-high-bg:   #064e3b;
   --th-badge-high-text: #6ee7b7;
+  --th-card-glow:       rgba(5, 150, 105, 0.06);
 }
 
-/* dawn — warm amber morning */
-[data-theme="dawn"] {
-  --th-base:            #0d0a05;
-  --th-surface:         #1f1a0e;
-  --th-surface-deep:    #130f08;
-  --th-border:          #3d3020;
-  --th-border-muted:    #1f1a0e;
-  --th-text:            #f5f0e8;
-  --th-text-muted:      #a89878;
-  --th-accent:          #b45309;
-  --th-accent-active:   #92400e;
-  --th-accent-text:     #fbbf24;
-  --th-accent-subtle:   rgba(180, 83, 9, 0.18);
-  --th-nav-bg:          #130f08;
-  --th-nav-border:      #3d3020;
-  --th-banner-bg:       #78350f;
+/* ── Adaptive — predawn: deep dark, eye-friendly, warm-shifted for night vision */
+[data-theme="adaptive-predawn"] {
+  --th-base:            #050200;
+  --th-surface:         #0f0805;
+  --th-surface-deep:    #080401;
+  --th-border:          #251508;
+  --th-border-muted:    #0f0805;
+  --th-text:            #e8d5b8;
+  --th-text-muted:      #8a6848;
+  --th-accent:          #92400e;
+  --th-accent-active:   #78350f;
+  --th-accent-text:     #d97706;
+  --th-accent-subtle:   rgba(146, 64, 14, 0.16);
+  --th-nav-bg:          #080401;
+  --th-nav-border:      #251508;
+  --th-banner-bg:       #451a03;
   --th-banner-text:     #fde68a;
-  --th-badge-high-bg:   #451a03;
+  --th-badge-high-bg:   #1c0902;
   --th-badge-high-text: #fcd34d;
+  --th-card-glow:       rgba(146, 64, 14, 0.08);
 }
 
-/* daylight — high-contrast navy + sky */
-[data-theme="daylight"] {
-  --th-base:            #050d18;
-  --th-surface:         #0d1f35;
-  --th-surface-deep:    #081525;
-  --th-border:          #1e4068;
-  --th-border-muted:    #0d1f35;
-  --th-text:            #e8f4ff;
-  --th-text-muted:      #6ba8c4;
+/* ── Adaptive — daytime: sharp, high-contrast dark for outdoor readability ─── */
+[data-theme="adaptive-daytime"] {
+  --th-base:            #020c18;
+  --th-surface:         #071828;
+  --th-surface-deep:    #030e1e;
+  --th-border:          #0e3050;
+  --th-border-muted:    #071828;
+  --th-text:            #e8f6ff;
+  --th-text-muted:      #5898be;
   --th-accent:          #0284c7;
   --th-accent-active:   #0369a1;
   --th-accent-text:     #38bdf8;
   --th-accent-subtle:   rgba(2, 132, 199, 0.15);
-  --th-nav-bg:          #081525;
-  --th-nav-border:      #1e4068;
+  --th-nav-bg:          #030e1e;
+  --th-nav-border:      #0e3050;
   --th-banner-bg:       #0c4a6e;
   --th-banner-text:     #bae6fd;
   --th-badge-high-bg:   #082f49;
   --th-badge-high-text: #7dd3fc;
+  --th-card-glow:       rgba(2, 132, 199, 0.06);
 }
 
-/* dusk — warm orange evening */
-[data-theme="dusk"] {
-  --th-base:            #0d0805;
-  --th-surface:         #1f1209;
-  --th-surface-deep:    #130b05;
-  --th-border:          #3d1f0d;
-  --th-border-muted:    #1f1209;
-  --th-text:            #f5ede8;
-  --th-text-muted:      #b08870;
+/* ── Adaptive — golden hour: warm amber at dawn and dusk ──────────────────── */
+[data-theme="adaptive-golden"] {
+  --th-base:            #0a0603;
+  --th-surface:         #1a1008;
+  --th-surface-deep:    #0f0805;
+  --th-border:          #3a2010;
+  --th-border-muted:    #1a1008;
+  --th-text:            #f5ead8;
+  --th-text-muted:      #a07850;
   --th-accent:          #c2410c;
   --th-accent-active:   #9a3412;
   --th-accent-text:     #fb923c;
-  --th-accent-subtle:   rgba(194, 65, 12, 0.18);
-  --th-nav-bg:          #130b05;
-  --th-nav-border:      #3d1f0d;
+  --th-accent-subtle:   rgba(194, 65, 12, 0.16);
+  --th-nav-bg:          #0f0805;
+  --th-nav-border:      #3a2010;
   --th-banner-bg:       #7c2d12;
   --th-banner-text:     #fed7aa;
   --th-badge-high-bg:   #431407;
   --th-badge-high-text: #fdba74;
+  --th-card-glow:       rgba(194, 65, 12, 0.08);
+}
+
+/* ── Light theme: clean, intentional, full-sun outdoor readability ─────────── */
+[data-theme="light"] {
+  --th-base:            #f0f5fa;
+  --th-surface:         #ffffff;
+  --th-surface-deep:    #e8eef5;
+  --th-border:          #c8d8e8;
+  --th-border-muted:    #dde8f0;
+  --th-text:            #0a1828;
+  --th-text-muted:      #3d5878;
+  --th-accent:          #0369a1;
+  --th-accent-active:   #025280;
+  --th-accent-text:     #0369a1;
+  --th-accent-subtle:   rgba(3, 105, 161, 0.10);
+  --th-nav-bg:          #ffffff;
+  --th-nav-border:      #c8d8e8;
+  --th-banner-bg:       #0369a1;
+  --th-banner-text:     #ffffff;
+  --th-badge-high-bg:   #d1fae5;
+  --th-badge-high-text: #065f46;
+  --th-card-glow:       rgba(3, 105, 161, 0.05);
+}
+
+/* ── Auto theme — follows system (JS sets data-theme="dark" or "light") ─────── */
+@media (prefers-color-scheme: light) {
+  [data-theme="auto"] {
+    --th-base:            #f0f5fa;
+    --th-surface:         #ffffff;
+    --th-surface-deep:    #e8eef5;
+    --th-border:          #c8d8e8;
+    --th-border-muted:    #dde8f0;
+    --th-text:            #0a1828;
+    --th-text-muted:      #3d5878;
+    --th-accent:          #0369a1;
+    --th-accent-active:   #025280;
+    --th-accent-text:     #0369a1;
+    --th-accent-subtle:   rgba(3, 105, 161, 0.10);
+    --th-nav-bg:          #ffffff;
+    --th-nav-border:      #c8d8e8;
+    --th-banner-bg:       #0369a1;
+    --th-banner-text:     #ffffff;
+    --th-badge-high-bg:   #d1fae5;
+    --th-badge-high-text: #065f46;
+    --th-card-glow:       rgba(3, 105, 161, 0.05);
+  }
 }
 
 /* ─── Semantic utility classes ───────────────────────────────────────────── */
@@ -120,31 +188,8 @@
   color: var(--th-badge-high-text);
 }
 
-.th-nav-active  { color: var(--th-accent-text); }
-.th-nav-inactive {
-  color: var(--th-text-muted);
-}
-
-/* white — bright light mode for full-sun outdoor use */
-[data-theme="white"] {
-  --th-base:            #f0f4f8;
-  --th-surface:         #ffffff;
-  --th-surface-deep:    #e8edf2;
-  --th-border:          #cbd5e1;
-  --th-border-muted:    #e2e8f0;
-  --th-text:            #0f172a;
-  --th-text-muted:      #475569;
-  --th-accent:          #0369a1;
-  --th-accent-active:   #0284c7;
-  --th-accent-text:     #0369a1;
-  --th-accent-subtle:   rgba(3, 105, 161, 0.12);
-  --th-nav-bg:          #ffffff;
-  --th-nav-border:      #cbd5e1;
-  --th-banner-bg:       #0369a1;
-  --th-banner-text:     #ffffff;
-  --th-badge-high-bg:   #dcfce7;
-  --th-badge-high-text: #15803d;
-}
+.th-nav-active   { color: var(--th-accent-text); }
+.th-nav-inactive { color: var(--th-text-muted); }
 
 /* ─── Base resets for mobile-first PWA ───────────────────────────────────── */
 *, *::before, *::after {
@@ -154,8 +199,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--th-base, #020617);
-  color: var(--th-text, #f1f5f9);
+  background: var(--th-base, #0b1120);
+  color: var(--th-text, #e8f0f8);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
@@ -170,7 +215,7 @@ html, body {
 .leaflet-container {
   height: 100%;
   width: 100%;
-  background: #0f172a;
+  background: #0b1120;
 }
 
 /* Hide scrollbar utility */
@@ -232,4 +277,19 @@ button:active {
   height: 1px;
   background: var(--th-border);
   margin: 0 -1rem;
+}
+
+/* Accordion transition */
+.accordion-enter {
+  animation: accordion-open 180ms ease-out;
+}
+
+@keyframes accordion-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Premium card glow */
+.th-card-glow {
+  box-shadow: 0 0 0 1px var(--th-border), 0 4px 20px var(--th-card-glow, transparent);
 }

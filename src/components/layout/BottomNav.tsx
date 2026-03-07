@@ -1,4 +1,4 @@
-export type NavTab = 'briefing' | 'logger' | 'patterns' | 'settings'
+export type NavTab = 'scout' | 'log' | 'debrief' | 'trophy' | 'tackle'
 
 interface BottomNavProps {
   active: NavTab
@@ -6,10 +6,11 @@ interface BottomNavProps {
 }
 
 const tabs: { id: NavTab; label: string; icon: string }[] = [
-  { id: 'briefing', label: 'Briefing',  icon: '🌅' },
-  { id: 'logger',   label: 'Logger',    icon: '🎣' },
-  { id: 'patterns', label: 'Patterns',  icon: '📊' },
-  { id: 'settings', label: 'Settings',  icon: '⚙️' },
+  { id: 'scout',   label: 'Scout',        icon: '🌅' },
+  { id: 'log',     label: 'Log',          icon: '🎣' },
+  { id: 'debrief', label: 'Debrief',      icon: '💬' },
+  { id: 'trophy',  label: 'Trophy Room',  icon: '🏆' },
+  { id: 'tackle',  label: 'Tackle',       icon: '🧰' },
 ]
 
 export default function BottomNav({ active, onChange }: BottomNavProps) {
@@ -22,19 +23,18 @@ export default function BottomNav({ active, onChange }: BottomNavProps) {
             <button
               key={tab.id}
               onClick={() => onChange(tab.id)}
-              className={`flex-1 flex flex-col items-center justify-center py-2.5 min-h-[62px] text-xs font-semibold tracking-wide transition-colors relative ${
+              className={`flex-1 flex flex-col items-center justify-center py-2 min-h-[58px] text-[10px] font-semibold tracking-wide transition-colors relative ${
                 isActive ? 'th-nav-active' : 'th-nav-inactive'
               }`}
             >
-              {/* Active indicator bar at top */}
               {isActive && (
                 <span
-                  className="absolute top-0 inset-x-4 h-[2px] rounded-b-full"
+                  className="absolute top-0 inset-x-2 h-[2px] rounded-b-full"
                   style={{ backgroundColor: 'var(--th-accent-text)' }}
                 />
               )}
-              <span className="text-2xl mb-1 leading-none">{tab.icon}</span>
-              <span>{tab.label}</span>
+              <span className="text-xl mb-0.5 leading-none">{tab.icon}</span>
+              <span className="leading-tight">{tab.label}</span>
             </button>
           )
         })}

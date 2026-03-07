@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { AppSettings, ColorTheme, FontSize } from '../../types'
-import { saveSettings, exportAllDataJSON, exportCatchesCSV, bulkImportData } from '../../db/database'
+import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, bulkImportData } from '../../db/database'
 import {
   getDriveStatus, wasEverConnected, onDriveStatusChange,
   connectGoogleDrive, disconnectGoogleDrive, syncToGoogleDrive,
@@ -18,12 +18,10 @@ interface Props {
 }
 
 const THEME_OPTIONS: { value: ColorTheme; label: string; desc: string }[] = [
-  { value: 'auto',     label: '⏱ Auto',     desc: 'Changes by time of day' },
-  { value: 'midnight', label: '🌑 Midnight', desc: 'Deep slate + emerald' },
-  { value: 'dawn',     label: '🌄 Dawn',     desc: 'Warm amber morning' },
-  { value: 'daylight', label: '☀️ Daylight', desc: 'Navy + sky blue' },
-  { value: 'dusk',     label: '🌇 Dusk',     desc: 'Warm orange evening' },
-  { value: 'white',    label: '☀ White',    desc: 'High-contrast for full sun' },
+  { value: 'adaptive', label: '🌅 Adaptive', desc: 'Shifts with sunrise/sunset — 4 phases' },
+  { value: 'dark',     label: '🌑 Dark',     desc: 'Fixed polished dark mode' },
+  { value: 'light',    label: '☀️ Light',    desc: 'Clean light mode for full sun' },
+  { value: 'auto',     label: '📱 Auto',     desc: 'Follows your phone system setting' },
 ]
 
 const FONT_OPTIONS: { value: FontSize; label: string }[] = [
@@ -162,13 +160,22 @@ export default function Settings({ settings, onUpdate }: Props) {
     a.click(); URL.revokeObjectURL(url)
   }
 
+  const downloadTackle = async () => {
+    const json = await exportTackleJSON()
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `tackle-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
   if (view === 'catches')    return <CatchManager onClose={() => setView('main')} />
   if (view === 'import')     return <HistoricalImport settings={settings} onClose={() => setView('main')} />
   if (view === 'csv-import') return <SpreadsheetImport onClose={() => setView('main')} />
   if (view === 'lures')      return <LureCatalog apiKey={apiKey} onClose={() => setView('main')} />
   if (view === 'rods')       return <RodCatalog  apiKey={apiKey} onClose={() => setView('main')} />
 
-  const currentTheme    = settings.colorTheme ?? 'auto'
+  const currentTheme    = settings.colorTheme ?? 'adaptive'
   const currentFontSize = settings.fontSize ?? 'normal'
 
   return (
@@ -454,6 +461,9 @@ export default function Settings({ settings, onUpdate }: Props) {
         </button>
         <button onClick={downloadCSV} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
           Export Catch Log (CSV) — spreadsheet ready
+        </button>
+        <button onClick={downloadTackle} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
+          Export Tackle Inventory (JSON) — lures, hooks, spoons
         </button>
       </div>
 

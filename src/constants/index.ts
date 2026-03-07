@@ -1,4 +1,4 @@
-import type { LaunchSite, LureType, Species, WaterColumn, LureWeight, RetrieveStyle, StructureCover } from '../types'
+import type { LaunchSite, LureType, Species, WaterColumn, WaterDepth, LureWeight, RetrieveStyle, StructureCover } from '../types'
 
 export const LAKE_MONROE_COORDS = { lat: 39.0117, lng: -86.5083 }
 
@@ -27,6 +27,15 @@ export const SPECIES: Species[] = [
   'Other',
 ]
 
+export const WATER_DEPTHS: WaterDepth[] = [
+  'Under 2 ft',
+  '2 to 4 ft',
+  '4 to 7 ft',
+  '7 to 12 ft',
+  '12 to 18 ft',
+  '18 ft plus',
+]
+
 export const WATER_COLUMNS: WaterColumn[] = [
   'Surface',
   'Subsurface top 2 ft',
@@ -48,6 +57,7 @@ export const DEFAULT_LURE_TYPES: LureType[] = [
   'Crankbait',
   'Topwater',
   'Drop Shot',
+  'Spoon',
   'Other',
 ]
 

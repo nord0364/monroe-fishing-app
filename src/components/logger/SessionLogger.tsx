@@ -12,6 +12,7 @@ interface Props {
   settings: AppSettings
   activeSession: Session | null
   onSessionChanged: (session: Session | null) => void
+  onSessionEnded?: (session: Session) => void  // Called instead of onSessionChanged(null) when session ends
 }
 
 const MONTH_LABELS = [
@@ -50,7 +51,7 @@ function formatDuration(ms: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-export default function SessionLogger({ settings, activeSession, onSessionChanged }: Props) {
+export default function SessionLogger({ settings, activeSession, onSessionChanged, onSessionEnded }: Props) {
   const [events, setEvents]           = useState<CatchEvent[]>([])
   const [view, setView]               = useState<'log' | 'entry' | 'briefing' | 'wrapup'>('log')
   const [sessions, setSessions]       = useState<Session[]>([])
@@ -110,7 +111,11 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
   }
 
   const finishSession = () => {
-    onSessionChanged(null)
+    if (onSessionEnded && endedSession) {
+      onSessionEnded(endedSession)
+    } else {
+      onSessionChanged(null)
+    }
     setEndedSession(null)
     setEvents([])
     setView('log')
