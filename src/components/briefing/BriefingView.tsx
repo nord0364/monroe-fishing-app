@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { AIBriefing, EnvironmentalConditions } from '../../types'
+import { speakText, cancelSpeech, hasSpeech } from '../../utils/speech'
 
 interface Props {
   briefing: AIBriefing
@@ -45,32 +46,6 @@ function CondChip({ icon, value }: { icon: string; value?: string | number }) {
   )
 }
 
-// Pick the most natural-sounding available voice
-function getBestVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis?.getVoices() ?? []
-  if (!voices.length) return null
-  const enUS  = voices.filter(v => v.lang === 'en-US' || v.lang === 'en_US')
-  const enAny = voices.filter(v => v.lang.startsWith('en'))
-  // Prefer neural / enhanced / Google voices in that order
-  const pick = (pool: SpeechSynthesisVoice[]) =>
-    pool.find(v => /natural|neural|enhanced/i.test(v.name)) ??
-    pool.find(v => /google/i.test(v.name)) ??
-    pool.find(v => /microsoft/i.test(v.name)) ??
-    pool[0] ?? null
-  return pick(enUS) ?? pick(enAny) ?? null
-}
-
-// Strip markdown / emoji so they don't get read aloud verbatim
-function cleanForSpeech(text: string): string {
-  return text
-    .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')  // emoji
-    .replace(/[*_#`]/g, '')
-    .replace(/·/g, ',')
-    .replace(/—/g, ',')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-}
-
 export default function BriefingView({
   briefing, conditions, launchSite, sessionDate, onGoToLogger,
 }: Props) {
@@ -78,22 +53,13 @@ export default function BriefingView({
   const [speakingId, setSpeakingId]   = useState<string | null>(null)
 
   const speak = useCallback((text: string, id: string) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
+    cancelSpeech()
     if (speakingId === id) { setSpeakingId(null); return }
-    const utt = new SpeechSynthesisUtterance(cleanForSpeech(text))
-    utt.rate   = 0.9
-    utt.pitch  = 0.97
-    utt.volume = 1.0
-    const voice = getBestVoice()
-    if (voice) utt.voice = voice
-    utt.onend   = () => setSpeakingId(null)
-    utt.onerror = () => setSpeakingId(null)
     setSpeakingId(id)
-    window.speechSynthesis.speak(utt)
+    speakText(text, { onEnd: () => setSpeakingId(null) })
   }, [speakingId])
 
-  useEffect(() => () => { window.speechSynthesis?.cancel() }, [])
+  useEffect(() => () => { cancelSpeech() }, [])
 
   const buildFullText = () => {
     const parts: string[] = []
@@ -143,7 +109,7 @@ export default function BriefingView({
                 : 'Today'}
             </div>
           </div>
-          {window.speechSynthesis && (
+          {hasSpeech && (
             <button
               onClick={() => speak(buildFullText(), 'full')}
               className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border th-border th-surface-deep text-sm font-medium transition-colors min-h-[40px] ${
@@ -205,7 +171,7 @@ export default function BriefingView({
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      {window.speechSynthesis && (
+                      {hasSpeech && (
                         <SpeakButton
                           active={speakingId === recId}
                           onPress={() => speak(recText, recId)}
@@ -313,7 +279,7 @@ function StrategyCard({
           <span className="th-text font-semibold text-sm">{title}</span>
         </div>
         <div className="flex items-center gap-1">
-          {window.speechSynthesis && (
+          {hasSpeech && (
             <SpeakButton active={isActive} onPress={() => onSpeak(text, speakId)} />
           )}
           <span className="th-text-muted text-xs">{open ? '▲' : '▼'}</span>

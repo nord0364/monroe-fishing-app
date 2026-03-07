@@ -235,7 +235,111 @@ CATCH HISTORY CONTEXT: ${catchHistory.length} total catches logged. Top producer
   }
 }
 
-// ─── Lure Identification ───────────────────────────────────────────────────────
+// ─── Pre-Session Quick Question ────────────────────────────────────────────────
+
+export async function* askPreSessionQuestion(
+  apiKey: string,
+  question: string,
+  conditions: EnvironmentalConditions,
+  launchSite: string,
+): AsyncGenerator<string> {
+  const client = buildClientWithKey(apiKey)
+
+  const condStr = [
+    conditions.airTempF    != null  ? `Air ${conditions.airTempF}°F`              : '',
+    conditions.waterTempF  != null  ? `Water ${conditions.waterTempF}°F`           : '',
+    conditions.windSpeedMph != null ? `Wind ${conditions.windSpeedMph}mph ${conditions.windDirection ?? ''}`.trim() : '',
+    conditions.skyCondition         ? `Sky: ${conditions.skyCondition}`            : '',
+    conditions.baroTrend            ? `Baro ${conditions.baroTrend}`               : '',
+    conditions.waterClarity         ? `Clarity: ${conditions.waterClarity}`        : '',
+    conditions.moonPhase            ? `Moon: ${conditions.moonPhase}`              : '',
+  ].filter(Boolean).join(' | ')
+
+  const systemPrompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana.
+An angler is planning their session. Current conditions: ${condStr || 'unknown'}.
+Launch site: ${launchSite || 'Lake Monroe'}.
+Answer their quick question concisely and practically — 3-5 sentences, ready to act on.`
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 300,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: question }],
+  })
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      yield event.delta.text
+    }
+  }
+}
+
+// ─── Post-Session Analysis ─────────────────────────────────────────────────────
+
+export async function* generatePostSessionAnalysis(
+  apiKey: string,
+  session: Session,
+  events: CatchEvent[],
+): AsyncGenerator<string> {
+  const client = buildClientWithKey(apiKey)
+
+  const duration = session.endTime
+    ? Math.round((session.endTime - session.startTime) / 60000)
+    : Math.round((Date.now() - session.startTime) / 60000)
+
+  const landed  = events.filter(e => e.type === 'Landed Fish') as import('../types').LandedFish[]
+  const strikes = events.filter(e => e.type === 'Quality Strike — Missed').length
+  const follows = events.filter(e => e.type === 'Follow — Did Not Strike').length
+
+  const catchLog = landed.map(f => {
+    const t = new Date(f.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    return `${t}: ${f.species} ${(f.weightLbs + f.weightOz / 16).toFixed(1)} lbs on ${f.lureType}${f.lureColor ? ` (${f.lureColor})` : ''}${f.waterColumn ? `, ${f.waterColumn}` : ''}${f.retrieveStyle ? `, ${f.retrieveStyle}` : ''}`
+  }).join('\n')
+
+  const condStr = [
+    session.conditions.airTempF    != null  ? `Air ${session.conditions.airTempF}°F`    : '',
+    session.conditions.waterTempF  != null  ? `Water ${session.conditions.waterTempF}°F` : '',
+    session.conditions.windSpeedMph != null ? `Wind ${session.conditions.windSpeedMph}mph` : '',
+    session.conditions.skyCondition         ? session.conditions.skyCondition : '',
+    session.conditions.baroTrend            ? `Baro ${session.conditions.baroTrend}` : '',
+    session.conditions.waterClarity         ? `Clarity: ${session.conditions.waterClarity}` : '',
+  ].filter(Boolean).join(', ')
+
+  const prompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana. Analyze this completed fishing session and give the angler useful post-session insights.
+
+SESSION DETAILS:
+- Location: ${session.launchSite}
+- Duration: ${duration} minutes
+- Conditions: ${condStr || 'not recorded'}
+
+RESULTS:
+- Fish landed: ${landed.length}
+- Quality strikes missed: ${strikes}
+- Follows: ${follows}
+${catchLog ? `\nCATCH LOG:\n${catchLog}` : 'No catches recorded.'}
+
+Write a 3-4 paragraph narrative post-session analysis. Cover:
+1. What worked and why, based on the conditions and catch log
+2. Key timing or location patterns if apparent
+3. One or two things to try differently next time given what you saw
+4. An encouraging closing note
+
+Write conversationally, like a guide debriefing with the angler at the dock. Be specific to their actual results.`
+
+  const stream = client.messages.stream({
+    model: 'claude-opus-4-6',
+    max_tokens: 600,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      yield event.delta.text
+    }
+  }
+}
+
+
 
 export interface LureIdentification {
   lureType: string

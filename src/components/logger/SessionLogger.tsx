@@ -6,6 +6,7 @@ import {
 } from '../../db/database'
 import CatchEntry from './CatchEntry'
 import BriefingView from '../briefing/BriefingView'
+import PostSessionReview from './PostSessionReview'
 
 interface Props {
   settings: AppSettings
@@ -51,7 +52,7 @@ function formatDuration(ms: number): string {
 
 export default function SessionLogger({ settings, activeSession, onSessionChanged }: Props) {
   const [events, setEvents]           = useState<CatchEvent[]>([])
-  const [view, setView]               = useState<'log' | 'entry' | 'briefing'>('log')
+  const [view, setView]               = useState<'log' | 'entry' | 'briefing' | 'wrapup'>('log')
   const [sessions, setSessions]       = useState<Session[]>([])
   const [eventCounts, setEventCounts] = useState<Record<string, number>>({})
   const [expandedId, setExpandedId]   = useState<string | null>(null)
@@ -86,13 +87,19 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
     })
   }
 
-  const endSession = async () => {
+  const goToWrapup = async () => {
     if (!activeSession) return
     const updated: Session = { ...activeSession, endTime: Date.now() }
     await saveSession(updated)
+    onSessionChanged(updated) // keep session active until user hits "Done"
+    setView('wrapup')
+  }
+
+  const finishSession = () => {
     onSessionChanged(null)
     setEvents([])
     setView('log')
+    loadData()
   }
 
   const handleDelete = async (id: string) => {
@@ -106,6 +113,18 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
   }
 
   const onEventSaved = () => { setView('log'); loadData() }
+
+  // ── Wrapup / post-session review ─────────────────────────────────────────────
+  if (view === 'wrapup' && activeSession) {
+    return (
+      <PostSessionReview
+        session={activeSession}
+        apiKey={settings.anthropicApiKey}
+        onBackToSession={() => { loadData(); setView('log') }}
+        onDone={finishSession}
+      />
+    )
+  }
 
   // ── Briefing view ────────────────────────────────────────────────────────────
   if (view === 'briefing') {
@@ -177,7 +196,7 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
                 📋 Briefing
               </button>
               <button
-                onClick={endSession}
+                onClick={goToWrapup}
                 className="px-3 py-2.5 bg-red-900/60 border border-red-700/50 rounded-xl text-red-300 text-xs font-semibold min-h-[44px]"
               >
                 End

@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import type { EnvironmentalConditions, Session, LaunchSite, AppSettings } from '../../types'
 import { fetchWeather, fetchForecastWeather } from '../../api/weather'
 import { fetchMoonData } from '../../api/moon'
 import { fetchWaterData } from '../../api/water'
-import { generatePreSessionBriefing } from '../../api/claude'
+import { generatePreSessionBriefing, askPreSessionQuestion } from '../../api/claude'
 import { saveSession, getLandedFish, getAllOwnedLures, getAllRodSetups } from '../../db/database'
 import { LAUNCH_SITES } from '../../constants'
 import QuickSelect from '../layout/QuickSelect'
@@ -68,6 +68,12 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
   const [apiError, setApiError]                     = useState('')
   const [dotIdx, setDotIdx]                         = useState(0)
 
+  // Quick question (on review step)
+  const [qaInput, setQaInput]       = useState('')
+  const [qaAnswer, setQaAnswer]     = useState('')
+  const [qaStreaming, setQaStreaming] = useState(false)
+  const qaEndRef = useRef<HTMLDivElement>(null)
+
   // ── Session planning: date & time window ────────────────────────────────────
   const [dateMode, setDateMode]       = useState<DateMode>('today')
   const [customDateStr, setCustomDateStr] = useState('')   // YYYY-MM-DD
@@ -119,6 +125,33 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
     const t = setInterval(() => setDotIdx(i => (i + 1) % 4), 500)
     return () => clearInterval(t)
   }, [step])
+
+  const askQuestion = async () => {
+    const q = qaInput.trim()
+    if (!q || qaStreaming || !settings.anthropicApiKey) return
+    const site = launchSite === 'Other' ? customSite : String(launchSite)
+    setQaInput('')
+    setQaAnswer('')
+    setQaStreaming(true)
+    const mergedConds: EnvironmentalConditions = {
+      ...conditions,
+      waterClarity: waterClarity ?? undefined,
+      baroTrend: baroTrend ?? undefined,
+      waterLevelVsNormal: waterLevelVsNormal ?? undefined,
+    }
+    try {
+      const gen = askPreSessionQuestion(settings.anthropicApiKey, q, mergedConds, site || 'Lake Monroe')
+      for await (const chunk of gen) {
+        setQaAnswer(a => a + chunk)
+        qaEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setQaAnswer(`Error: ${msg}`)
+    } finally {
+      setQaStreaming(false)
+    }
+  }
 
   const loadConditions = useCallback(async () => {
     setStep('loading')
@@ -380,6 +413,38 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
 
           {loadError && <p className="text-amber-400 text-sm bg-amber-900/20 rounded-xl p-3">{loadError}</p>}
           {apiError  && <p className="text-red-400 text-sm bg-red-900/20 rounded-xl p-3">{apiError}</p>}
+
+          {/* Quick question */}
+          {settings.anthropicApiKey && (
+            <div className="th-surface rounded-xl border th-border p-3 space-y-2">
+              <div className="text-xs font-bold th-text-muted uppercase tracking-wide">
+                Quick Question
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 th-surface-deep border th-border rounded-xl px-3 py-2.5 th-text text-sm placeholder:th-text-muted"
+                  placeholder="Ask about these conditions before your briefing…"
+                  value={qaInput}
+                  onChange={e => setQaInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askQuestion() } }}
+                  disabled={qaStreaming}
+                />
+                <button
+                  onClick={askQuestion}
+                  disabled={!qaInput.trim() || qaStreaming}
+                  className="px-4 py-2.5 th-btn-primary rounded-xl font-medium text-sm disabled:opacity-40"
+                >
+                  {qaStreaming ? '…' : 'Ask'}
+                </button>
+              </div>
+              {(qaAnswer || qaStreaming) && (
+                <div className="th-surface-deep rounded-xl px-3 py-2.5 text-sm th-text leading-relaxed">
+                  {qaAnswer || <span className="th-text-muted animate-pulse">Thinking…</span>}
+                  <div ref={qaEndRef} />
+                </div>
+              )}
+            </div>
+          )}
 
           <button onClick={startSession} disabled={!settings.anthropicApiKey}
             className="w-full py-4 th-btn-primary rounded-2xl font-bold text-lg disabled:opacity-40 shadow-lg">
