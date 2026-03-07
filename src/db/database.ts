@@ -149,8 +149,8 @@ export async function saveOwnedLure(lure: OwnedLure): Promise<void> {
 
 export async function getAllOwnedLures(): Promise<OwnedLure[]> {
   const db = await getDB()
-  const lures = await db.getAllFromIndex('ownedLures', 'by-added')
-  return lures.reverse()
+  const lures = await db.getAll('ownedLures')
+  return lures.sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0))
 }
 
 export async function deleteOwnedLure(id: string): Promise<void> {
@@ -165,8 +165,8 @@ export async function saveRodSetup(rod: RodSetup): Promise<void> {
 
 export async function getAllRodSetups(): Promise<RodSetup[]> {
   const db = await getDB()
-  const rods = await db.getAllFromIndex('rodSetups', 'by-added')
-  return rods.reverse()
+  const rods = await db.getAll('rodSetups')
+  return rods.sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0))
 }
 
 export async function deleteRodSetup(id: string): Promise<void> {
@@ -198,11 +198,14 @@ export async function bulkImportData(data: {
   let sc = 0, ec = 0
   for (const s of data.sessions ?? [])   { await db.put('sessions', s); sc++ }
   for (const e of data.events   ?? [])   { await db.put('events',   e); ec++ }
+  const now = Date.now()
   for (const l of data.ownedLures ?? []) {
-    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]') await db.put('ownedLures', l)
+    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
+      await db.put('ownedLures', { ...l, addedAt: l.addedAt ?? now })
   }
   for (const r of data.rodSetups  ?? []) {
-    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') await db.put('rodSetups', r)
+    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
+      await db.put('rodSetups', { ...r, addedAt: r.addedAt ?? now })
   }
   return { sessions: sc, events: ec }
 }
