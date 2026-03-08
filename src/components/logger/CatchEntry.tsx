@@ -68,13 +68,28 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
     if (gpsCoords) setCoords(gpsCoords)
   }, [gpsCoords])
 
+  const resizePhoto = (dataUrl: string, maxPx = 1200): Promise<string> =>
+    new Promise(resolve => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.82))
+      }
+      img.src = dataUrl
+    })
+
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const dataUrl = ev.target?.result as string
-      setPhotoDataUrl(dataUrl)
+      const resized = await resizePhoto(dataUrl)
+      setPhotoDataUrl(resized)
     }
     reader.readAsDataURL(file)
   }
@@ -243,6 +258,55 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
             </div>
           </div>
 
+          {/* Fish Photo */}
+          <div className="th-surface rounded-2xl border th-border p-4 space-y-3">
+            <span className="section-label">Fish Photo</span>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
+            {photoDataUrl ? (
+              <div className="relative">
+                <img
+                  src={photoDataUrl}
+                  className="w-full rounded-xl object-cover"
+                  style={{ maxHeight: 240 }}
+                  alt="catch"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setPhotoDataUrl(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center text-sm"
+                  aria-label="Remove photo"
+                >✕</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-8 rounded-xl border-2 border-dashed th-border th-text-muted flex flex-col items-center gap-2 active:opacity-70"
+              >
+                <span className="text-3xl">📷</span>
+                <span className="text-sm font-medium">Tap to take photo</span>
+              </button>
+            )}
+            {photoDataUrl && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 py-2.5 th-surface-deep border th-border rounded-xl th-text-muted text-sm font-medium"
+                >
+                  Retake
+                </button>
+                <button
+                  onClick={identifyLure}
+                  disabled={identifying || !settings.anthropicApiKey}
+                  className="flex-1 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-40"
+                >
+                  {identifying ? '…' : '🤖 ID Lure Color'}
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Lure section */}
           <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
             <span className="section-label">Lure Setup</span>
@@ -265,33 +329,12 @@ export default function CatchEntry({ session, settings, onSaved }: Props) {
 
             <div>
               <span className="section-label">color / pattern</span>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 th-surface-deep border th-border rounded-xl px-3 py-3 th-text"
-                  placeholder="e.g. chartreuse white"
-                  value={lureColor}
-                  onChange={e => setLureColor(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-3 th-surface-deep border th-border rounded-xl th-text-muted text-xl min-w-[52px]"
-                  title="Photo identify"
-                >📷</button>
-              </div>
-              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
-              {photoDataUrl && (
-                <div className="mt-2 flex items-center gap-2">
-                  <img src={photoDataUrl} className="w-14 h-14 object-cover rounded-xl" alt="lure" />
-                  <button
-                    onClick={identifyLure}
-                    disabled={identifying || !settings.anthropicApiKey}
-                    className="px-4 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-40"
-                  >
-                    {identifying ? '…' : '🤖 Identify Color'}
-                  </button>
-                </div>
-              )}
+              <input
+                className="w-full th-surface-deep border th-border rounded-xl px-3 py-3 th-text"
+                placeholder="e.g. chartreuse white"
+                value={lureColor}
+                onChange={e => setLureColor(e.target.value)}
+              />
             </div>
 
             <div>

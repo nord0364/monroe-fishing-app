@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Anthropic from '@anthropic-ai/sdk'
 import type {
   AppSettings,
   Session,
@@ -198,51 +199,18 @@ async function* streamDebriefResponse(
     .filter(s => s !== '')
     .join('\n')
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      stream: true,
-      system,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-    }),
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system,
+    messages: messages.map(m => ({ role: m.role, content: m.content })),
   })
 
-  if (!response.ok) {
-    const errText = await response.text()
-    throw new Error(`API error ${response.status}: ${errText}`)
-  }
-
-  const reader = response.body!.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6)
-      if (data === '[DONE]') return
-      try {
-        const parsed = JSON.parse(data) as {
-          type?: string
-          delta?: { type?: string; text?: string }
-        }
-        const text = parsed.delta?.text ?? ''
-        if (text) yield text
-      } catch {
-        // ignore non-JSON SSE lines
-      }
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      yield event.delta.text
     }
   }
 }
