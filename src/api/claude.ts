@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { LandedFish, Session, EnvironmentalConditions, AIBriefing, CatchEvent, OwnedLure, RodSetup } from '../types'
+import type { LandedFish, Session, EnvironmentalConditions, AIBriefing, CatchEvent, OwnedLure, RodSetup, Rod } from '../types'
 import { getLaunchPointContext } from '../data/launchPointContext'
 
 function buildClientWithKey(apiKey: string) {
@@ -17,6 +17,7 @@ export async function generatePreSessionBriefing(
   rodSetups?: RodSetup[],
   onChunk?: (text: string) => void,
   sessionContext?: string,
+  selectedRods?: Rod[],
 ): Promise<AIBriefing> {
   const client = buildClientWithKey(apiKey)
 
@@ -72,6 +73,23 @@ AVAILABLE ROD/LINE SETUPS:
 ${rodSetups.map(r => `- "${r.name}": ${[r.rodPower, r.rodAction, r.rodLength].filter(Boolean).join('/')} rod, ${r.lineType ?? '?'}${r.lineWeightLbs ? ` ${r.lineWeightLbs}lb` : ''}${r.notes ? ` — ${r.notes}` : ''}`).join('\n')}
 
 For each recommendation, include a "suggestedRod" field with the name of the best matching setup from the list above.` : ''}
+${selectedRods && selectedRods.length > 0 ? `
+RODS THE ANGLER IS BRINGING TODAY (selected by app based on conditions):
+${selectedRods.map(r => {
+  const parts = [
+    r.rodType,
+    r.power,
+    r.action,
+    r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
+    r.lineType,
+    r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
+    r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
+    r.reelName ? `reel: ${r.reelName}` : null,
+  ].filter(Boolean).join(', ')
+  return `- "${r.nickname}": ${parts || 'no specs recorded'}`
+}).join('\n')}
+
+IMPORTANT ROD INSTRUCTION: In the "suggestedRod" field for each recommendation, specify the rod nickname EXACTLY as listed above (e.g., "Heavy Baitcaster" or "Spinning Finesse"). Do not say "a medium heavy rod" — use the exact nickname. Match each lure to the best rod from this list based on lure weight, technique, and line type.` : ''}
 
 Respond with ONLY valid JSON — no markdown, no code fences, no explanation before or after. Use this exact structure:
 {

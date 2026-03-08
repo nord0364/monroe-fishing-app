@@ -7,6 +7,11 @@ import type {
   HookStyle,
   SpoonStyle,
   AppSettings,
+  Rod,
+  RodType,
+  RodPower,
+  RodAction,
+  RodLineType,
 } from '../../types'
 import {
   getAllOwnedLures,
@@ -15,10 +20,20 @@ import {
   bulkDeleteOwnedLures,
   exportTackleJSON,
   getAllEvents,
+  getAllRods,
+  saveRod,
+  deleteRod,
+  bulkDeleteRods,
 } from '../../db/database'
 import type { LandedFish } from '../../types'
 import { nanoid } from '../logger/nanoid'
 import { identifyLureForCatalog, type LureIdentification } from '../../api/claude'
+
+// ─── Rod constants ─────────────────────────────────────────────────────────────
+const ROD_TYPES:    RodType[]    = ['Baitcasting', 'Spinning']
+const ROD_POWERS:   RodPower[]   = ['Ultra Light', 'Light', 'Medium Light', 'Medium', 'Medium Heavy', 'Heavy', 'Extra Heavy']
+const ROD_ACTIONS:  RodAction[]  = ['Slow', 'Moderate', 'Fast', 'Extra Fast']
+const ROD_LINE_TYPES: RodLineType[] = ['Fluorocarbon', 'Monofilament', 'Braid', 'Braid with Fluorocarbon Leader']
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -192,7 +207,7 @@ function DeleteConfirmRow({ onConfirm, onCancel }: DeleteConfirmProps) {
       <span className="th-text-muted text-xs">Delete?</span>
       <button
         onClick={onConfirm}
-        className="text-xs text-red-400 border border-red-900/50 px-2 py-1 rounded-lg min-w-[44px] min-h-[36px]"
+        className="text-xs text-white bg-red-700 px-2 py-1 rounded-lg min-w-[44px] min-h-[36px]"
       >
         Yes
       </button>
@@ -671,7 +686,7 @@ function DenseRow({ item, onEdit, onDelete }: {
         <div className="flex gap-1 shrink-0">
           <button
             onClick={() => { onDelete(); setConfirmDelete(false) }}
-            className="text-red-400 text-xs px-2 py-1 border border-red-900/50 rounded-lg min-h-[32px]"
+            className="text-white bg-red-700 text-xs px-2 py-1 rounded-lg min-h-[32px]"
           >Del</button>
           <button
             onClick={() => setConfirmDelete(false)}
@@ -708,6 +723,290 @@ function AccordionSection({ title, count, children }: { title: string; count: nu
   )
 }
 
+// ─── Rod row ──────────────────────────────────────────────────────────────────
+
+function RodRow({ rod, confirming, onEdit, onDeleteRequest, onDeleteConfirm }: {
+  rod: Rod
+  confirming: boolean
+  onEdit: () => void
+  onDeleteRequest: () => void
+  onDeleteConfirm: () => void
+}) {
+  const powerAbbr = rod.power
+    ? rod.power.replace('Medium Heavy', 'MH').replace('Medium Light', 'ML').replace('Medium', 'M').replace('Ultra Light', 'UL').replace('Extra Heavy', 'XH')
+    : ''
+  const lengthStr = rod.lengthFt != null ? `${rod.lengthFt}'${rod.lengthIn != null ? `${rod.lengthIn}"` : ''}` : ''
+  const lineStr   = rod.lineWeightLbs != null ? `${rod.lineWeightLbs}lb` : ''
+  const sub = [rod.rodType, powerAbbr, rod.action, lineStr, lengthStr].filter(Boolean).join(' · ')
+  return (
+    <div className="px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <span className="th-text text-sm font-semibold">{rod.nickname}</span>
+          {sub && <span className="th-text-muted text-xs ml-2">{sub}</span>}
+        </div>
+        <button onClick={onEdit} className="shrink-0 th-text-muted text-xs px-2 py-1 opacity-60 active:opacity-100">Edit</button>
+        {confirming ? (
+          <div className="flex gap-1 shrink-0">
+            <button onClick={onDeleteConfirm} className="text-white bg-red-700 text-xs px-2 py-1 rounded-lg min-h-[32px]">Del</button>
+            <button onClick={onDeleteRequest} className="th-text-muted text-xs px-1 py-1 border th-border rounded-lg min-h-[32px]">✕</button>
+          </div>
+        ) : (
+          <button onClick={onDeleteRequest} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm">✕</button>
+        )}
+      </div>
+      {rod.notes && <p className="th-text-muted text-xs italic mt-0.5 pl-0">{rod.notes}</p>}
+    </div>
+  )
+}
+
+// ─── Rods accordion ───────────────────────────────────────────────────────────
+
+function RodsAccordion({ rods, onEdit, onDelete, onBulkDelete }: {
+  rods: Rod[]
+  onEdit: (rod: Rod) => void
+  onDelete: (id: string) => void
+  onBulkDelete: (ids: string[]) => void
+}) {
+  const [open, setOpen]           = useState(false)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [bulkConfirm, setBulkConfirm] = useState(false)
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  if (rods.length === 0) return null
+
+  const startLongPress = () => {
+    longPressRef.current = setTimeout(() => setBulkConfirm(true), 500)
+  }
+  const cancelLongPress = () => {
+    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
+  }
+
+  return (
+    <div>
+      <button
+        className="w-full flex items-center gap-2 px-4 py-2 th-surface-deep border-y th-border"
+        onClick={() => { if (!bulkConfirm) setOpen(o => !o) }}
+        onPointerDown={startLongPress}
+        onPointerUp={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+      >
+        <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide text-left">Rods & Reels</span>
+        <span className="text-xs th-text-muted">({rods.length})</span>
+        <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {bulkConfirm && (
+        <div className="px-4 py-3 th-danger-bg border-b th-border">
+          <p className="th-danger-text text-sm mb-2 font-medium">Delete all {rods.length} rod{rods.length !== 1 ? 's' : ''}? This cannot be undone.</p>
+          <div className="flex gap-2">
+            <button onClick={() => { onBulkDelete(rods.map(r => r.id)); setBulkConfirm(false) }}
+              className="flex-1 py-2 bg-red-700 text-white rounded-xl text-sm font-bold">
+              Delete All
+            </button>
+            <button onClick={() => setBulkConfirm(false)}
+              className="flex-1 py-2 th-surface border th-border rounded-xl th-text text-sm">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {open && (
+        <div className="divide-y th-border">
+          {rods.map(rod => (
+            <RodRow
+              key={rod.id}
+              rod={rod}
+              confirming={confirmId === rod.id}
+              onEdit={() => onEdit(rod)}
+              onDeleteRequest={() => setConfirmId(confirmId === rod.id ? null : rod.id)}
+              onDeleteConfirm={() => { onDelete(rod.id); setConfirmId(null) }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Rod form ─────────────────────────────────────────────────────────────────
+
+function RodForm({ initial, onSave, onCancel }: {
+  initial?: Rod
+  onSave: (rod: Rod) => void
+  onCancel: () => void
+}) {
+  const [nickname,       setNickname]       = useState(initial?.nickname ?? '')
+  const [rodType,        setRodType]        = useState<RodType | undefined>(initial?.rodType)
+  const [lengthFt,       setLengthFt]       = useState(initial?.lengthFt != null ? String(initial.lengthFt) : '')
+  const [lengthIn,       setLengthIn]       = useState(initial?.lengthIn != null ? String(initial.lengthIn) : '')
+  const [power,          setPower]          = useState<RodPower | undefined>(initial?.power)
+  const [action,         setAction]         = useState<RodAction | undefined>(initial?.action)
+  const [lineType,       setLineType]       = useState<RodLineType | undefined>(initial?.lineType)
+  const [lineWeightLbs,  setLineWeightLbs]  = useState(initial?.lineWeightLbs != null ? String(initial.lineWeightLbs) : '')
+  const [lureMinOz,      setLureMinOz]      = useState(initial?.lureWeightMinOz != null ? String(initial.lureWeightMinOz) : '')
+  const [lureMaxOz,      setLureMaxOz]      = useState(initial?.lureWeightMaxOz != null ? String(initial.lureWeightMaxOz) : '')
+  const [reelName,       setReelName]       = useState(initial?.reelName ?? '')
+  const [notes,          setNotes]          = useState(initial?.notes ?? '')
+  const [saving,         setSaving]         = useState(false)
+
+  const submit = async () => {
+    if (!nickname.trim()) return
+    setSaving(true)
+    const rod: Rod = {
+      id:               initial?.id ?? nanoid(),
+      nickname:         nickname.trim(),
+      rodType,
+      lengthFt:         parseFloat(lengthFt) || undefined,
+      lengthIn:         parseFloat(lengthIn) || undefined,
+      power,
+      action,
+      lineType,
+      lineWeightLbs:    parseFloat(lineWeightLbs) || undefined,
+      lureWeightMinOz:  parseFloat(lureMinOz) || undefined,
+      lureWeightMaxOz:  parseFloat(lureMaxOz) || undefined,
+      reelName:         reelName.trim() || undefined,
+      notes:            notes.trim() || undefined,
+      addedAt:          initial?.addedAt ?? Date.now(),
+    }
+    await saveRod(rod)
+    onSave(rod)
+  }
+
+  const numInput = (label: string, value: string, onChange: (v: string) => void, placeholder: string) => (
+    <div>
+      <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">{label}</label>
+      <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+        placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} />
+    </div>
+  )
+
+  return (
+    <div className="p-4 pb-32 max-w-lg mx-auto">
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={onCancel} className="th-accent-text text-sm">← Cancel</button>
+        <h2 className="th-text font-bold text-lg flex-1">{initial ? 'Edit Rod' : 'Add Rod'}</h2>
+      </div>
+
+      <div className="space-y-4">
+        {/* Nickname */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Nickname *</label>
+          <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+            placeholder='e.g. "Heavy Baitcaster", "Finesse Spinning"'
+            value={nickname} onChange={e => setNickname(e.target.value)} />
+        </div>
+
+        {/* Rod type */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Rod Type</label>
+          <div className="flex gap-2">
+            {ROD_TYPES.map(t => (
+              <button key={t} onClick={() => setRodType(rodType === t ? undefined : t)}
+                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${rodType === t ? 'th-btn-selected border-transparent' : 'th-surface th-text'}`}
+                style={rodType !== t ? { borderColor: 'var(--th-border)' } : {}}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Length */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Length</label>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+                placeholder="Feet" value={lengthFt} onChange={e => setLengthFt(e.target.value)} />
+            </div>
+            <div className="flex-1">
+              <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+                placeholder="Inches" value={lengthIn} onChange={e => setLengthIn(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {/* Power */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Power</label>
+          <div className="flex flex-wrap gap-2">
+            {ROD_POWERS.map(p => (
+              <button key={p} onClick={() => setPower(power === p ? undefined : p)}
+                className={`px-3 py-1.5 rounded-lg text-sm border ${power === p ? 'th-btn-selected border-transparent' : 'th-surface th-text'}`}
+                style={power !== p ? { borderColor: 'var(--th-border)' } : {}}>
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Action */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Action</label>
+          <div className="flex flex-wrap gap-2">
+            {ROD_ACTIONS.map(a => (
+              <button key={a} onClick={() => setAction(action === a ? undefined : a)}
+                className={`px-3 py-1.5 rounded-lg text-sm border ${action === a ? 'th-btn-selected border-transparent' : 'th-surface th-text'}`}
+                style={action !== a ? { borderColor: 'var(--th-border)' } : {}}>
+                {a}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Line type */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Line Type</label>
+          <div className="flex flex-wrap gap-2">
+            {ROD_LINE_TYPES.map(l => (
+              <button key={l} onClick={() => setLineType(lineType === l ? undefined : l)}
+                className={`px-3 py-1.5 rounded-lg text-sm border ${lineType === l ? 'th-btn-selected border-transparent' : 'th-surface th-text'}`}
+                style={lineType !== l ? { borderColor: 'var(--th-border)' } : {}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Line weight */}
+        {numInput('Line Weight (lb)', lineWeightLbs, setLineWeightLbs, 'e.g. 15')}
+
+        {/* Lure weight range */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Lure Weight Range (oz)</label>
+          <div className="flex gap-2 items-center">
+            <input type="number" step="0.0625" className="flex-1 th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+              placeholder="Min" value={lureMinOz} onChange={e => setLureMinOz(e.target.value)} />
+            <span className="th-text-muted text-sm">–</span>
+            <input type="number" step="0.0625" className="flex-1 th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+              placeholder="Max" value={lureMaxOz} onChange={e => setLureMaxOz(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Reel */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Reel Name / Model (optional)</label>
+          <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+            placeholder="e.g. Shimano Curado 200K" value={reelName} onChange={e => setReelName(e.target.value)} />
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Notes (optional)</label>
+          <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+            placeholder="Any notes…" value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
+
+        <button onClick={submit} disabled={!nickname.trim() || saving}
+          className="w-full py-4 th-btn-primary rounded-xl font-semibold text-base disabled:opacity-40">
+          {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Rod'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── List view ────────────────────────────────────────────────────────────────
 
 type OriginFilter = 'all' | TackleOrigin
@@ -717,14 +1016,19 @@ interface ListViewProps {
   items: OwnedLure[]
   settings: AppSettings
   mruItems: OwnedLure[]
+  rods: Rod[]
   onAdd: (cat: TackleCategory) => void
   onEdit: (item: OwnedLure) => void
   onDelete: (id: string) => void
   onBulkDelete: (ids: string[]) => void
   onExport: () => void
+  onAddRod: () => void
+  onEditRod: (rod: Rod) => void
+  onDeleteRod: (id: string) => void
+  onBulkDeleteRods: (ids: string[]) => void
 }
 
-function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onExport }: ListViewProps) {
+function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete, onExport, onEditRod, onDeleteRod, onBulkDeleteRods }: ListViewProps) {
   const [search, setSearch]           = useState('')
   const [originFilter, setOriginFilter] = useState<OriginFilter>('all')
   const [condFilter, setCondFilter]   = useState<ConditionFilter>('all')
@@ -757,7 +1061,14 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
     return true
   }
 
+  const filterRod = (rod: Rod): boolean => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return [rod.nickname, rod.power, rod.action, rod.lineType].some(f => f?.toLowerCase().includes(q))
+  }
+
   const filtered = items.filter(filterItem)
+  const filteredRods = rods.filter(filterRod)
 
   // Build section map using new taxonomy
   const sectionMap = new Map<TackleSection, OwnedLure[]>()
@@ -787,7 +1098,7 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
   }
 
   const showMru = !isFiltered && mruItems.length > 0
-  const isEmpty = filtered.length === 0
+  const isEmpty = filtered.length === 0 && filteredRods.length === 0
 
   return (
     <div className="pb-32">
@@ -891,8 +1202,8 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
         </div>
       )}
 
-      {/* Accordion sections */}
-      {SECTION_ORDER.map(sec => {
+      {/* Accordion sections — all except 'Other' */}
+      {SECTION_ORDER.filter(sec => sec !== 'Other').map(sec => {
         const secItems = sortItems(sectionMap.get(sec) ?? [])
         return (
           <AccordionSection key={sec} title={sec} count={secItems.length}>
@@ -927,6 +1238,50 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
         )
       })}
 
+      {/* Rods & Reels — above Other */}
+      <RodsAccordion
+        rods={filteredRods}
+        onEdit={onEditRod}
+        onDelete={onDeleteRod}
+        onBulkDelete={onBulkDeleteRods}
+      />
+
+      {/* Other — always last */}
+      {(() => {
+        const secItems = sortItems(sectionMap.get('Other') ?? [])
+        return (
+          <AccordionSection title="Other" count={secItems.length}>
+            {gridView ? (
+              <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
+                {secItems.map(item => (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    multiSelect={multiSelect}
+                    selected={selected.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
+                    onEdit={() => onEdit(item)}
+                    onDelete={() => onDelete(item.id)}
+                    onLongPress={() => { setMultiSelect(true); setSelected(new Set([item.id])) }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="divide-y th-border">
+                {secItems.map(item => (
+                  <DenseRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => onEdit(item)}
+                    onDelete={() => onDelete(item.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </AccordionSection>
+        )
+      })()}
+
       {/* Multi-select bottom bar */}
       {multiSelect && (
         <div className="fixed bottom-20 left-0 right-0 z-40 px-4">
@@ -941,7 +1296,7 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
               <div className="flex gap-2">
                 <button
                   onClick={handleBulkDelete}
-                  className="text-sm text-red-400 border border-red-900/50 px-3 py-2 rounded-xl min-h-[44px]"
+                  className="text-sm text-white bg-red-700 px-3 py-2 rounded-xl min-h-[44px]"
                 >
                   Confirm Delete
                 </button>
@@ -956,7 +1311,7 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
               <button
                 onClick={() => setBulkConfirm(true)}
                 disabled={selected.size === 0}
-                className="text-sm text-red-400 border border-red-900/50 px-3 py-2 rounded-xl min-h-[44px] disabled:opacity-40"
+                className="text-sm th-danger-text border border-red-900/50 px-3 py-2 rounded-xl min-h-[44px] disabled:opacity-40"
               >
                 Delete ({selected.size})
               </button>
@@ -1527,10 +1882,16 @@ interface Props {
   onSettingsUpdate: (s: AppSettings) => void
 }
 
+type RodFormView = { mode: 'add' } | { mode: 'edit'; rod: Rod }
+
 export default function Tackle({ settings }: Props) {
-  const [items, setItems]       = useState<OwnedLure[]>([])
-  const [mruItems, setMruItems] = useState<OwnedLure[]>([])
-  const [formView, setFormView] = useState<FormView | null>(null)
+  const [items, setItems]           = useState<OwnedLure[]>([])
+  const [mruItems, setMruItems]     = useState<OwnedLure[]>([])
+  const [formView, setFormView]     = useState<FormView | null>(null)
+  const [rods, setRods]             = useState<Rod[]>([])
+  const [rodFormView, setRodFormView] = useState<RodFormView | null>(null)
+
+  useEffect(() => { getAllRods().then(setRods) }, [])
 
   useEffect(() => {
     getAllOwnedLures().then(lures => {
@@ -1607,6 +1968,35 @@ export default function Tackle({ settings }: Props) {
     } catch { /* ignore */ }
   }
 
+  // Rod handlers
+  const handleRodSave = (rod: Rod) => {
+    setRods(prev => {
+      const idx = prev.findIndex(r => r.id === rod.id)
+      return idx >= 0 ? prev.map(r => r.id === rod.id ? rod : r) : [rod, ...prev]
+    })
+    setRodFormView(null)
+  }
+  const handleRodDelete = async (id: string) => {
+    await deleteRod(id)
+    setRods(prev => prev.filter(r => r.id !== id))
+  }
+  const handleBulkRodDelete = async (ids: string[]) => {
+    await bulkDeleteRods(ids)
+    const idSet = new Set(ids)
+    setRods(prev => prev.filter(r => !idSet.has(r.id)))
+  }
+
+  // Rod form view
+  if (rodFormView) {
+    return (
+      <RodForm
+        initial={rodFormView.mode === 'edit' ? rodFormView.rod : undefined}
+        onSave={handleRodSave}
+        onCancel={() => setRodFormView(null)}
+      />
+    )
+  }
+
   // Form views
   if (formView) {
     const category = formView.mode === 'edit' ? effectiveCategory(formView.item) : formView.category
@@ -1649,11 +2039,16 @@ export default function Tackle({ settings }: Props) {
       items={items}
       settings={settings}
       mruItems={mruItems}
+      rods={rods}
       onAdd={cat => setFormView({ mode: 'add', category: cat })}
       onEdit={item => setFormView({ mode: 'edit', item })}
       onDelete={handleDelete}
       onBulkDelete={handleBulkDelete}
       onExport={handleExport}
+      onAddRod={() => setRodFormView({ mode: 'add' })}
+      onEditRod={rod => setRodFormView({ mode: 'edit', rod })}
+      onDeleteRod={handleRodDelete}
+      onBulkDeleteRods={handleBulkRodDelete}
     />
   )
 }

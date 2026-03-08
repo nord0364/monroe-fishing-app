@@ -181,8 +181,8 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
       {/* Conflict warning — backup has fewer entries than local */}
       {phase === 'conflict' && preview && (
         <div className="space-y-3">
-          <div className="rounded-xl border-2 border-amber-500/60 bg-amber-500/10 p-4 space-y-2">
-            <p className="text-amber-400 font-semibold text-sm">⚠ Backup contains less data than your device</p>
+          <div className="rounded-xl border-2 border-amber-500/60 th-warning-bg p-4 space-y-2">
+            <p className="th-warning-text font-semibold text-sm">⚠ Backup contains less data than your device</p>
             <p className="th-text-muted text-xs leading-relaxed">
               This backup has{' '}
               <strong className="th-text">{preview.backupSessions + preview.backupEvents} entries</strong>{' '}
@@ -196,7 +196,7 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
             <p className="th-text-muted text-xs">{fmtDate(preview.file.createdTime)}</p>
             <p className="th-text-muted text-xs">{preview.backupSessions} sessions · {preview.backupEvents} catch events</p>
           </div>
-          <button onClick={() => setPhase('final-confirm')} className="w-full py-3 rounded-xl text-sm font-semibold border-2 border-amber-500/60 text-amber-400">
+          <button onClick={() => setPhase('final-confirm')} className="w-full py-3 rounded-xl text-sm font-semibold border-2 border-amber-500/60 th-warning-text">
             I understand — continue anyway
           </button>
           <button onClick={() => setPhase('listed')} className="w-full py-3 th-surface border th-border rounded-xl text-sm th-text">
@@ -208,8 +208,8 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
       {/* Final destructive confirmation */}
       {phase === 'final-confirm' && preview && (
         <div className="space-y-3">
-          <div className="rounded-xl border-2 border-red-500/60 bg-red-500/10 p-4 space-y-3">
-            <p className="text-red-400 font-bold text-sm">⚠ This will replace ALL local data</p>
+          <div className="rounded-xl border-2 border-red-500/60 th-danger-bg p-4 space-y-3">
+            <p className="th-danger-text font-bold text-sm">⚠ This will replace ALL local data</p>
             <p className="th-text-muted text-xs leading-relaxed">
               All sessions, catches, debrief conversations, and gear on this device will be
               permanently deleted and replaced with the contents of the selected backup.
@@ -222,7 +222,7 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
           </div>
           <button
             onClick={doRestore}
-            className="w-full py-3.5 rounded-xl text-sm font-bold border-2 border-red-500 text-red-400 active:opacity-70"
+            className="w-full py-3.5 rounded-xl text-sm font-bold border-2 border-red-500 th-danger-text active:opacity-70"
           >
             Replace All Data — I Understand
           </button>
@@ -339,21 +339,21 @@ function DriveManageView({ onClose }: { onClose: () => void }) {
                     {deletingId !== f.id && (
                       <button
                         onClick={() => setDeletingId(f.id)}
-                        className="shrink-0 px-3 py-2 rounded-lg border border-red-500/40 text-red-400 text-xs font-medium min-h-[36px]"
+                        className="shrink-0 px-3 py-2 rounded-lg border border-red-500/40 th-danger-text text-xs font-medium min-h-[36px]"
                       >
                         Delete
                       </button>
                     )}
                   </div>
                   {deletingId === f.id && (
-                    <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 space-y-2">
-                      <p className="text-red-400 text-xs font-medium">Delete this backup from Google Drive?</p>
+                    <div className="rounded-lg border border-red-500/40 th-danger-bg p-3 space-y-2">
+                      <p className="th-danger-text text-xs font-medium">Delete this backup from Google Drive?</p>
                       <p className="th-text-muted text-xs">This cannot be undone. Local app data is not affected.</p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleDelete(f.id)}
                           disabled={deletingInFlight}
-                          className="flex-1 py-2 rounded-lg border border-red-500 text-red-400 text-xs font-semibold disabled:opacity-40"
+                          className="flex-1 py-2 rounded-lg bg-red-700 text-white text-xs font-semibold disabled:opacity-40"
                         >
                           {deletingInFlight ? 'Deleting…' : 'Yes, Delete'}
                         </button>

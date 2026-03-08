@@ -237,6 +237,7 @@ export interface Session {
   plannedDate?: number
   plannedWindow?: string
   analysisummary?: string  // 4–8 sentence post-session analysis, saved by Guide
+  selectedRods?: Rod[]     // rods chosen for this session by the app
 }
 
 // ─── Debrief ─────────────────────────────────────────────────────────────────
@@ -279,6 +280,30 @@ export interface AppSettings {
   fontSizeStep?: number     // 0–8 index into [14,15,16,17,18,19,20,22,24], default 3 (17px)
   sunriseSunsetCache?: SunriseSunsetCache
   googleClientId?: string  // optional override; app ships with a working default
+}
+
+// ─── Rod Catalog ──────────────────────────────────────────────────────────────
+
+export type RodType   = 'Baitcasting' | 'Spinning'
+export type RodPower  = 'Ultra Light' | 'Light' | 'Medium Light' | 'Medium' | 'Medium Heavy' | 'Heavy' | 'Extra Heavy'
+export type RodAction = 'Slow' | 'Moderate' | 'Fast' | 'Extra Fast'
+export type RodLineType = 'Fluorocarbon' | 'Monofilament' | 'Braid' | 'Braid with Fluorocarbon Leader'
+
+export interface Rod {
+  id: string
+  nickname: string            // required — used everywhere rod is referenced
+  rodType?: RodType
+  lengthFt?: number           // feet portion of rod length
+  lengthIn?: number           // inches portion of rod length
+  power?: RodPower
+  action?: RodAction
+  lineType?: RodLineType
+  lineWeightLbs?: number
+  lureWeightMinOz?: number
+  lureWeightMaxOz?: number
+  reelName?: string           // optional — reel name or model
+  notes?: string
+  addedAt: number
 }
 
 // ─── Gear Catalog ─────────────────────────────────────────────────────────────

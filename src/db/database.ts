@@ -1,7 +1,7 @@
 import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 import type {
-  Session, CatchEvent, AppSettings, OwnedLure, RodSetup,
+  Session, CatchEvent, AppSettings, OwnedLure, RodSetup, Rod,
   DebriefConversation, PersonalBestPin, StandaloneGuideEntry,
 } from '../types'
 
@@ -49,13 +49,18 @@ interface FishingDB extends DBSchema {
     value: StandaloneGuideEntry
     indexes: { 'by-date': number }
   }
+  rods: {
+    key: string
+    value: Rod
+    indexes: { 'by-added': number }
+  }
 }
 
 let _db: IDBPDatabase<FishingDB> | null = null
 
 async function getDB(): Promise<IDBPDatabase<FishingDB>> {
   if (_db) return _db
-  _db = await openDB<FishingDB>('fishing-tracker', 4, {
+  _db = await openDB<FishingDB>('fishing-tracker', 5, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) {
         const sessionsStore = db.createObjectStore('sessions', { keyPath: 'id' })
@@ -82,6 +87,10 @@ async function getDB(): Promise<IDBPDatabase<FishingDB>> {
       if (oldVersion < 4) {
         const guideStore = db.createObjectStore('guideEntries', { keyPath: 'id' })
         guideStore.createIndex('by-date', 'createdAt')
+      }
+      if (oldVersion < 5) {
+        const rodStore = db.createObjectStore('rods', { keyPath: 'id' })
+        rodStore.createIndex('by-added', 'addedAt')
       }
     },
   })
@@ -307,6 +316,29 @@ export async function getAllRodSetups(): Promise<RodSetup[]> {
 export async function deleteRodSetup(id: string): Promise<void> {
   const db = await getDB()
   await db.delete('rodSetups', id)
+}
+
+// ─── Rod Catalog ──────────────────────────────────────────────────────────────
+
+export async function saveRod(rod: Rod): Promise<void> {
+  const db = await getDB()
+  await db.put('rods', rod)
+}
+
+export async function getAllRods(): Promise<Rod[]> {
+  const db = await getDB()
+  const rods = await db.getAllFromIndex('rods', 'by-added')
+  return rods.reverse()
+}
+
+export async function deleteRod(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('rods', id)
+}
+
+export async function bulkDeleteRods(ids: string[]): Promise<void> {
+  const db = await getDB()
+  for (const id of ids) await db.delete('rods', id)
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────

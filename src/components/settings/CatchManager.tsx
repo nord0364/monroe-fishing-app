@@ -333,7 +333,7 @@ export default function CatchManager({ onClose }: Props) {
       {/* ── Bulk delete confirmation ────────────────────────────────────────── */}
       {bulkDeleteConfirm && (
         <div className="px-4 py-3 bg-red-950/80 border-b border-red-800">
-          <p className="th-text text-sm mb-3 font-medium">
+          <p className="text-white text-sm mb-3 font-medium">
             Permanently delete {selected.size} catch{selected.size !== 1 ? 'es' : ''}? This cannot be undone.
           </p>
           <div className="flex gap-2">
@@ -474,7 +474,7 @@ export default function CatchManager({ onClose }: Props) {
                                     Edit
                                   </button>
                                   <button onClick={() => setDeleteId(f.id)}
-                                    className="flex-1 py-2.5 bg-red-900/40 border border-red-700 text-red-300 rounded-xl text-xs font-semibold">
+                                    className="flex-1 py-2.5 bg-red-700 text-white rounded-xl text-xs font-semibold">
                                     Delete
                                   </button>
                                 </div>

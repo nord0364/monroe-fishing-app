@@ -44,6 +44,11 @@
   --th-badge-high-bg:   #064e3b;
   --th-badge-high-text: #6ee7b7;
   --th-card-glow:       rgba(5, 150, 105, 0.06);
+  /* Danger / warning — light tones for dark surfaces */
+  --th-danger-text:     #fca5a5;
+  --th-danger-bg:       rgba(127, 29, 29, 0.22);
+  --th-warning-text:    #fcd34d;
+  --th-warning-bg:      rgba(146, 64, 14, 0.20);
 }
 
 /* ── Adaptive — predawn: deep dark, eye-friendly, warm-shifted for night vision */
@@ -66,6 +71,10 @@
   --th-badge-high-bg:   #1c0902;
   --th-badge-high-text: #fcd34d;
   --th-card-glow:       rgba(146, 64, 14, 0.08);
+  --th-danger-text:     #fca5a5;
+  --th-danger-bg:       rgba(127, 29, 29, 0.22);
+  --th-warning-text:    #fcd34d;
+  --th-warning-bg:      rgba(146, 64, 14, 0.20);
 }
 
 /* ── Adaptive — daytime: sharp, high-contrast dark for outdoor readability ─── */
@@ -88,6 +97,10 @@
   --th-badge-high-bg:   #082f49;
   --th-badge-high-text: #7dd3fc;
   --th-card-glow:       rgba(2, 132, 199, 0.06);
+  --th-danger-text:     #fca5a5;
+  --th-danger-bg:       rgba(127, 29, 29, 0.22);
+  --th-warning-text:    #fcd34d;
+  --th-warning-bg:      rgba(146, 64, 14, 0.20);
 }
 
 /* ── Adaptive — golden hour: warm amber at dawn and dusk ──────────────────── */
@@ -110,6 +123,10 @@
   --th-badge-high-bg:   #431407;
   --th-badge-high-text: #fdba74;
   --th-card-glow:       rgba(194, 65, 12, 0.08);
+  --th-danger-text:     #fca5a5;
+  --th-danger-bg:       rgba(127, 29, 29, 0.22);
+  --th-warning-text:    #fcd34d;
+  --th-warning-bg:      rgba(146, 64, 14, 0.20);
 }
 
 /* ── Light theme: clean, intentional, full-sun outdoor readability ─────────── */
@@ -132,6 +149,11 @@
   --th-badge-high-bg:   #d1fae5;
   --th-badge-high-text: #065f46;
   --th-card-glow:       rgba(3, 105, 161, 0.05);
+  /* Danger / warning — dark tones for light surfaces */
+  --th-danger-text:     #b91c1c;
+  --th-danger-bg:       #fee2e2;
+  --th-warning-text:    #92400e;
+  --th-warning-bg:      #fef3c7;
 }
 
 /* ── Auto theme — follows system (JS sets data-theme="dark" or "light") ─────── */
@@ -155,6 +177,10 @@
     --th-badge-high-bg:   #d1fae5;
     --th-badge-high-text: #065f46;
     --th-card-glow:       rgba(3, 105, 161, 0.05);
+    --th-danger-text:     #b91c1c;
+    --th-danger-bg:       #fee2e2;
+    --th-warning-text:    #92400e;
+    --th-warning-bg:      #fef3c7;
   }
 }
 
@@ -195,6 +221,11 @@
 
 .th-nav-active   { color: var(--th-accent-text); }
 .th-nav-inactive { color: var(--th-text-muted); }
+
+.th-danger-text  { color: var(--th-danger-text); }
+.th-danger-bg    { background-color: var(--th-danger-bg); }
+.th-warning-text { color: var(--th-warning-text); }
+.th-warning-bg   { background-color: var(--th-warning-bg); }
 
 /* ─── Base resets for mobile-first PWA ───────────────────────────────────── */
 *, *::before, *::after {

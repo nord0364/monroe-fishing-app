@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Session, AppSettings, CatchEvent, StandaloneGuideEntry } from '../../types'
+import type { Session, AppSettings, CatchEvent, StandaloneGuideEntry, Rod } from '../../types'
 import {
   getEventsForSession, saveEvent, saveStandaloneGuideEntry,
   getAllStandaloneGuideEntries, deleteStandaloneGuideEntry,
-  bulkDeleteStandaloneGuideEntries, getAllSessions, saveSession,
+  bulkDeleteStandaloneGuideEntries, getAllSessions, saveSession, getAllRods,
 } from '../../db/database'
 import {
   buildGuideSystemPrompt, streamGuideResponse, generateCheckpointSummary,
@@ -131,8 +131,8 @@ function GuideHistory({ entries, onDelete, onBulkDelete }: HistoryProps) {
             </div>
 
             {isBulkTarget && (
-              <div className="px-3 pb-3 bg-red-900/20 border-t th-border">
-                <p className="text-red-300 text-xs py-2">Delete all {monthEntries.length} sessions from {monthLabel(key)}?</p>
+              <div className="px-3 pb-3 th-danger-bg border-t th-border">
+                <p className="th-danger-text text-xs py-2">Delete all {monthEntries.length} sessions from {monthLabel(key)}?</p>
                 {bulkConfirm === key ? (
                   <div className="flex gap-2">
                     <button onClick={() => { onBulkDelete(monthEntries.map(e => e.id)); setBulkMonth(null); setBulkConfirm(null) }}
@@ -147,7 +147,7 @@ function GuideHistory({ entries, onDelete, onBulkDelete }: HistoryProps) {
                 ) : (
                   <div className="flex gap-2">
                     <button onClick={() => setBulkConfirm(key)}
-                      className="flex-1 py-2 bg-red-900/50 border border-red-700/60 rounded-lg text-red-300 text-xs font-semibold">
+                      className="flex-1 py-2 bg-red-700 rounded-lg text-white text-xs font-semibold">
                       Confirm Delete
                     </button>
                     <button onClick={() => setBulkMonth(null)}
@@ -227,6 +227,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
   const [standaloneHistory, setStandaloneHistory] = useState<StandaloneGuideEntry[]>([])
   const [recentAnalyses, setRecentAnalyses]   = useState<string[]>([])
   const [openingDone, setOpeningDone]         = useState(false)
+  const [rodInventory, setRodInventory]       = useState<Rod[]>([])
 
   const chatEndRef             = useRef<HTMLDivElement>(null)
   const imgInputRef            = useRef<HTMLInputElement>(null)
@@ -247,6 +248,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
 
   // ── Fetch session events + recent analyses on open ───────────────────────────
   useEffect(() => {
+    getAllRods().then(setRodInventory).catch(() => {})
     if (session) {
       getEventsForSession(session.id).then(setSessionEvents).catch(() => {})
       // Load recent session analyses for context
@@ -351,8 +353,12 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
     const includePattern = patternInjected || mentionsHistory(userText)
     if (includePattern && !patternInjected) setPatternInjected(true)
     const patternSummary = includePattern ? (loadPatternCache()?.summary) : undefined
-    return buildGuideSystemPrompt(session, sessionEvents, patternSummary, recentAnalyses)
-  }, [session, sessionEvents, patternInjected, recentAnalyses])
+    return buildGuideSystemPrompt(
+      session, sessionEvents, patternSummary, recentAnalyses,
+      session?.selectedRods ?? undefined,
+      rodInventory.length > 0 ? rodInventory : undefined,
+    )
+  }, [session, sessionEvents, patternInjected, recentAnalyses, rodInventory])
 
   // ── Core send ─────────────────────────────────────────────────────────────────
   const doSend = useCallback(async (

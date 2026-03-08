@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { Session, CatchEvent, LandedFish } from '../types'
+import type { Session, CatchEvent, LandedFish, Rod } from '../types'
 import { getLaunchPointContext } from '../data/launchPointContext'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -38,6 +38,8 @@ export function buildGuideSystemPrompt(
   sessionEvents: CatchEvent[],
   patternSummary?: string,
   recentAnalysisSummaries?: string[],
+  selectedRods?: Rod[],
+  rodInventory?: Rod[],
 ): string {
   const parts: string[] = [GUIDE_PERSONA]
 
@@ -68,6 +70,30 @@ export function buildGuideSystemPrompt(
     if (launchCtx) {
       const detail = launchCtx.detailedSummary.startsWith('TODO') ? '' : `\nDetailed: ${launchCtx.detailedSummary}`
       parts.push(`\nLAUNCH POINT CONTEXT — ${launchCtx.name}:\nReachable range (kayak): ~${launchCtx.maxRecommendedRange} nmi. All location recs must be within this range.\nStructures: ${launchCtx.structures}\nDepths: ${launchCtx.depths}\nSeasonal: ${launchCtx.seasonalNotes}${detail}`)
+    }
+
+    // Full rod inventory (stable context)
+    if (rodInventory && rodInventory.length > 0) {
+      const rodLines = rodInventory.map(r => {
+        const specs = [
+          r.rodType,
+          r.power,
+          r.action,
+          r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
+          r.lineType,
+          r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
+          r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
+          r.reelName ? `reel: ${r.reelName}` : null,
+        ].filter(Boolean).join(', ')
+        return `- "${r.nickname}": ${specs || 'no specs'}`
+      }).join('\n')
+      parts.push(`\nROD INVENTORY:\n${rodLines}`)
+    }
+
+    // Selected rods for this session
+    if (selectedRods && selectedRods.length > 0) {
+      const selLines = selectedRods.map(r => `- "${r.nickname}"`).join('\n')
+      parts.push(`\nRODS ON THE WATER TODAY (app-selected for conditions):\n${selLines}\nWhen recommending a lure or technique, specify the exact rod nickname the angler should use.`)
     }
 
     // Session working memory — compact event block

@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import type { EnvironmentalConditions, Session, LaunchSite, AppSettings } from '../../types'
+import type { EnvironmentalConditions, Session, LaunchSite, AppSettings, Rod } from '../../types'
 import { fetchWeather, fetchForecastWeather } from '../../api/weather'
 import { fetchMoonData } from '../../api/moon'
 import { fetchWaterData } from '../../api/water'
 import { generatePreSessionBriefing, askPreSessionQuestion } from '../../api/claude'
-import { saveSession, getLandedFish, getAllOwnedLures, getAllRodSetups, getAllSessions } from '../../db/database'
+import { saveSession, getLandedFish, getAllOwnedLures, getAllRodSetups, getAllSessions, getAllRods } from '../../db/database'
 import { generatePatternSummary, needsRefresh, loadPatternCache, savePatternCache } from '../../ai/patternMemory'
 import { LAUNCH_SITES } from '../../constants'
 import QuickSelect from '../layout/QuickSelect'
@@ -12,6 +12,62 @@ import { nanoid } from '../logger/nanoid'
 import BriefingView from './BriefingView'
 import InSessionGuide from './InSessionGuide'
 import type { AIBriefing } from '../../types'
+
+// ─── Rod ranking ──────────────────────────────────────────────────────────────
+
+function scoreRodForSession(rod: Rod, conditions: EnvironmentalConditions): number {
+  let score = 0
+  const month = new Date().getMonth()     // 0-indexed
+  const waterTemp = conditions.waterTempF ?? 62
+  const clarity   = conditions.waterClarity
+
+  const isCold    = waterTemp < 50
+  const isWarm    = waterTemp >= 65
+  const isPrespawn = month >= 2 && month <= 4   // Mar-May
+  const isFall    = month >= 8 && month <= 10   // Sep-Nov
+
+  // Power match
+  if (rod.power) {
+    const heavy   = ['Heavy', 'Extra Heavy', 'Medium Heavy']
+    const finesse = ['Ultra Light', 'Light', 'Medium Light']
+    if ((isPrespawn || isWarm) && heavy.includes(rod.power))   score += 3
+    if ((isCold || isFall)    && finesse.includes(rod.power))  score += 3
+    if (rod.power === 'Medium')                                 score += 1  // always versatile
+  }
+
+  // Action match
+  if (rod.action) {
+    const reactionActions = ['Fast', 'Extra Fast']
+    const finesseActions  = ['Slow', 'Moderate']
+    if (!isCold && reactionActions.includes(rod.action)) score += 2
+    if (isCold  && finesseActions.includes(rod.action))  score += 2
+  }
+
+  // Line type match to clarity
+  if (rod.lineType && clarity) {
+    if (clarity === 'Clear'   && rod.lineType === 'Fluorocarbon')                   score += 3
+    if (clarity === 'Clear'   && rod.lineType === 'Braid with Fluorocarbon Leader') score += 2
+    if (clarity === 'Stained' && (rod.lineType === 'Braid' || rod.lineType === 'Braid with Fluorocarbon Leader')) score += 2
+    if (clarity === 'Muddy'   && rod.lineType === 'Braid')                          score += 3
+  }
+
+  // Lure weight range vs typical session weight
+  const typicalOz = isCold ? 0.25 : (isWarm ? 0.5 : 0.375)
+  if (rod.lureWeightMinOz != null && rod.lureWeightMaxOz != null) {
+    if (typicalOz >= rod.lureWeightMinOz && typicalOz <= rod.lureWeightMaxOz) score += 3
+    else if (typicalOz >= rod.lureWeightMinOz - 0.125 && typicalOz <= rod.lureWeightMaxOz + 0.125) score += 1
+  }
+
+  return score
+}
+
+function selectRodsForSession(rods: Rod[], count: number, conditions: EnvironmentalConditions): Rod[] {
+  if (rods.length === 0 || count <= 0) return []
+  const scored = rods
+    .map(rod => ({ rod, score: scoreRodForSession(rod, conditions) }))
+    .sort((a, b) => b.score - a.score)
+  return scored.slice(0, Math.min(count, rods.length)).map(s => s.rod)
+}
 
 const BRIEFING_STORAGE_KEY = (sessionId: string) => `briefing-${sessionId}`
 
@@ -75,6 +131,8 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
   const [loadError, setLoadError]                   = useState('')
   const [apiError, setApiError]                     = useState('')
   const [dotIdx, setDotIdx]                         = useState(0)
+  const [rodInventory, setRodInventory]             = useState<Rod[]>([])
+  const [rodCount, setRodCount]                     = useState<number>(3)
 
   // Quick question (on review step)
   const [qaInput, setQaInput]       = useState('')
@@ -112,6 +170,9 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
   const tomorrowStr = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() + 1); return toDateStr(d)
   }, [])
+
+  // Load rod inventory on mount
+  useEffect(() => { getAllRods().then(setRodInventory) }, [])
 
   // Restore briefing when navigating back to this tab
   useEffect(() => {
@@ -216,6 +277,8 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
         `Frame all guidance for the planned session time — use future tense ("conditions will favor...", "expect...").`
       : new Date().toLocaleString()
 
+    const selectedRods = selectRodsForSession(rodInventory, rodCount, finalConditions)
+
     const session: Session = {
       id: nanoid(),
       date: targetDate.setHours(startHour, 0, 0, 0),
@@ -223,6 +286,7 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
       startTime: Date.now(),
       conditions: finalConditions,
       ...(isFuture && { plannedDate: targetDate.getTime(), plannedWindow: windowStr }),
+      ...(selectedRods.length > 0 && { selectedRods }),
     }
 
     try {
@@ -258,6 +322,7 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
         rodSetups,
         undefined,
         sessionContextStr + '\n\n' + patternSummary,
+        selectedRods.length > 0 ? selectedRods : undefined,
       )
 
       session.aiBriefing = briefing.narrative
@@ -503,6 +568,26 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
                   <div ref={qaEndRef} />
                 </div>
               )}
+            </div>
+          )}
+
+          {rodInventory.length > 0 && (
+            <div className="th-surface rounded-xl border th-border p-4">
+              <label className="section-label">How many rods are you bringing?</label>
+              <div className="flex gap-2 mt-2">
+                {[1, 2, 3, 4, 5, 6].map(n => (
+                  <button key={n} onClick={() => setRodCount(n)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border ${
+                      rodCount === n ? 'th-btn-primary border-transparent' : 'th-surface th-text'
+                    }`}
+                    style={rodCount !== n ? { borderColor: 'var(--th-border)' } : {}}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p className="th-text-muted text-xs mt-2">
+                The app will select the {Math.min(rodCount, rodInventory.length)} best rod{Math.min(rodCount, rodInventory.length) !== 1 ? 's' : ''} for today's conditions and tell Scout which rod to recommend for each lure.
+              </p>
             </div>
           )}
 
