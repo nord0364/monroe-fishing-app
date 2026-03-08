@@ -188,8 +188,9 @@ export async function* chatWithSessionGuide(
         const t = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         if (e.type === 'Landed Fish') return `${t}: Landed ${e.species} ${e.weightLbs}lb ${e.weightOz}oz on ${e.lureType}`
         if (e.type === 'Visual Sighting') return `${t}: Visual Sighting`
-        return `${t}: ${e.type} on ${e.lureType}`
-      }).join('\n')
+        if (e.type === 'Guide Summary' || e.type === 'Guide Image Analysis') return null
+        return `${t}: ${e.type} on ${(e as { lureType?: string }).lureType ?? '?'}`
+      }).filter(Boolean).join('\n')
     : 'No events logged yet this session.'
 
   const systemPrompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington, Indiana. The angler is ON THE WATER RIGHT NOW during an active session. Give specific, concise, actionable advice. The angler has limited attention — keep answers to 3-5 sentences max unless they ask for more detail.

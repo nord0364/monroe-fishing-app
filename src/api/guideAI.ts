@@ -1,0 +1,142 @@
+import Anthropic from '@anthropic-ai/sdk'
+import type { Session, CatchEvent, LandedFish } from '../types'
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+export interface GuideMessage {
+  role: 'user' | 'assistant'
+  content: string
+  id: string
+  hasImage?: boolean   // user sent an image with this message
+}
+
+// ─── Keyword detection for historical pattern questions ───────────────────────
+
+const HISTORY_KEYWORDS = [
+  'history', 'usually', 'before', 'last year', 'typically', 'pattern',
+  'tend', 'always', 'ever', 'past', 'previously', 'used to',
+]
+
+export function mentionsHistory(text: string): boolean {
+  const lower = text.toLowerCase()
+  return HISTORY_KEYWORDS.some(kw => lower.includes(kw))
+}
+
+// ─── System prompt ─────────────────────────────────────────────────────────────
+
+const GUIDE_PERSONA = `You are an experienced bass fishing guide with deep knowledge of Lake Monroe in Bloomington, Indiana. You know the lake's structure, seasonal patterns, water clarity tendencies, forage, and how local weather affects fish behavior and positioning.
+
+You give direct, practical recommendations — not generic fishing advice. When the angler shares conditions, observations, or images, you interpret them specifically and tell them what to do next.
+
+You ask at most one clarifying question per response and only when it materially changes your recommendation. You do not pad responses with disclaimers or generic encouragement. Keep responses concise and scannable — short paragraphs, no walls of text. If a response includes a recommendation list, format it as a simple numbered sequence.
+
+The angler is fishing from a kayak, primarily targeting largemouth bass larger than average, during early morning sessions.`
+
+export function buildGuideSystemPrompt(
+  session: Session | null,
+  sessionEvents: CatchEvent[],
+  patternSummary?: string,
+): string {
+  const parts: string[] = [GUIDE_PERSONA]
+
+  if (session) {
+    const c = session.conditions
+    const condParts = [
+      c.airTempF         != null ? `Air ${c.airTempF}°F`                                           : '',
+      c.waterTempF       != null ? `Water ${c.waterTempF}°F`                                       : '',
+      c.windSpeedMph     != null ? `Wind ${c.windSpeedMph}mph ${c.windDirection ?? ''}`.trim()     : '',
+      c.skyCondition                ? `Sky: ${c.skyCondition}`                                     : '',
+      c.baroPressureInHg != null
+        ? `Baro: ${c.baroPressureInHg}"${c.baroTrend ? ` (${c.baroTrend}${c.baroTrendMb ? ` ${c.baroTrendMb} mb` : ''})` : ''}`
+        : '',
+      c.waterClarity        ? `Clarity: ${c.waterClarity}`                                         : '',
+      c.waterLevelVsNormal  ? `Level: ${c.waterLevelVsNormal}`                                     : '',
+      c.dewpointF        != null ? `Dewpoint ${c.dewpointF}°F`                                     : '',
+      c.skyCoverPct      != null ? `Sky cover ${c.skyCoverPct}%`                                   : '',
+      c.precipProbPct    != null ? `Rain chance ${c.precipProbPct}%`                               : '',
+    ].filter(Boolean).join(' | ')
+
+    parts.push(`\nSESSION CONDITIONS:\n${condParts || 'Not available'}`)
+    parts.push(`Launch site: ${session.launchSite}`)
+
+    // Session working memory — compact event block
+    const landed = sessionEvents.filter((e): e is LandedFish => e.type === 'Landed Fish')
+    const strikes = sessionEvents.filter(e => e.type === 'Quality Strike — Missed').length
+    const follows = sessionEvents.filter(e => e.type === 'Follow — Did Not Strike').length
+
+    parts.push('\nSESSION WORKING MEMORY:')
+    if (landed.length > 0) {
+      const lines = landed.map(f => {
+        const t = new Date(f.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        return `${t}: ${f.species} ${(f.weightLbs + f.weightOz / 16).toFixed(1)} lbs on ${f.lureType} (${f.lureColor})`
+      })
+      parts.push(`${landed.length} fish landed:\n${lines.join('\n')}`)
+    } else {
+      parts.push('No fish landed yet this session.')
+    }
+    if (strikes > 0) parts.push(`${strikes} quality strike(s) missed.`)
+    if (follows > 0) parts.push(`${follows} follow(s) without strike.`)
+  } else {
+    parts.push('\nThe angler is consulting outside of an active session. Use historical context when relevant.')
+  }
+
+  if (patternSummary) {
+    parts.push(`\nHISTORICAL PATTERN DATA:\n${patternSummary}`)
+  }
+
+  return parts.filter(Boolean).join('\n')
+}
+
+// ─── Streaming Guide response ─────────────────────────────────────────────────
+
+export async function* streamGuideResponse(
+  apiKey: string,
+  systemPrompt: string,
+  messages: GuideMessage[],
+  newUserContent: Anthropic.Messages.MessageParam['content'],
+): AsyncGenerator<string> {
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+
+  // Prior messages in history are always text-only (images discarded after send)
+  const priorMessages: Anthropic.Messages.MessageParam[] = messages.map(m => ({
+    role: m.role,
+    content: m.content,
+  }))
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 600,
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+    messages: [...priorMessages, { role: 'user', content: newUserContent }],
+  })
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      yield event.delta.text
+    }
+  }
+}
+
+// ─── Checkpoint summary (background, non-blocking) ────────────────────────────
+
+export async function generateCheckpointSummary(
+  apiKey: string,
+  messages: GuideMessage[],
+): Promise<string> {
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+
+  const transcript = messages
+    .map(m => `${m.role === 'user' ? 'Angler' : 'Guide'}: ${m.content}`)
+    .join('\n\n')
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: `Summarize the key intelligence from this fishing guide conversation in 3–6 sentences. Capture what was observed or reported, what was recommended, and what the angler indicated they would try. Be specific and data-like — this summary will be used as context for future AI sessions.\n\nCONVERSATION:\n${transcript}`,
+    }],
+  })
+
+  return response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+}

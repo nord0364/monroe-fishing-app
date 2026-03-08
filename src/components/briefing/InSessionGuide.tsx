@@ -124,7 +124,12 @@ export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger
     c.airTempF   != null ? `${c.airTempF}°F air`   : null,
     c.waterTempF != null ? `${c.waterTempF}°F water` : null,
     c.windSpeedMph != null ? `${c.windSpeedMph}mph ${c.windDirection ?? ''}`.trim() : null,
-    c.baroTrend  ? `Baro ${c.baroTrend}`  : null,
+    c.baroTrend
+      ? `Baro ${c.baroTrend}${c.baroTrendMb != null ? ` ${Math.abs(c.baroTrendMb).toFixed(1)} mb` : ''}`
+      : null,
+    c.dewpointF    != null ? `Dewpoint ${c.dewpointF}°F`  : null,
+    c.skyCoverPct  != null ? `Sky ${c.skyCoverPct}%`       : null,
+    c.precipProbPct != null ? `Rain ${c.precipProbPct}%`   : null,
     c.waterClarity ?? null,
   ].filter(Boolean) as string[]
 

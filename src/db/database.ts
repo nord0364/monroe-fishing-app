@@ -2,7 +2,7 @@ import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 import type {
   Session, CatchEvent, AppSettings, OwnedLure, RodSetup,
-  DebriefConversation, PersonalBestPin,
+  DebriefConversation, PersonalBestPin, StandaloneGuideEntry,
 } from '../types'
 
 interface FishingDB extends DBSchema {
@@ -44,13 +44,18 @@ interface FishingDB extends DBSchema {
     value: PersonalBestPin
     indexes: { 'by-species': string }
   }
+  guideEntries: {
+    key: string
+    value: StandaloneGuideEntry
+    indexes: { 'by-date': number }
+  }
 }
 
 let _db: IDBPDatabase<FishingDB> | null = null
 
 async function getDB(): Promise<IDBPDatabase<FishingDB>> {
   if (_db) return _db
-  _db = await openDB<FishingDB>('fishing-tracker', 3, {
+  _db = await openDB<FishingDB>('fishing-tracker', 4, {
     upgrade(db, oldVersion) {
       if (oldVersion < 1) {
         const sessionsStore = db.createObjectStore('sessions', { keyPath: 'id' })
@@ -73,6 +78,10 @@ async function getDB(): Promise<IDBPDatabase<FishingDB>> {
         debriefStore.createIndex('by-updated', 'updatedAt')
         const pbStore = db.createObjectStore('personalBests', { keyPath: 'id' })
         pbStore.createIndex('by-species', 'species')
+      }
+      if (oldVersion < 4) {
+        const guideStore = db.createObjectStore('guideEntries', { keyPath: 'id' })
+        guideStore.createIndex('by-date', 'createdAt')
       }
     },
   })
@@ -196,6 +205,29 @@ export async function getAllPersonalBests(): Promise<PersonalBestPin[]> {
 export async function deletePersonalBest(id: string): Promise<void> {
   const db = await getDB()
   await db.delete('personalBests', id)
+}
+
+// ─── Standalone Guide Entries ─────────────────────────────────────────────────
+
+export async function saveStandaloneGuideEntry(entry: StandaloneGuideEntry): Promise<void> {
+  const db = await getDB()
+  await db.put('guideEntries', entry)
+}
+
+export async function getAllStandaloneGuideEntries(): Promise<StandaloneGuideEntry[]> {
+  const db = await getDB()
+  const all = await db.getAllFromIndex('guideEntries', 'by-date')
+  return all.reverse()
+}
+
+export async function deleteStandaloneGuideEntry(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('guideEntries', id)
+}
+
+export async function bulkDeleteStandaloneGuideEntries(ids: string[]): Promise<void> {
+  const db = await getDB()
+  for (const id of ids) await db.delete('guideEntries', id)
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

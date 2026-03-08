@@ -13,6 +13,7 @@ interface Props {
   activeSession: Session | null
   onSessionChanged: (session: Session | null) => void
   onSessionEnded?: (session: Session) => void  // Called instead of onSessionChanged(null) when session ends
+  onOpenGuide?: () => void
 }
 
 const MONTH_LABELS = [
@@ -51,7 +52,7 @@ function formatDuration(ms: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-export default function SessionLogger({ settings, activeSession, onSessionChanged, onSessionEnded }: Props) {
+export default function SessionLogger({ settings, activeSession, onSessionChanged, onSessionEnded, onOpenGuide }: Props) {
   const [events, setEvents]           = useState<CatchEvent[]>([])
   const [view, setView]               = useState<'log' | 'entry' | 'briefing' | 'wrapup'>('log')
   const [sessions, setSessions]       = useState<Session[]>([])
@@ -248,6 +249,12 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
                 className="px-3 py-2.5 th-surface border th-border rounded-xl th-text text-xs font-medium min-h-[44px]"
               >
                 📋 Briefing
+              </button>
+              <button
+                onClick={() => onOpenGuide?.()}
+                className="px-3 py-2.5 th-surface border th-border rounded-xl th-text text-xs font-medium min-h-[44px]"
+              >
+                🗣️ Guide
               </button>
               <button
                 onClick={goToWrapup}

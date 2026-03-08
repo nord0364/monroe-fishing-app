@@ -177,7 +177,24 @@ export interface VisualSighting {
   historicalDate?: number
 }
 
-export type CatchEvent = LandedFish | QualityStrike | FollowNoStrike | VisualSighting
+export interface GuideEvent {
+  type: 'Guide Summary' | 'Guide Image Analysis'
+  id: string
+  sessionId: string
+  timestamp: number
+  coords?: GPSCoords
+  content: string
+}
+
+export type CatchEvent = LandedFish | QualityStrike | FollowNoStrike | VisualSighting | GuideEvent
+
+// ─── Standalone Guide (home screen history) ───────────────────────────────────
+
+export interface StandaloneGuideEntry {
+  id: string
+  createdAt: number
+  summary: string
+}
 
 // ─── Session ─────────────────────────────────────────────────────────────────
 
@@ -188,6 +205,11 @@ export interface EnvironmentalConditions {
   skyCondition?: string
   baroPressureInHg?: number
   baroTrend?: BaroTrend
+  baroTrendMb?: number       // numeric delta in mb (positive = rising)
+  dewpointF?: number
+  skyCoverPct?: number       // 0–100
+  precipProbPct?: number     // 0–100
+  weatherUpdatedAt?: number  // timestamp of last successful weather fetch
   waterTempF?: number
   waterTempSource?: string   // e.g. 'USGS gauge' | 'Open-Meteo estimate' | 'cached'
   waterDataAge?: number      // ms since cached value was fetched (present when serving cache)

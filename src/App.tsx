@@ -14,6 +14,7 @@ import TrophyRoom from './components/patterns/TrophyRoom'
 import Debrief from './components/debrief/Debrief'
 import Tackle from './components/tackle/Tackle'
 import Settings from './components/settings/Settings'
+import Guide from './components/guide/Guide'
 
 const SESSION_STORAGE_KEY = 'active-session'
 
@@ -88,6 +89,8 @@ export default function App() {
   const [ready, setReady] = useState(false)
   // For Debrief — carry ended session into Debrief tab
   const [pendingDebriefSession, setPendingDebriefSession] = useState<Session | null>(null)
+  // Guide overlay
+  const [showGuide, setShowGuide] = useState(false)
 
   useEffect(() => {
     getSettings().then(s => { setSettings(s); applyTheme(s); setReady(true) })
@@ -225,7 +228,15 @@ export default function App() {
             }
           }}
           onSettings={() => setShowSettings(true)}
+          onOpenGuide={() => setShowGuide(true)}
         />
+        {showGuide && (
+          <Guide
+            session={activeSession}
+            settings={settings}
+            onClose={() => setShowGuide(false)}
+          />
+        )}
       </div>
     )
   }
@@ -280,6 +291,7 @@ export default function App() {
               handleSessionEnd(session)
               setTab('debrief')
             }}
+            onOpenGuide={() => setShowGuide(true)}
           />
         )}
         {tab === 'debrief' && (
@@ -294,6 +306,15 @@ export default function App() {
       </main>
 
       <BottomNav active={tab} onChange={setTab} />
+
+      {/* Guide overlay — accessible from home screen and active Log session */}
+      {showGuide && (
+        <Guide
+          session={activeSession}
+          settings={settings}
+          onClose={() => setShowGuide(false)}
+        />
+      )}
     </div>
   )
 }
@@ -365,12 +386,13 @@ const HOME_CARDS: {
 ]
 
 function HomeScreen({
-  activeSession, onNavigate, onSettings,
+  activeSession, onNavigate, onSettings, onOpenGuide,
 }: {
   activeSession: Session | null
   settings?: AppSettings
   onNavigate: (tab: NavTab) => void
   onSettings: () => void
+  onOpenGuide: () => void
 }) {
   return (
     <div className="flex flex-col min-h-screen max-w-sm mx-auto px-4 pb-10">
@@ -403,6 +425,21 @@ function HomeScreen({
           <span className="shrink-0 text-lg">→</span>
         </button>
       )}
+
+      {/* Guide card — opens overlay, not a tab */}
+      <button
+        onClick={onOpenGuide}
+        className="w-full flex items-center gap-4 px-5 py-4 th-surface rounded-3xl border th-border text-left transition-all active:scale-[0.98] th-card-glow mb-3"
+      >
+        <span className="text-3xl shrink-0 w-12 h-12 flex items-center justify-center rounded-2xl th-surface-deep">
+          🗣️
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="th-text font-bold text-base leading-tight">Guide</div>
+          <div className="th-text-muted text-xs mt-0.5 leading-relaxed">On-water AI assistant — ask anything</div>
+        </div>
+        <span className="th-text-muted text-base shrink-0">›</span>
+      </button>
 
       {/* Destination cards */}
       <div className="flex flex-col gap-3 flex-1">
