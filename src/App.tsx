@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Session, AppSettings, SunriseSunsetCache } from './types'
+import { FONT_SIZE_STEPS, DEFAULT_FONT_STEP } from './constants'
 import { getSettings, saveSettings, exportAllDataFull } from './db/database'
 import {
   loadGoogleIdentityServices, syncToGoogleDrive,
@@ -55,8 +56,6 @@ function getAdaptivePhase(cache?: SunriseSunsetCache): string {
   return 'adaptive-night'
 }
 
-const FONT_SIZES: Record<string, string> = { small: '17px', normal: '20px', large: '24px' }
-
 function applyTheme(settings: AppSettings) {
   const theme = settings.colorTheme ?? 'adaptive'
   let dataTheme: string
@@ -72,7 +71,11 @@ function applyTheme(settings: AppSettings) {
   }
 
   document.documentElement.setAttribute('data-theme', dataTheme)
-  document.documentElement.style.fontSize = FONT_SIZES[settings.fontSize ?? 'normal']
+
+  const step = settings.fontSizeStep ?? DEFAULT_FONT_STEP
+  const px   = FONT_SIZE_STEPS[step] ?? 17
+  document.documentElement.style.setProperty('--base-font-size', `${px}px`)
+  try { localStorage.setItem('font-size-px', `${px}px`) } catch {}
 }
 
 export default function App() {

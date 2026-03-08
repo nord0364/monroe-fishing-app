@@ -4,6 +4,10 @@ export const LAKE_MONROE_COORDS = { lat: 39.0117, lng: -86.5083 }
 
 export const USGS_STATION = '03366500'
 
+// ─── Font size slider ─────────────────────────────────────────────────────────
+export const FONT_SIZE_STEPS = [14, 15, 16, 17, 18, 19, 20, 22, 24]
+export const DEFAULT_FONT_STEP = 3  // 17px
+
 export const LAUNCH_SITES: (LaunchSite | string)[] = [
   "Cartop Launch",
   "Moore's Creek",

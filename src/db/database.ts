@@ -252,6 +252,11 @@ export async function getSettings(): Promise<AppSettings> {
       base.colorTheme = 'light'
     }
   }
+  // Migrate old 3-option fontSize → fontSizeStep index
+  if (base.fontSizeStep == null && base.fontSize) {
+    const map: Record<string, number> = { small: 3, normal: 6, large: 8 }
+    base.fontSizeStep = map[base.fontSize] ?? 3
+  }
   return base
 }
 

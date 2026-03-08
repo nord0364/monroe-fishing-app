@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import type { AppSettings, ColorTheme, FontSize } from '../../types'
+import type { AppSettings, ColorTheme } from '../../types'
+import { FONT_SIZE_STEPS, DEFAULT_FONT_STEP } from '../../constants'
 import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, getEntryCount, replaceAllData, getLandedFish, getAllSessions } from '../../db/database'
 import { loadPatternCache, generatePatternSummary, savePatternCache } from '../../ai/patternMemory'
 import {
@@ -27,10 +28,12 @@ const THEME_OPTIONS: { value: ColorTheme; label: string; desc: string }[] = [
   { value: 'auto',     label: '📱 Auto',     desc: 'Follows your phone system setting' },
 ]
 
-const FONT_OPTIONS: { value: FontSize; label: string }[] = [
-  { value: 'small',  label: 'Regular' },
-  { value: 'normal', label: 'Large' },
-  { value: 'large',  label: 'XL' },
+const VERSION_HISTORY: { version: string; date: string }[] = [
+  { version: 'v1.4.0', date: 'March 8, 2026' },
+  { version: 'v1.3.0', date: 'March 7, 2026' },
+  { version: 'v1.2.0', date: 'February 20, 2026' },
+  { version: 'v1.1.0', date: 'January 15, 2026' },
+  { version: 'v1.0.0', date: 'December 1, 2025' },
 ]
 
 type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods' | 'catches' | 'drive-restore' | 'drive-manage'
@@ -463,8 +466,11 @@ export default function Settings({ settings, onUpdate }: Props) {
     onUpdate(updated)
   }
 
-  const setFontSize = async (fontSize: FontSize) => {
-    const updated: AppSettings = { ...settings, fontSize }
+  const setFontSizeStep = async (step: number) => {
+    const px = FONT_SIZE_STEPS[step] ?? 17
+    document.documentElement.style.setProperty('--base-font-size', `${px}px`)
+    try { localStorage.setItem('font-size-px', `${px}px`) } catch {}
+    const updated: AppSettings = { ...settings, fontSizeStep: step }
     await saveSettings(updated)
     onUpdate(updated)
   }
@@ -525,7 +531,7 @@ export default function Settings({ settings, onUpdate }: Props) {
   if (view === 'drive-manage')  return <DriveManageView  onClose={() => setView('main')} />
 
   const currentTheme    = settings.colorTheme ?? 'adaptive'
-  const currentFontSize = settings.fontSize ?? 'normal'
+  const currentFontStep = settings.fontSizeStep ?? DEFAULT_FONT_STEP
   const isActiveOrError = driveStatus === 'connected' || driveStatus === 'syncing' || driveStatus === 'queued' || driveStatus === 'error'
   const isExpiredOrWas  = driveStatus === 'expired' || (driveStatus === 'disconnected' && wasEverConnected())
   const isNeverConnected = driveStatus === 'disconnected' && !wasEverConnected()
@@ -580,21 +586,26 @@ export default function Settings({ settings, onUpdate }: Props) {
 
       {/* ── Font Size ────────────────────────────────────────────────────── */}
       <div className="th-surface rounded-xl p-4 border th-border space-y-3">
-        <h2 className="font-semibold th-text text-sm">Text Size</h2>
-        <div className="flex gap-2">
-          {FONT_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setFontSize(opt.value)}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                currentFontSize === opt.value ? 'th-btn-selected border-transparent' : 'th-surface-deep'
-              }`}
-              style={currentFontSize !== opt.value ? { borderColor: 'var(--th-border)', color: 'var(--th-text)' } : {}}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold th-text text-sm">Text Size</h2>
+          <span className="th-text font-bold text-sm">{FONT_SIZE_STEPS[currentFontStep]}px</span>
         </div>
+        <input
+          type="range"
+          min={0}
+          max={FONT_SIZE_STEPS.length - 1}
+          step={1}
+          value={currentFontStep}
+          onChange={e => setFontSizeStep(Number(e.target.value))}
+          className="w-full accent-[color:var(--th-accent-text)] h-2 rounded-full"
+        />
+        <div className="flex justify-between th-text-muted" style={{ fontSize: '0.6rem' }}>
+          <span>{FONT_SIZE_STEPS[0]}px</span>
+          <span>{FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1]}px</span>
+        </div>
+        <p className="th-text-muted text-sm leading-snug border-t th-border pt-3 mt-1">
+          Smallmouth hit the shallows at first light — spinnerbait tight to the bank, slow roll.
+        </p>
       </div>
 
       {/* ── API Key ──────────────────────────────────────────────────────── */}
@@ -875,6 +886,19 @@ export default function Settings({ settings, onUpdate }: Props) {
           AI powered by Claude (Anthropic). GPS via device hardware.<br />
           Weather: Open-Meteo + NWS · Moon: calculated · Water: USGS #03366500
         </p>
+      </div>
+
+      {/* ── Version History ──────────────────────────────────────────────── */}
+      <div className="th-surface-deep rounded-xl p-4 border th-border space-y-2">
+        <h2 className="font-semibold th-text text-sm">Version History</h2>
+        <div className="space-y-1.5 pt-1">
+          {VERSION_HISTORY.map(({ version, date }) => (
+            <div key={version} className="flex items-center justify-between">
+              <span className="th-text text-xs font-medium font-mono">{version}</span>
+              <span className="th-text-muted text-xs">{date}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

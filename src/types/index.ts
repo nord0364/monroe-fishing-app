@@ -259,7 +259,7 @@ export interface DebriefConversation {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export type ColorTheme = 'adaptive' | 'dark' | 'light' | 'auto'
-export type FontSize = 'small' | 'normal' | 'large'
+export type FontSize = 'small' | 'normal' | 'large'  // legacy — kept for migration
 
 export interface SunriseSunsetCache {
   sunrise: string   // "6:15 AM"
@@ -274,7 +274,8 @@ export interface AppSettings {
   customLureTypes: string[]
   onboardingDone: boolean
   colorTheme?: ColorTheme
-  fontSize?: FontSize
+  fontSize?: FontSize       // legacy — migrated to fontSizeStep on load
+  fontSizeStep?: number     // 0–8 index into [14,15,16,17,18,19,20,22,24], default 3 (17px)
   sunriseSunsetCache?: SunriseSunsetCache
   googleClientId?: string  // optional override; app ships with a working default
 }

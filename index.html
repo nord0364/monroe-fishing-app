@@ -11,6 +11,13 @@
     <title>Lake Monroe Bass Tracker</title>
   </head>
   <body class="bg-slate-950 text-slate-100 min-h-screen">
+    <!-- Apply saved font size before React mounts to prevent flash -->
+    <script>
+      try {
+        var px = localStorage.getItem('font-size-px');
+        if (px) document.documentElement.style.setProperty('--base-font-size', px);
+      } catch(e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

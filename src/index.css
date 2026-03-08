@@ -17,6 +17,11 @@
   All other tokens (dark, light) are set directly on data-theme.
 */
 
+/* ── Root font size — controlled by --base-font-size JS variable ────────────── */
+:root {
+  font-size: var(--base-font-size, 17px);
+}
+
 /* ── Default / dark theme ──────────────────────────────────────────────────── */
 :root,
 [data-theme="dark"],

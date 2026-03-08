@@ -54,6 +54,8 @@ export function buildGuideSystemPrompt(
       c.dewpointF        != null ? `Dewpoint ${c.dewpointF}°F`                                     : '',
       c.skyCoverPct      != null ? `Sky cover ${c.skyCoverPct}%`                                   : '',
       c.precipProbPct    != null ? `Rain chance ${c.precipProbPct}%`                               : '',
+      c.sunrise                  ? `Sunrise ${c.sunrise}`                                          : '',
+      c.sunset                   ? `Sunset ${c.sunset}`                                            : '',
     ].filter(Boolean).join(' | ')
 
     parts.push(`\nSESSION CONDITIONS:\n${condParts || 'Not available'}`)

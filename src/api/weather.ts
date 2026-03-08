@@ -71,13 +71,24 @@ function wmoCodeToSky(code: number): string {
   return 'Cloudy'
 }
 
+// ─── Format ISO datetime → 12-hour local time string ─────────────────────────
+function fmtIsoTime(iso: string | null | undefined): string | undefined {
+  if (!iso) return undefined
+  const match = iso.match(/T(\d{2}):(\d{2})/)
+  if (!match) return undefined
+  const h = parseInt(match[1]), m = parseInt(match[2])
+  const h12 = h % 12 || 12
+  return `${h12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+}
+
 // ─── Open-Meteo — primary (fast, no auth, CORS-safe) ─────────────────────────
 async function fetchFromOpenMeteo(): Promise<Partial<EnvironmentalConditions>> {
   const { lat, lng } = LAKE_MONROE_COORDS
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
     `&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,surface_pressure` +
-    `&hourly=surface_pressure&timezone=America%2FIndiana%2FIndianapolis` +
+    `&hourly=surface_pressure&daily=sunrise,sunset` +
+    `&timezone=America%2FIndiana%2FIndianapolis` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&forecast_days=1`
 
   const res = await fetch(url)
@@ -102,7 +113,11 @@ async function fetchFromOpenMeteo(): Promise<Partial<EnvironmentalConditions>> {
     baroTrend = delta > 0.02 ? 'Rising' : delta < -0.02 ? 'Falling' : 'Steady'
   }
 
-  return { airTempF, windSpeedMph, windDirection, skyCondition, baroPressureInHg, baroTrend }
+  // Sunrise / sunset from daily endpoint
+  const sunrise = fmtIsoTime(data.daily?.sunrise?.[0])
+  const sunset  = fmtIsoTime(data.daily?.sunset?.[0])
+
+  return { airTempF, windSpeedMph, windDirection, skyCondition, baroPressureInHg, baroTrend, sunrise, sunset }
 }
 
 // ─── NWS gridpoint — enhanced baro trend + dewpoint + sky cover + POP ────────
