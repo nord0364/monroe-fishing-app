@@ -9,12 +9,13 @@ import CatchMap from './CatchMap'
 
 interface Props { settings: AppSettings }
 
-type Tab = 'size' | 'lure' | 'time' | 'history' | 'map' | 'chat'
+type Tab = 'size' | 'lure' | 'time' | 'history' | 'map' | 'photos' | 'chat'
 type Season = 'Spring' | 'Summer' | 'Fall' | 'Winter'
 
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 const tabs: { id: Tab; label: string }[] = [
+  { id: 'photos',  label: '📸 Photos' },
   { id: 'size',    label: 'Size' },
   { id: 'lure',    label: 'Lure' },
   { id: 'time',    label: 'Time' },
@@ -175,9 +176,84 @@ function HistoryView({ allFish, settings }: { allFish: LandedFish[]; settings: A
   )
 }
 
+// ── Photo Gallery ──────────────────────────────────────────────────────────────
+function PhotoGallery({ fish }: { fish: LandedFish[] }) {
+  const withPhotos = fish.filter(f => f.photoDataUrl)
+  const [lightbox, setLightbox] = useState<LandedFish | null>(null)
+
+  if (withPhotos.length === 0) {
+    return (
+      <div className="text-center py-16 px-4">
+        <div className="text-5xl mb-4">📷</div>
+        <p className="th-text font-semibold">No photos yet</p>
+        <p className="th-text-muted text-sm mt-1">Photos attached to caught fish will appear here.</p>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-1">
+        {withPhotos.map(f => {
+          const totalLbs = (f.weightLbs + f.weightOz / 16).toFixed(1)
+          return (
+            <button
+              key={f.id}
+              onClick={() => setLightbox(f)}
+              className="relative aspect-square overflow-hidden rounded-lg active:scale-95 transition-transform"
+            >
+              <img
+                src={f.photoDataUrl}
+                alt={f.species}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1">
+                <p className="text-white text-[10px] font-semibold leading-tight truncate">
+                  {totalLbs} lbs
+                </p>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox.photoDataUrl}
+            alt={lightbox.species}
+            className="max-h-[70vh] max-w-full object-contain rounded-xl mx-4"
+            onClick={e => e.stopPropagation()}
+          />
+          <div className="mt-4 text-center px-4" onClick={e => e.stopPropagation()}>
+            <p className="text-white font-bold text-lg">
+              {(lightbox.weightLbs + lightbox.weightOz / 16).toFixed(1)} lbs
+              {lightbox.lengthInches ? ` · ${lightbox.lengthInches}"` : ''}
+            </p>
+            <p className="text-white/70 text-sm">{lightbox.species}</p>
+            <p className="text-white/50 text-xs mt-1">
+              {new Date(lightbox.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+              {lightbox.lureType ? ` · ${lightbox.lureType}` : ''}
+            </p>
+          </div>
+          <button
+            onClick={() => setLightbox(null)}
+            className="mt-6 text-white/60 text-sm px-4 py-2 min-h-[44px]"
+          >
+            ✕ Close
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function PatternReview({ settings }: Props) {
-  const [tab, setTab] = useState<Tab>('size')
+  const [tab, setTab] = useState<Tab>('photos')
   const [allFish, setAllFish]     = useState<LandedFish[]>([])
   const [sessions, setSessions]   = useState<Session[]>([])
   const [loading, setLoading]     = useState(true)
@@ -235,7 +311,7 @@ export default function PatternReview({ settings }: Props) {
   return (
     <div className="flex flex-col pb-24" style={{ minHeight: 'calc(100vh - 60px)' }}>
       <div className="px-4 pt-4 pb-2">
-        <h1 className="text-xl font-bold th-text mb-0.5">Pattern Review</h1>
+        <h1 className="text-xl font-bold th-text mb-0.5">Trophy Room</h1>
         <p className="th-text-muted text-xs">
           {isFiltered
             ? `${filteredFish.length} catches · ${filterLabel}`
@@ -336,12 +412,14 @@ export default function PatternReview({ settings }: Props) {
       <div className="flex-1 overflow-y-auto px-4 pt-1">
         {loading ? (
           <div className="text-center py-12 th-text-muted">Loading…</div>
-        ) : allFish.length === 0 ? (
+        ) : allFish.length === 0 && tab !== 'photos' ? (
           <div className="text-center py-16">
             <div className="text-5xl mb-4">🎣</div>
-            <p className="th-text-muted">No catches logged yet.</p>
-            <p className="th-text-muted text-sm mt-1">Start a session or import historical data.</p>
+            <p className="th-text font-semibold">No catches logged yet</p>
+            <p className="th-text-muted text-sm mt-1">Start a session to begin building your Trophy Room.</p>
           </div>
+        ) : tab === 'photos' ? (
+          <PhotoGallery fish={allFish} />
         ) : tab === 'history' ? (
           <HistoryView allFish={allFish} settings={settings} />
         ) : tab === 'map' ? (
