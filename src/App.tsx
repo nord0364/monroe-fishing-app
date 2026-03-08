@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Session, AppSettings, SunriseSunsetCache } from './types'
 import { getSettings, saveSettings, exportAllDataFull } from './db/database'
-import { loadGoogleIdentityServices, syncToGoogleDrive, getDriveStatus } from './api/googleDrive'
+import {
+  loadGoogleIdentityServices, syncToGoogleDrive,
+  setQueuedSyncProvider, DEFAULT_CLIENT_ID,
+} from './api/googleDrive'
 import { fetchMoonData } from './api/moon'
 import BottomNav from './components/layout/BottomNav'
 import type { NavTab } from './components/layout/BottomNav'
@@ -12,7 +15,6 @@ import Debrief from './components/debrief/Debrief'
 import Tackle from './components/tackle/Tackle'
 import Settings from './components/settings/Settings'
 
-const GOOGLE_CLIENT_ID = '739245351229-s64vg3piu45jrhg98ovqi7ik51k5rfpm.apps.googleusercontent.com'
 const SESSION_STORAGE_KEY = 'active-session'
 
 function loadPersistedSession(): Session | null {
@@ -92,7 +94,14 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    loadGoogleIdentityServices(GOOGLE_CLIENT_ID).catch(() => {})
+    if (!ready) return
+    const clientId = settings.googleClientId?.trim() || DEFAULT_CLIENT_ID
+    loadGoogleIdentityServices(clientId).catch(() => {})
+  }, [ready, settings.googleClientId])
+
+  // Register data provider so Drive module can retry queued syncs when back online
+  useEffect(() => {
+    setQueuedSyncProvider(() => exportAllDataFull())
   }, [])
 
   // Apply theme whenever settings change
@@ -130,30 +139,39 @@ export default function App() {
   }, [ready])
 
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const triggerDriveSync = useCallback(() => {
-    if (getDriveStatus() !== 'connected') return
-    if (syncTimer.current) clearTimeout(syncTimer.current)
-    syncTimer.current = setTimeout(async () => {
-      try { const json = await exportAllDataFull(); await syncToGoogleDrive(json) } catch {}
-    }, 2000)
+
+  const doSync = useCallback(async () => {
+    try { await syncToGoogleDrive(await exportAllDataFull()) } catch {}
   }, [])
+
+  // Immediate sync (1 s to let DB flush) — used on session end
+  const triggerDriveSyncNow = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current)
+    syncTimer.current = setTimeout(doSync, 1_000)
+  }, [doSync])
+
+  // Debounced sync (30 s) — used on catch saves / mid-session edits
+  const triggerDriveSyncDebounced = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current)
+    syncTimer.current = setTimeout(doSync, 30_000)
+  }, [doSync])
 
   const handleSessionStart = (session: Session) => {
     setActiveSession(session); persistSession(session)
   }
   const handleSessionChanged = (session: Session | null) => {
-    setActiveSession(session); persistSession(session); triggerDriveSync()
+    setActiveSession(session); persistSession(session); triggerDriveSyncDebounced()
   }
   const handleSettingsUpdate = (s: AppSettings) => {
     setSettings(s)
   }
 
-  // When session ends, prompt debrief
+  // When session ends → immediate sync then navigate to debrief
   const handleSessionEnd = (session: Session) => {
     setPendingDebriefSession(session)
     setActiveSession(null)
     persistSession(null)
-    triggerDriveSync()
+    triggerDriveSyncNow()
   }
 
   // Splash while loading

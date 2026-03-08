@@ -254,6 +254,7 @@ export interface AppSettings {
   colorTheme?: ColorTheme
   fontSize?: FontSize
   sunriseSunsetCache?: SunriseSunsetCache
+  googleClientId?: string  // optional override; app ships with a working default
 }
 
 // ─── Gear Catalog ─────────────────────────────────────────────────────────────

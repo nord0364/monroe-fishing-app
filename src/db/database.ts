@@ -336,7 +336,46 @@ export async function exportCatchesCSV(): Promise<string> {
   return [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
 }
 
-// Merge-import from backup
+// ─── Entry count (for restore conflict detection) ──────────────────────────────
+
+export async function getEntryCount(): Promise<{ sessions: number; events: number; total: number }> {
+  const db = await getDB()
+  const [sessions, events] = await Promise.all([db.count('sessions'), db.count('events')])
+  return { sessions, events, total: sessions + events }
+}
+
+// ─── Full replace (used by restore — clears everything then imports) ────────────
+
+export async function replaceAllData(data: {
+  sessions?: Session[]; events?: CatchEvent[]
+  ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]
+  debriefs?: DebriefConversation[]
+}): Promise<{ sessions: number; events: number }> {
+  const db = await getDB()
+  await Promise.all([
+    db.clear('sessions'),
+    db.clear('events'),
+    db.clear('debriefs'),
+    db.clear('ownedLures'),
+    db.clear('rodSetups'),
+  ])
+  let sc = 0, ec = 0
+  for (const s of data.sessions   ?? []) { await db.put('sessions', s); sc++ }
+  for (const e of data.events     ?? []) { await db.put('events',   e); ec++ }
+  for (const d of data.debriefs   ?? []) await db.put('debriefs', d)
+  const now = Date.now()
+  for (const l of data.ownedLures ?? []) {
+    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
+      await db.put('ownedLures', { ...l, addedAt: l.addedAt ?? now })
+  }
+  for (const r of data.rodSetups  ?? []) {
+    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
+      await db.put('rodSetups', { ...r, addedAt: r.addedAt ?? now })
+  }
+  return { sessions: sc, events: ec }
+}
+
+// ─── Merge-import from backup ──────────────────────────────────────────────────
 export async function bulkImportData(data: {
   sessions?: Session[]; events?: CatchEvent[]
   ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]

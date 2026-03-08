@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import type { AppSettings, ColorTheme, FontSize } from '../../types'
-import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, bulkImportData } from '../../db/database'
+import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, getEntryCount, replaceAllData } from '../../db/database'
 import {
-  getDriveStatus, wasEverConnected, onDriveStatusChange,
+  getDriveStatus, wasEverConnected, onDriveStatusChange, getLastSyncTime, hasSyncQueued,
   connectGoogleDrive, disconnectGoogleDrive, syncToGoogleDrive,
-  downloadBackupFromDrive, type DriveStatus,
+  listBackupFiles, downloadFileById, deleteBackupFile,
+  loadGoogleIdentityServices, DEFAULT_CLIENT_ID,
+  type DriveStatus, type BackupFile,
 } from '../../api/googleDrive'
 import HistoricalImport from './HistoricalImport'
 import SpreadsheetImport from './SpreadsheetImport'
@@ -30,30 +32,389 @@ const FONT_OPTIONS: { value: FontSize; label: string }[] = [
   { value: 'large',  label: 'XL' },
 ]
 
-type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods' | 'catches'
+type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods' | 'catches' | 'drive-restore' | 'drive-manage'
 
+function fmtBytes(bytes?: string): string {
+  if (!bytes) return ''
+  const n = parseInt(bytes, 10)
+  if (isNaN(n)) return ''
+  if (n < 1024)       return `${n} B`
+  if (n < 1048576)    return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1048576).toFixed(1)} MB`
+}
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// ── Restore view ──────────────────────────────────────────────────────────────
+type RestorePhase =
+  | 'listing' | 'listed' | 'loading-file'
+  | 'preview' | 'conflict' | 'final-confirm'
+  | 'restoring' | 'done' | 'error'
+
+interface RestorePreview {
+  file:         BackupFile
+  json:         string
+  backupSessions: number
+  backupEvents: number
+  localTotal:   number
+}
+
+function DriveRestoreView({ onClose }: { onClose: () => void }) {
+  const [phase, setPhase]     = useState<RestorePhase>('listing')
+  const [files, setFiles]     = useState<BackupFile[]>([])
+  const [preview, setPreview] = useState<RestorePreview | null>(null)
+  const [result, setResult]   = useState<{ sessions: number; events: number } | null>(null)
+  const [error, setError]     = useState('')
+
+  useEffect(() => {
+    listBackupFiles()
+      .then(f => { setFiles(f); setPhase('listed') })
+      .catch(e => { setError(String(e)); setPhase('error') })
+  }, [])
+
+  const selectFile = async (file: BackupFile) => {
+    setPhase('loading-file')
+    try {
+      const json  = await downloadFileById(file.id)
+      const data  = JSON.parse(json)
+      const local = await getEntryCount()
+      setPreview({
+        file,
+        json,
+        backupSessions: data.sessions?.length ?? 0,
+        backupEvents:   data.events?.length ?? 0,
+        localTotal:     local.total,
+      })
+      const backupTotal = (data.sessions?.length ?? 0) + (data.events?.length ?? 0)
+      setPhase(backupTotal < local.total ? 'conflict' : 'preview')
+    } catch (e) {
+      setError(String(e)); setPhase('error')
+    }
+  }
+
+  const doRestore = async () => {
+    if (!preview) return
+    setPhase('restoring')
+    try {
+      const data = JSON.parse(preview.json)
+      const r    = await replaceAllData(data)
+      setResult(r)
+      setPhase('done')
+    } catch (e) {
+      setError(String(e)); setPhase('error')
+    }
+  }
+
+  return (
+    <div className="p-4 pb-20 max-w-lg mx-auto space-y-4">
+      <div className="flex items-center gap-3 py-1">
+        <button onClick={onClose} className="th-accent-text font-semibold text-sm min-h-[44px] pr-3">← Back</button>
+        <span className="th-text font-bold">Restore from Backup</span>
+      </div>
+
+      {/* Listing */}
+      {phase === 'listing' && (
+        <p className="th-text-muted text-sm text-center animate-pulse py-12">Fetching backup files…</p>
+      )}
+
+      {/* File list */}
+      {phase === 'listed' && (
+        <>
+          {files.length === 0 ? (
+            <div className="th-surface rounded-xl border th-border p-6 text-center space-y-2">
+              <p className="text-2xl">📭</p>
+              <p className="th-text font-semibold text-sm">No backups found</p>
+              <p className="th-text-muted text-xs">Run a sync from Settings to create your first backup.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="th-text-muted text-xs px-1">{files.length} backup{files.length !== 1 ? 's' : ''} — tap one to restore from it</p>
+              {files.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => selectFile(f)}
+                  className="w-full th-surface rounded-xl border th-border p-4 text-left flex items-center justify-between gap-3 active:opacity-70"
+                >
+                  <div className="min-w-0">
+                    <p className="th-text text-sm font-medium">{fmtDate(f.createdTime)}</p>
+                    {fmtBytes(f.size) && <p className="th-text-muted text-xs mt-0.5">{fmtBytes(f.size)}</p>}
+                  </div>
+                  <span className="th-text-muted text-base shrink-0">›</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Loading selected file */}
+      {phase === 'loading-file' && (
+        <p className="th-text-muted text-sm text-center animate-pulse py-12">Downloading backup…</p>
+      )}
+
+      {/* Preview — entry counts match or backup has more */}
+      {phase === 'preview' && preview && (
+        <div className="space-y-3">
+          <div className="th-surface rounded-xl border th-border p-4 space-y-2">
+            <p className="th-text font-semibold text-sm">Selected backup</p>
+            <p className="th-text-muted text-xs">{fmtDate(preview.file.createdTime)}</p>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div className="th-surface-deep rounded-lg p-3 text-center">
+                <p className="th-text font-bold text-lg">{preview.backupSessions}</p>
+                <p className="th-text-muted text-xs">sessions</p>
+              </div>
+              <div className="th-surface-deep rounded-lg p-3 text-center">
+                <p className="th-text font-bold text-lg">{preview.backupEvents}</p>
+                <p className="th-text-muted text-xs">catch events</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={() => setPhase('final-confirm')} className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold">
+            Continue to Restore →
+          </button>
+          <button onClick={() => setPhase('listed')} className="w-full py-3 th-surface border th-border rounded-xl text-sm th-text">
+            Choose a different file
+          </button>
+        </div>
+      )}
+
+      {/* Conflict warning — backup has fewer entries than local */}
+      {phase === 'conflict' && preview && (
+        <div className="space-y-3">
+          <div className="rounded-xl border-2 border-amber-500/60 bg-amber-500/10 p-4 space-y-2">
+            <p className="text-amber-400 font-semibold text-sm">⚠ Backup contains less data than your device</p>
+            <p className="th-text-muted text-xs leading-relaxed">
+              This backup has{' '}
+              <strong className="th-text">{preview.backupSessions + preview.backupEvents} entries</strong>{' '}
+              but your device currently has{' '}
+              <strong className="th-text">{preview.localTotal} entries</strong>.
+              Restoring this backup will permanently delete the entries that are not in it.
+            </p>
+          </div>
+          <div className="th-surface rounded-xl border th-border p-4 space-y-1">
+            <p className="th-text font-semibold text-sm">Backup contents</p>
+            <p className="th-text-muted text-xs">{fmtDate(preview.file.createdTime)}</p>
+            <p className="th-text-muted text-xs">{preview.backupSessions} sessions · {preview.backupEvents} catch events</p>
+          </div>
+          <button onClick={() => setPhase('final-confirm')} className="w-full py-3 rounded-xl text-sm font-semibold border-2 border-amber-500/60 text-amber-400">
+            I understand — continue anyway
+          </button>
+          <button onClick={() => setPhase('listed')} className="w-full py-3 th-surface border th-border rounded-xl text-sm th-text">
+            Choose a different file
+          </button>
+        </div>
+      )}
+
+      {/* Final destructive confirmation */}
+      {phase === 'final-confirm' && preview && (
+        <div className="space-y-3">
+          <div className="rounded-xl border-2 border-red-500/60 bg-red-500/10 p-4 space-y-3">
+            <p className="text-red-400 font-bold text-sm">⚠ This will replace ALL local data</p>
+            <p className="th-text-muted text-xs leading-relaxed">
+              All sessions, catches, debrief conversations, and gear on this device will be
+              permanently deleted and replaced with the contents of the selected backup.
+              This cannot be undone.
+            </p>
+            <div className="th-surface-deep rounded-lg p-3 text-xs th-text-muted space-y-0.5">
+              <p>Restoring: {fmtDate(preview.file.createdTime)}</p>
+              <p>{preview.backupSessions} sessions · {preview.backupEvents} catch events</p>
+            </div>
+          </div>
+          <button
+            onClick={doRestore}
+            className="w-full py-3.5 rounded-xl text-sm font-bold border-2 border-red-500 text-red-400 active:opacity-70"
+          >
+            Replace All Data — I Understand
+          </button>
+          <button onClick={() => setPhase('listed')} className="w-full py-3 th-surface border th-border rounded-xl text-sm th-text">
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Restoring */}
+      {phase === 'restoring' && (
+        <p className="th-text-muted text-sm text-center animate-pulse py-12">Restoring data…</p>
+      )}
+
+      {/* Done */}
+      {phase === 'done' && result && (
+        <div className="th-surface rounded-xl border th-border p-6 space-y-3 text-center">
+          <p className="text-4xl">✅</p>
+          <p className="text-green-400 font-bold">Restore complete</p>
+          <p className="th-text-muted text-xs">
+            {result.sessions} sessions and {result.events} catch events restored.
+          </p>
+          <button onClick={() => window.location.reload()} className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold">
+            Reload App
+          </button>
+        </div>
+      )}
+
+      {/* Error */}
+      {phase === 'error' && (
+        <div className="space-y-3">
+          <div className="th-surface rounded-xl border border-red-500/40 p-4 space-y-1">
+            <p className="text-red-400 font-semibold text-sm">Something went wrong</p>
+            {error && <p className="th-text-muted text-xs">{error}</p>}
+          </div>
+          <button onClick={() => { setPhase('listing'); setError(''); listBackupFiles().then(f => { setFiles(f); setPhase('listed') }).catch(e => { setError(String(e)); setPhase('error') }) }}
+            className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold">
+            Try again
+          </button>
+          <button onClick={onClose} className="w-full py-3 th-surface border th-border rounded-xl text-sm th-text">
+            Back to Settings
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Manage backups view ───────────────────────────────────────────────────────
+function DriveManageView({ onClose }: { onClose: () => void }) {
+  const [phase, setPhase]       = useState<'listing' | 'listed' | 'error'>('listing')
+  const [files, setFiles]       = useState<BackupFile[]>([])
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deletingInFlight, setDeletingInFlight] = useState(false)
+  const [error, setError]       = useState('')
+
+  const loadFiles = () => {
+    setPhase('listing')
+    listBackupFiles()
+      .then(f => { setFiles(f); setPhase('listed') })
+      .catch(e => { setError(String(e)); setPhase('error') })
+  }
+
+  useEffect(() => { loadFiles() }, [])
+
+  const handleDelete = async (fileId: string) => {
+    setDeletingInFlight(true)
+    try {
+      await deleteBackupFile(fileId)
+      setFiles(prev => prev.filter(f => f.id !== fileId))
+      setDeletingId(null)
+    } catch (e) {
+      setError(String(e))
+    }
+    setDeletingInFlight(false)
+  }
+
+  return (
+    <div className="p-4 pb-20 max-w-lg mx-auto space-y-4">
+      <div className="flex items-center gap-3 py-1">
+        <button onClick={onClose} className="th-accent-text font-semibold text-sm min-h-[44px] pr-3">← Back</button>
+        <span className="th-text font-bold">Manage Backups</span>
+      </div>
+
+      {phase === 'listing' && (
+        <p className="th-text-muted text-sm text-center animate-pulse py-12">Loading backup files…</p>
+      )}
+
+      {phase === 'error' && (
+        <div className="space-y-3">
+          <p className="text-red-400 text-sm">{error || 'Failed to load files.'}</p>
+          <button onClick={loadFiles} className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold">Retry</button>
+        </div>
+      )}
+
+      {phase === 'listed' && (
+        <>
+          {files.length === 0 ? (
+            <div className="th-surface rounded-xl border th-border p-6 text-center space-y-2">
+              <p className="text-2xl">📭</p>
+              <p className="th-text font-semibold text-sm">No backups in Drive</p>
+              <p className="th-text-muted text-xs">Backups appear here after your first sync.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="th-text-muted text-xs px-1">{files.length} backup file{files.length !== 1 ? 's' : ''} stored in Monroe Fishing App folder</p>
+              {files.map(f => (
+                <div key={f.id} className="th-surface rounded-xl border th-border p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="th-text text-sm font-medium">{fmtDate(f.createdTime)}</p>
+                      {fmtBytes(f.size) && <p className="th-text-muted text-xs mt-0.5">{fmtBytes(f.size)}</p>}
+                    </div>
+                    {deletingId !== f.id && (
+                      <button
+                        onClick={() => setDeletingId(f.id)}
+                        className="shrink-0 px-3 py-2 rounded-lg border border-red-500/40 text-red-400 text-xs font-medium min-h-[36px]"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                  {deletingId === f.id && (
+                    <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 space-y-2">
+                      <p className="text-red-400 text-xs font-medium">Delete this backup from Google Drive?</p>
+                      <p className="th-text-muted text-xs">This cannot be undone. Local app data is not affected.</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleDelete(f.id)}
+                          disabled={deletingInFlight}
+                          className="flex-1 py-2 rounded-lg border border-red-500 text-red-400 text-xs font-semibold disabled:opacity-40"
+                        >
+                          {deletingInFlight ? 'Deleting…' : 'Yes, Delete'}
+                        </button>
+                        <button
+                          onClick={() => setDeletingId(null)}
+                          className="flex-1 py-2 th-surface-deep border th-border rounded-lg text-xs th-text"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {error && <p className="text-red-400 text-xs px-1">{error}</p>}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Main Settings component ───────────────────────────────────────────────────
 export default function Settings({ settings, onUpdate }: Props) {
   const [view, setView]         = useState<View>('main')
   const [apiKey, setApiKey]     = useState(settings.anthropicApiKey)
   const [threshold, setThreshold] = useState(String(settings.sizeThresholdLbs))
+  const [googleClientId, setGoogleClientId] = useState(settings.googleClientId ?? '')
+  const [showDriveInstructions, setShowDriveInstructions] = useState(false)
   const [newLure, setNewLure]   = useState('')
   const [saved, setSaved]       = useState(false)
-  const [driveStatus, setDriveStatus]   = useState<DriveStatus>(getDriveStatus())
+
+  // Drive state
+  const [driveStatus, setDriveStatus]     = useState<DriveStatus>(getDriveStatus())
   const [driveConnecting, setDriveConnecting] = useState(false)
-  const [driveSyncing, setDriveSyncing] = useState(false)
-  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
-  const [restoreState, setRestoreState] = useState<'idle' | 'fetching' | 'confirm' | 'importing' | 'done' | 'error'>('idle')
-  const [restorePreview, setRestorePreview] = useState<{ modifiedTime: string; sessions: number; catches: number; json: string } | null>(null)
-  const [restoreResult, setRestoreResult] = useState<{ sessions: number; events: number } | null>(null)
+  const [driveSyncing, setDriveSyncing]   = useState(false)
+  const [lastSyncTime, setLastSyncTime]   = useState<number | null>(getLastSyncTime())
+  const [syncQueued, setSyncQueued]       = useState(hasSyncQueued())
 
   useEffect(() => onDriveStatusChange(s => {
     setDriveStatus(s)
-    if (s === 'connected') setDriveSyncing(false)
+    if (s === 'connected' || s === 'error') {
+      setDriveSyncing(false)
+      setLastSyncTime(getLastSyncTime())
+      setSyncQueued(hasSyncQueued())
+    }
+    if (s === 'queued') setSyncQueued(true)
   }), [])
+
+  const effectiveClientId = googleClientId.trim() || DEFAULT_CLIENT_ID
 
   const handleDriveConnect = async () => {
     setDriveConnecting(true)
-    try { await connectGoogleDrive() } catch {}
+    try {
+      await loadGoogleIdentityServices(effectiveClientId)
+      await connectGoogleDrive()
+    } catch {}
     setDriveConnecting(false)
   }
 
@@ -62,47 +423,18 @@ export default function Settings({ settings, onUpdate }: Props) {
     try {
       const json = await exportAllDataJSON()
       await syncToGoogleDrive(json)
-      setLastSyncTime(Date.now())
+      setLastSyncTime(getLastSyncTime())
+      setSyncQueued(false)
     } catch {}
     setDriveSyncing(false)
-  }
-
-  const handleRestoreFetch = async () => {
-    setRestoreState('fetching')
-    try {
-      const { json, modifiedTime } = await downloadBackupFromDrive()
-      const data = JSON.parse(json)
-      setRestorePreview({
-        modifiedTime,
-        sessions: data.sessions?.length ?? 0,
-        catches:  data.events?.filter((e: { type: string }) => e.type === 'Landed Fish').length ?? 0,
-        json,
-      })
-      setRestoreState('confirm')
-    } catch (err) {
-      console.error(err)
-      setRestoreState('error')
-    }
-  }
-
-  const handleRestoreConfirm = async () => {
-    if (!restorePreview) return
-    setRestoreState('importing')
-    try {
-      const data = JSON.parse(restorePreview.json)
-      const result = await bulkImportData(data)
-      setRestoreResult(result)
-      setRestoreState('done')
-    } catch {
-      setRestoreState('error')
-    }
   }
 
   const handleSave = async () => {
     const updated: AppSettings = {
       ...settings,
-      anthropicApiKey: apiKey.trim(),
+      anthropicApiKey:  apiKey.trim(),
       sizeThresholdLbs: parseFloat(threshold) || 3,
+      googleClientId:   googleClientId.trim() || undefined,
     }
     await saveSettings(updated)
     onUpdate(updated)
@@ -145,17 +477,17 @@ export default function Settings({ settings, onUpdate }: Props) {
   const downloadJSON = async () => {
     const json = await exportAllDataJSON()
     const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a'); a.href = url
     a.download = `bass-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click(); URL.revokeObjectURL(url)
   }
 
   const downloadCSV = async () => {
-    const csv = await exportCatchesCSV()
+    const csv  = await exportCatchesCSV()
     const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a'); a.href = url
     a.download = `bass-catches-${new Date().toISOString().slice(0, 10)}.csv`
     a.click(); URL.revokeObjectURL(url)
   }
@@ -163,20 +495,25 @@ export default function Settings({ settings, onUpdate }: Props) {
   const downloadTackle = async () => {
     const json = await exportTackleJSON()
     const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a'); a.href = url
     a.download = `tackle-export-${new Date().toISOString().slice(0, 10)}.json`
     a.click(); URL.revokeObjectURL(url)
   }
 
-  if (view === 'catches')    return <CatchManager onClose={() => setView('main')} />
-  if (view === 'import')     return <HistoricalImport settings={settings} onClose={() => setView('main')} />
-  if (view === 'csv-import') return <SpreadsheetImport onClose={() => setView('main')} />
-  if (view === 'lures')      return <LureCatalog apiKey={apiKey} onClose={() => setView('main')} />
-  if (view === 'rods')       return <RodCatalog  apiKey={apiKey} onClose={() => setView('main')} />
+  if (view === 'catches')       return <CatchManager onClose={() => setView('main')} />
+  if (view === 'import')        return <HistoricalImport settings={settings} onClose={() => setView('main')} />
+  if (view === 'csv-import')    return <SpreadsheetImport onClose={() => setView('main')} />
+  if (view === 'lures')         return <LureCatalog apiKey={apiKey} onClose={() => setView('main')} />
+  if (view === 'rods')          return <RodCatalog  apiKey={apiKey} onClose={() => setView('main')} />
+  if (view === 'drive-restore') return <DriveRestoreView onClose={() => setView('main')} />
+  if (view === 'drive-manage')  return <DriveManageView  onClose={() => setView('main')} />
 
   const currentTheme    = settings.colorTheme ?? 'adaptive'
   const currentFontSize = settings.fontSize ?? 'normal'
+  const isActiveOrError = driveStatus === 'connected' || driveStatus === 'syncing' || driveStatus === 'queued' || driveStatus === 'error'
+  const isExpiredOrWas  = driveStatus === 'expired' || (driveStatus === 'disconnected' && wasEverConnected())
+  const isNeverConnected = driveStatus === 'disconnected' && !wasEverConnected()
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto space-y-5">
@@ -191,18 +528,12 @@ export default function Settings({ settings, onUpdate }: Props) {
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setView('lures')}
-            className="flex flex-col items-center gap-1.5 py-4 th-surface-deep border th-border rounded-xl"
-          >
+          <button onClick={() => setView('lures')} className="flex flex-col items-center gap-1.5 py-4 th-surface-deep border th-border rounded-xl">
             <span className="text-2xl">🎣</span>
             <span className="th-text text-sm font-medium">Lure Catalog</span>
             <span className="th-text-muted text-xs">Photo + details</span>
           </button>
-          <button
-            onClick={() => setView('rods')}
-            className="flex flex-col items-center gap-1.5 py-4 th-surface-deep border th-border rounded-xl"
-          >
+          <button onClick={() => setView('rods')} className="flex flex-col items-center gap-1.5 py-4 th-surface-deep border th-border rounded-xl">
             <span className="text-2xl">🎯</span>
             <span className="th-text text-sm font-medium">Rod Setups</span>
             <span className="th-text-muted text-xs">Rod + line + reel</span>
@@ -266,9 +597,7 @@ export default function Settings({ settings, onUpdate }: Props) {
           onChange={e => setApiKey(e.target.value)}
           autoComplete="off" autoCorrect="off" spellCheck={false}
         />
-        {apiKey && (
-          <p className="th-accent-text text-xs">✓ Key stored locally on device only.</p>
-        )}
+        {apiKey && <p className="th-accent-text text-xs">✓ Key stored locally on device only.</p>}
       </div>
 
       {/* ── Quality threshold ────────────────────────────────────────────── */}
@@ -321,32 +650,87 @@ export default function Settings({ settings, onUpdate }: Props) {
         <h2 className="font-semibold th-text text-sm mb-1">Catch Data</h2>
         <p className="th-text-muted text-xs mb-3">Browse your catch log to fix inaccurate entries or remove duplicates.</p>
         <div className="flex flex-col gap-2">
-          <button onClick={() => setView('catches')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
-            Browse / Edit Catches
-          </button>
-          <button onClick={() => setView('csv-import')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
-            Import from Spreadsheet (CSV)
-          </button>
-          <button onClick={() => setView('import')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
-            Enter Historical Catches Manually
-          </button>
+          <button onClick={() => setView('catches')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">Browse / Edit Catches</button>
+          <button onClick={() => setView('csv-import')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">Import from Spreadsheet (CSV)</button>
+          <button onClick={() => setView('import')} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">Enter Historical Catches Manually</button>
         </div>
       </div>
 
       {/* ── Google Drive ─────────────────────────────────────────────────── */}
-      <div className="th-surface rounded-xl p-4 border th-border space-y-3">
+      <div className="th-surface rounded-xl p-4 border th-border space-y-4">
+
+        {/* Header + status badge */}
         <div className="flex items-center justify-between">
           <h2 className="font-semibold th-text text-sm">Google Drive Backup</h2>
-          {driveStatus === 'connected' && <span className="text-xs text-green-400 font-medium">✓ Connected</span>}
-          {driveStatus === 'syncing'   && <span className="text-xs text-sky-400 font-medium animate-pulse">↑ Syncing…</span>}
-          {driveStatus === 'expired'   && <span className="text-xs text-amber-400 font-medium">⚠ Reconnect needed</span>}
-          {driveStatus === 'error'     && <span className="text-xs text-red-400 font-medium">✕ Sync error</span>}
+          <span className={`text-xs font-medium ${
+            driveStatus === 'connected' ? 'text-green-400' :
+            driveStatus === 'syncing'   ? 'text-sky-400'   :
+            driveStatus === 'queued'    ? 'text-amber-400' :
+            driveStatus === 'expired'   ? 'text-amber-400' :
+            driveStatus === 'error'     ? 'text-red-400'   : 'th-text-muted'
+          }`}>
+            {driveStatus === 'connected' && '✓ Connected'}
+            {driveStatus === 'syncing'   && <span className="animate-pulse">↑ Syncing…</span>}
+            {driveStatus === 'queued'    && '⏳ Queued'}
+            {driveStatus === 'expired'   && '⚠ Reconnect needed'}
+            {driveStatus === 'error'     && '✕ Sync error'}
+          </span>
         </div>
 
-        {(driveStatus === 'disconnected' && !wasEverConnected()) ? (
+        {/* Client ID field + instructions */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="th-text-muted text-xs font-medium">Google Client ID</span>
+            <button
+              onClick={() => setShowDriveInstructions(v => !v)}
+              className="text-xs th-accent-text min-h-[36px] px-1"
+            >
+              {showDriveInstructions ? 'Hide guide' : 'Setup guide'}
+            </button>
+          </div>
+          <input
+            type="text"
+            className="w-full th-surface-deep border th-border rounded-lg px-3 py-2.5 th-text text-xs font-mono"
+            placeholder="Using built-in default (works out of the box)"
+            value={googleClientId}
+            onChange={e => setGoogleClientId(e.target.value)}
+            autoCorrect="off" autoCapitalize="off" spellCheck={false}
+          />
+          {googleClientId.trim() && (
+            <p className="th-accent-text text-xs">✓ Using your own client ID — save Settings to apply.</p>
+          )}
+
+          {showDriveInstructions && (
+            <div className="th-surface-deep border th-border rounded-lg p-4 space-y-3 text-xs th-text-muted leading-relaxed">
+              <p className="th-text font-semibold text-sm">Google Cloud Setup</p>
+              <p>The app works out of the box with the built-in credentials. Follow these steps only if you want to use your own Google Cloud project:</p>
+              <ol className="list-decimal ml-4 space-y-2">
+                <li>Go to <span className="th-accent-text font-medium">console.cloud.google.com</span> and sign in with your Google account.</li>
+                <li>Click the project selector at the top → <strong className="th-text">New Project</strong> → give it a name → Create.</li>
+                <li>In the left menu go to <strong className="th-text">APIs &amp; Services → Library</strong>. Search for <em>Google Drive API</em> and click Enable.</li>
+                <li>Go to <strong className="th-text">APIs &amp; Services → Credentials</strong> → <strong className="th-text">Create Credentials → OAuth 2.0 Client ID</strong>.</li>
+                <li>If prompted, configure the OAuth consent screen first: choose <strong className="th-text">External</strong>, fill in an app name (e.g. "Monroe Fishing"), and add your email. You can skip all optional fields.</li>
+                <li>Back in Credentials, set Application type to <strong className="th-text">Web application</strong>.</li>
+                <li>Under <strong className="th-text">Authorized JavaScript origins</strong> add exactly:
+                  <div className="mt-1.5 rounded bg-black/20 px-3 py-2 font-mono text-xs th-text select-all break-all">
+                    https://nord0364.github.io
+                  </div>
+                  No redirect URI is required for this app.
+                </li>
+                <li>Click <strong className="th-text">Create</strong>. Copy the <strong className="th-text">Client ID</strong> (ends in .apps.googleusercontent.com) and paste it in the field above.</li>
+                <li>Tap <strong className="th-text">Save Settings</strong> at the top of this page, then connect below.</li>
+              </ol>
+            </div>
+          )}
+        </div>
+
+        {/* Never-connected state */}
+        {isNeverConnected && (
           <>
             <p className="th-text-muted text-xs leading-relaxed">
-              Silently backs up all catches, sessions, and gear to a <strong className="th-text">Monroe Fishing App</strong> folder in your Google Drive after each session. Only files this app created are accessible — nothing else in your Drive is visible to the app.
+              Automatically backs up all catches, sessions, debrief conversations, and gear to a{' '}
+              <strong className="th-text">Monroe Fishing App</strong> folder in your Google Drive after each session.
+              Only files this app created are accessible — nothing else in your Drive is visible to the app.
             </p>
             <button
               onClick={handleDriveConnect}
@@ -356,97 +740,80 @@ export default function Settings({ settings, onUpdate }: Props) {
               {driveConnecting ? 'Connecting…' : '🔗 Connect Google Drive'}
             </button>
           </>
-        ) : (driveStatus === 'expired' || (driveStatus === 'disconnected' && wasEverConnected())) ? (
+        )}
+
+        {/* Expired / was-connected state */}
+        {isExpiredOrWas && (
           <>
-            <p className="th-text-muted text-xs">Access token expired. Reconnect to resume automatic backups.</p>
+            <p className="th-text-muted text-xs">Access expired. Tap Reconnect to resume automatic backups.</p>
             <div className="flex gap-2">
               <button onClick={handleDriveConnect} disabled={driveConnecting}
                 className="flex-1 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-50">
                 {driveConnecting ? 'Reconnecting…' : '🔗 Reconnect'}
               </button>
               <button onClick={disconnectGoogleDrive}
-                className="px-4 py-2.5 th-surface border th-border rounded-xl text-sm th-text">
+                className="px-4 py-2.5 th-surface border th-border rounded-xl text-sm th-text min-h-[44px]">
                 Disconnect
               </button>
             </div>
           </>
-        ) : (
+        )}
+
+        {/* Active / connected / queued / error state */}
+        {isActiveOrError && (
           <>
-            <p className="th-text-muted text-xs">
-              Auto-syncs 2 s after each catch or session end.{' '}
-              {lastSyncTime ? `Last sync: ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Syncs to Monroe Fishing App folder.'}
-            </p>
-            {driveStatus === 'error' && (
-              <p className="text-red-400 text-xs">Last sync failed. Check your connection and try again.</p>
-            )}
+            {/* Sync status card */}
+            <div className="th-surface-deep rounded-lg border th-border p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="th-text-muted text-xs">Last backup</span>
+                <span className="th-text text-xs font-medium">
+                  {lastSyncTime
+                    ? new Date(lastSyncTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : 'Never'}
+                </span>
+              </div>
+              {syncQueued && driveStatus === 'queued' && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-amber-400 text-xs">⏳</span>
+                  <span className="th-text-muted text-xs">Sync queued — will upload automatically when back online</span>
+                </div>
+              )}
+              {driveStatus === 'error' && !syncQueued && (
+                <p className="text-red-400 text-xs">Last sync failed. Check your connection or tap Sync Now.</p>
+              )}
+            </div>
+
+            {/* Action buttons row */}
             <div className="flex gap-2">
-              <button onClick={handleDriveSyncNow} disabled={driveSyncing || driveStatus === 'syncing'}
-                className="flex-1 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-50">
+              <button
+                onClick={handleDriveSyncNow}
+                disabled={driveSyncing || driveStatus === 'syncing'}
+                className="flex-1 py-2.5 th-btn-primary rounded-xl text-sm font-semibold disabled:opacity-50 min-h-[44px]"
+              >
                 {driveSyncing || driveStatus === 'syncing' ? '↑ Syncing…' : '↑ Sync Now'}
               </button>
-              <button onClick={disconnectGoogleDrive}
-                className="px-4 py-2.5 th-surface border th-border rounded-xl text-sm th-text">
+              <button
+                onClick={disconnectGoogleDrive}
+                className="px-4 py-2.5 th-surface border th-border rounded-xl text-sm th-text min-h-[44px]"
+              >
                 Disconnect
               </button>
             </div>
 
-            {/* Restore from Drive */}
-            <div className="pt-1 border-t th-border">
-              <p className="th-text-muted text-xs mb-2">
-                On a new device? Restore your data from the Drive backup to sync across devices.
-              </p>
-              {restoreState === 'idle' && (
-                <button onClick={handleRestoreFetch}
-                  className="w-full py-2.5 th-surface-deep border th-border rounded-xl text-sm th-text font-medium">
-                  ↓ Restore from Google Drive
-                </button>
-              )}
-              {restoreState === 'fetching' && (
-                <p className="text-xs th-text-muted text-center animate-pulse">Fetching backup…</p>
-              )}
-              {restoreState === 'confirm' && restorePreview && (
-                <div className="th-surface-deep rounded-xl border th-border p-3 space-y-2">
-                  <p className="th-text text-sm font-semibold">Backup found</p>
-                  <p className="th-text-muted text-xs">
-                    Saved: {new Date(restorePreview.modifiedTime).toLocaleString()}<br />
-                    {restorePreview.sessions} sessions · {restorePreview.catches} catches
-                  </p>
-                  <p className="th-text-muted text-xs">Existing data is kept — this merges, not overwrites.</p>
-                  <div className="flex gap-2">
-                    <button onClick={handleRestoreConfirm}
-                      className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold">
-                      Import
-                    </button>
-                    <button onClick={() => setRestoreState('idle')}
-                      className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-              {restoreState === 'importing' && (
-                <p className="text-xs th-text-muted text-center animate-pulse">Importing…</p>
-              )}
-              {restoreState === 'done' && restoreResult && (
-                <div className="th-surface-deep rounded-xl border th-border p-3">
-                  <p className="text-green-400 text-sm font-semibold">✓ Import complete</p>
-                  <p className="th-text-muted text-xs mt-1">
-                    {restoreResult.sessions} sessions · {restoreResult.events} catches merged.
-                  </p>
-                  <p className="th-text-muted text-xs mt-1">Reload the app to see all restored data.</p>
-                  <button onClick={() => window.location.reload()}
-                    className="mt-2 w-full py-2 th-btn-primary rounded-lg text-xs font-semibold">
-                    Reload Now
-                  </button>
-                </div>
-              )}
-              {restoreState === 'error' && (
-                <div className="space-y-1">
-                  <p className="text-red-400 text-xs">Restore failed. Make sure Drive is connected and a backup exists.</p>
-                  <button onClick={() => setRestoreState('idle')}
-                    className="text-xs th-accent-text underline">Try again</button>
-                </div>
-              )}
+            {/* Restore + Manage row */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setView('drive-restore')}
+                className="flex-1 py-2.5 th-surface-deep border th-border rounded-xl text-sm th-text font-medium min-h-[44px]"
+              >
+                ↓ Restore
+              </button>
+              <button
+                onClick={() => setView('drive-manage')}
+                className="flex-1 py-2.5 th-surface-deep border th-border rounded-xl text-sm th-text font-medium min-h-[44px]"
+              >
+                📁 Manage Backups
+              </button>
             </div>
           </>
         )}
@@ -456,15 +823,9 @@ export default function Settings({ settings, onUpdate }: Props) {
       <div className="th-surface rounded-xl p-4 border th-border space-y-3">
         <h2 className="font-semibold th-text text-sm">Export Data</h2>
         <p className="th-text-muted text-xs">All data stored locally. Export for backup, sharing, or spreadsheet review.</p>
-        <button onClick={downloadJSON} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
-          Export Full Backup (JSON) — sessions, catches, gear
-        </button>
-        <button onClick={downloadCSV} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
-          Export Catch Log (CSV) — spreadsheet ready
-        </button>
-        <button onClick={downloadTackle} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">
-          Export Tackle Inventory (JSON) — lures, hooks, spoons
-        </button>
+        <button onClick={downloadJSON} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">Export Full Backup (JSON) — sessions, catches, gear</button>
+        <button onClick={downloadCSV} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">Export Catch Log (CSV) — spreadsheet ready</button>
+        <button onClick={downloadTackle} className="w-full py-3 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">Export Tackle Inventory (JSON) — lures &amp; hooks</button>
       </div>
 
       {/* ── About ────────────────────────────────────────────────────────── */}
