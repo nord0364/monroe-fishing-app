@@ -1,4 +1,4 @@
-export type NavTab = 'scout' | 'log' | 'debrief' | 'trophy' | 'tackle'
+export type NavTab = 'guide' | 'scout' | 'log' | 'trophy' | 'tackle'
 
 interface BottomNavProps {
   active: NavTab
@@ -6,11 +6,11 @@ interface BottomNavProps {
 }
 
 const tabs: { id: NavTab; label: string; icon: string }[] = [
-  { id: 'scout',   label: 'Scout',        icon: '🌅' },
-  { id: 'log',     label: 'Log',          icon: '🎣' },
-  { id: 'debrief', label: 'Debrief',      icon: '💬' },
-  { id: 'trophy',  label: 'Trophy Room',  icon: '🏆' },
-  { id: 'tackle',  label: 'Tackle',       icon: '🧰' },
+  { id: 'guide',  label: 'Guide',       icon: '🧭' },
+  { id: 'scout',  label: 'Scout',       icon: '🌅' },
+  { id: 'log',    label: 'Log',         icon: '🎣' },
+  { id: 'trophy', label: 'Trophy Room', icon: '🏆' },
+  { id: 'tackle', label: 'Tackle',      icon: '🧰' },
 ]
 
 export default function BottomNav({ active, onChange }: BottomNavProps) {

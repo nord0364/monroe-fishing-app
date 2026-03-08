@@ -236,6 +236,7 @@ export interface Session {
   aiBriefingStructured?: AIBriefing
   plannedDate?: number
   plannedWindow?: string
+  analysisummary?: string  // 4–8 sentence post-session analysis, saved by Guide
 }
 
 // ─── Debrief ─────────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ interface Props {
   onSessionChanged: (session: Session | null) => void
   onSessionEnded?: (session: Session) => void  // Called instead of onSessionChanged(null) when session ends
   onOpenGuide?: () => void
+  onOpenGuidePostSession?: (session: Session) => void
 }
 
 const MONTH_LABELS = [
@@ -52,7 +53,7 @@ function formatDuration(ms: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-export default function SessionLogger({ settings, activeSession, onSessionChanged, onSessionEnded, onOpenGuide }: Props) {
+export default function SessionLogger({ settings, activeSession, onSessionChanged, onSessionEnded, onOpenGuide, onOpenGuidePostSession }: Props) {
   const [events, setEvents]           = useState<CatchEvent[]>([])
   const [view, setView]               = useState<'log' | 'entry' | 'briefing' | 'wrapup'>('log')
   const [sessions, setSessions]       = useState<Session[]>([])
@@ -171,6 +172,7 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
         apiKey={settings.anthropicApiKey}
         onBackToSession={() => { setEndedSession(null); loadData(); setView('log') }}
         onDone={finishSession}
+        onOpenGuide={onOpenGuidePostSession}
       />
     )
   }
@@ -451,6 +453,16 @@ export default function SessionLogger({ settings, activeSession, onSessionChange
                                             onDeleteConfirm={id => handleDeleteEvent(id, s.id)}
                                           />
                                         ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Session analysis summary */}
+                                  {s.analysisummary && (
+                                    <div className="px-4 pb-2">
+                                      <div className="text-xs font-bold th-text-muted uppercase tracking-wide mb-2">Session Analysis</div>
+                                      <div className="th-surface-deep rounded-xl border th-border p-3">
+                                        <p className="th-text text-xs leading-relaxed">{s.analysisummary}</p>
                                       </div>
                                     </div>
                                   )}

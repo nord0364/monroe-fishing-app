@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import type { Session, CatchEvent, LandedFish } from '../../types'
 import { getEventsForSession } from '../../db/database'
-import { generatePostSessionAnalysis } from '../../api/claude'
-import { speakText, cancelSpeech, hasSpeech } from '../../utils/speech'
+import { cancelSpeech } from '../../utils/speech'
 
 interface Props {
   session: Session
   apiKey: string
   onBackToSession: () => void
   onDone: () => void
+  onOpenGuide?: (session: Session) => void
 }
 
 function formatDuration(ms: number) {
@@ -17,11 +17,8 @@ function formatDuration(ms: number) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-export default function PostSessionReview({ session, apiKey, onBackToSession, onDone }: Props) {
-  const [events, setEvents]       = useState<CatchEvent[]>([])
-  const [analysis, setAnalysis]   = useState('')
-  const [analyzing, setAnalyzing] = useState(false)
-  const [speaking, setSpeaking]   = useState(false)
+export default function PostSessionReview({ session, apiKey, onBackToSession, onDone, onOpenGuide }: Props) {
+  const [events, setEvents] = useState<CatchEvent[]>([])
 
   useEffect(() => {
     getEventsForSession(session.id).then(setEvents)
@@ -46,31 +43,6 @@ export default function PostSessionReview({ session, apiKey, onBackToSession, on
     const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
     return top ? top[0] : null
   })()
-
-  const runAnalysis = async () => {
-    if (!apiKey || analyzing) return
-    setAnalyzing(true)
-    setAnalysis('')
-    try {
-      const gen = generatePostSessionAnalysis(apiKey, session, events)
-      let full = ''
-      for await (const chunk of gen) {
-        full += chunk
-        setAnalysis(full)
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setAnalysis(`Error: ${msg}`)
-    } finally {
-      setAnalyzing(false)
-    }
-  }
-
-  const speakAnalysis = () => {
-    if (speaking) { cancelSpeech(); setSpeaking(false); return }
-    setSpeaking(true)
-    speakText(analysis, { onEnd: () => setSpeaking(false) })
-  }
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 60px)' }}>
@@ -103,40 +75,31 @@ export default function PostSessionReview({ session, apiKey, onBackToSession, on
         {/* AI Analysis */}
         <div className="th-surface rounded-2xl border th-border overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b th-border">
-            <span className="th-text font-semibold text-sm">📊 AI Debrief</span>
-            {analysis && hasSpeech && (
-              <button
-                onClick={speakAnalysis}
-                className={`w-9 h-9 flex items-center justify-center rounded-lg text-sm transition-opacity ${
-                  speaking ? 'opacity-100 th-surface border th-border' : 'opacity-40 hover:opacity-70'
-                }`}
-              >
-                {speaking ? '⏹' : '🔊'}
-              </button>
-            )}
+            <span className="th-text font-semibold text-sm">📊 Session Analysis</span>
           </div>
-          {analysis ? (
-            <div className="px-4 py-3">
-              <p className="th-text text-sm leading-relaxed whitespace-pre-wrap">{analysis}</p>
+          {session.analysisummary ? (
+            <div className="px-4 py-3 space-y-3">
+              <p className="th-text text-sm leading-relaxed">{session.analysisummary}</p>
+              <button
+                onClick={() => onOpenGuide?.(session)}
+                disabled={!apiKey}
+                className="w-full py-2.5 th-surface-deep border th-border rounded-xl th-text-muted font-medium text-sm disabled:opacity-40"
+              >
+                Continue in Guide →
+              </button>
             </div>
           ) : (
             <div className="px-4 py-4 text-center">
-              {analyzing ? (
-                <p className="th-text-muted text-sm animate-pulse">Analyzing your session…</p>
-              ) : (
-                <>
-                  <p className="th-text-muted text-sm mb-3">
-                    Get a personalized debrief from your AI guide.
-                  </p>
-                  <button
-                    onClick={runAnalysis}
-                    disabled={!apiKey}
-                    className="px-5 py-2.5 th-btn-primary rounded-xl font-medium text-sm disabled:opacity-40"
-                  >
-                    Analyze Session
-                  </button>
-                </>
-              )}
+              <p className="th-text-muted text-sm mb-3">
+                Open Guide for a full post-session analysis and coaching conversation.
+              </p>
+              <button
+                onClick={() => onOpenGuide?.(session)}
+                disabled={!apiKey}
+                className="px-5 py-2.5 th-btn-primary rounded-xl font-medium text-sm disabled:opacity-40"
+              >
+                Analyze Session
+              </button>
             </div>
           )}
         </div>

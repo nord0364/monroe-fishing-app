@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Session, AppSettings, CatchEvent, StandaloneGuideEntry } from '../../types'
-import { getEventsForSession, saveEvent, saveStandaloneGuideEntry, getAllStandaloneGuideEntries, deleteStandaloneGuideEntry, bulkDeleteStandaloneGuideEntries } from '../../db/database'
+import {
+  getEventsForSession, saveEvent, saveStandaloneGuideEntry,
+  getAllStandaloneGuideEntries, deleteStandaloneGuideEntry,
+  bulkDeleteStandaloneGuideEntries, getAllSessions, saveSession,
+} from '../../db/database'
 import {
   buildGuideSystemPrompt, streamGuideResponse, generateCheckpointSummary,
-  mentionsHistory, type GuideMessage,
+  generateAnalysisSummary, mentionsHistory, type GuideMessage,
 } from '../../api/guideAI'
 import { loadPatternCache } from '../../ai/patternMemory'
 import { speakText, cancelSpeech, hasSpeech } from '../../utils/speech'
@@ -12,8 +16,9 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const COMPACT_AT       = 16  // 8 exchanges × 2 messages
-const COMPACT_DROP     = 8   // drop oldest 8 messages (4 exchanges) per compaction
+const COMPACT_AT   = 16  // 8 exchanges × 2 messages
+const COMPACT_DROP = 8   // drop oldest 8 messages (4 exchanges) per compaction
+const RECENT_ANALYSES_COUNT = 3  // how many past session analyses to load
 
 // ─── Image resize ─────────────────────────────────────────────────────────────
 
@@ -63,13 +68,13 @@ interface HistoryProps {
 }
 
 function GuideHistory({ entries, onDelete, onBulkDelete }: HistoryProps) {
-  const [openMonths, setOpenMonths]         = useState<Set<string>>(new Set())
-  const [confirmId, setConfirmId]           = useState<string | null>(null)
-  const [bulkMonth, setBulkMonth]           = useState<string | null>(null)
-  const [bulkConfirm, setBulkConfirm]       = useState<string | null>(null)
-  const longPressRef                         = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [openMonths, setOpenMonths]   = useState<Set<string>>(new Set())
+  const [confirmId, setConfirmId]     = useState<string | null>(null)
+  const [bulkMonth, setBulkMonth]     = useState<string | null>(null)
+  const [bulkConfirm, setBulkConfirm] = useState<string | null>(null)
+  const longPressRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const grouped = groupByMonth(entries)
+  const grouped   = groupByMonth(entries)
   const monthKeys = [...grouped.keys()]
 
   useEffect(() => {
@@ -107,12 +112,11 @@ function GuideHistory({ entries, onDelete, onBulkDelete }: HistoryProps) {
       <p className="th-text-muted text-xs uppercase tracking-wide font-semibold px-1">Previous Sessions</p>
       {monthKeys.map(key => {
         const monthEntries = grouped.get(key)!
-        const isOpen = openMonths.has(key)
+        const isOpen       = openMonths.has(key)
         const isBulkTarget = bulkMonth === key
 
         return (
           <div key={key} className="th-surface rounded-xl border th-border overflow-hidden">
-            {/* Month header */}
             <div className="flex items-center">
               <button
                 className="flex-1 flex items-center justify-between px-3 py-2.5"
@@ -126,7 +130,6 @@ function GuideHistory({ entries, onDelete, onBulkDelete }: HistoryProps) {
               </button>
             </div>
 
-            {/* Bulk delete prompt for this month */}
             {isBulkTarget && (
               <div className="px-3 pb-3 bg-red-900/20 border-t th-border">
                 <p className="text-red-300 text-xs py-2">Delete all {monthEntries.length} sessions from {monthLabel(key)}?</p>
@@ -156,7 +159,6 @@ function GuideHistory({ entries, onDelete, onBulkDelete }: HistoryProps) {
               </div>
             )}
 
-            {/* Entry list */}
             {isOpen && (
               <div className="divide-y th-border border-t th-border">
                 {monthEntries.map(entry => {
@@ -207,26 +209,30 @@ interface Props {
   session: Session | null
   settings: AppSettings
   onClose: () => void
+  isTab?: boolean           // render inline (no fixed overlay wrapper)
+  postSessionMode?: boolean // auto-generate opening analysis, save analysisummary
 }
 
-export default function Guide({ session, settings, onClose }: Props) {
+export default function Guide({ session, settings, onClose, isTab, postSessionMode }: Props) {
   const [messages, setMessages]               = useState<GuideMessage[]>([])
   const [input, setInput]                     = useState('')
   const [streaming, setStreaming]             = useState(false)
   const [error, setError]                     = useState<string | null>(null)
   const [retryContent, setRetryContent]       = useState<Anthropic.Messages.MessageParam['content'] | null>(null)
-  const [attachedImage, setAttachedImage]     = useState<string | null>(null)  // base64 dataUrl
-  const [isRecording, setIsRecording]         = useState(false)
+  const [attachedImage, setAttachedImage]     = useState<string | null>(null)
   const [online, setOnline]                   = useState(navigator.onLine)
   const [speakingId, setSpeakingId]           = useState<string | null>(null)
   const [sessionEvents, setSessionEvents]     = useState<CatchEvent[]>([])
   const [patternInjected, setPatternInjected] = useState(false)
   const [standaloneHistory, setStandaloneHistory] = useState<StandaloneGuideEntry[]>([])
+  const [recentAnalyses, setRecentAnalyses]   = useState<string[]>([])
+  const [openingDone, setOpeningDone]         = useState(false)
 
-  const chatEndRef   = useRef<HTMLDivElement>(null)
-  const imgInputRef  = useRef<HTMLInputElement>(null)
-  const recognitionRef = useRef<{ stop: () => void; start: () => void } | null>(null)
-  const currentStandaloneId = useRef<string>(nanoid())  // stable ID for this guide session
+  const chatEndRef             = useRef<HTMLDivElement>(null)
+  const imgInputRef            = useRef<HTMLInputElement>(null)
+  const textareaRef            = useRef<HTMLTextAreaElement>(null)
+  const currentStandaloneId    = useRef<string>(nanoid())
+  const exchangeCountRef       = useRef(0)  // tracks pairs in postSessionMode for checkpoint trigger
 
   const apiKey = settings.anthropicApiKey
 
@@ -239,15 +245,35 @@ export default function Guide({ session, settings, onClose }: Props) {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
-  // ── Fetch session events once on open ────────────────────────────────────────
+  // ── Fetch session events + recent analyses on open ───────────────────────────
   useEffect(() => {
     if (session) {
       getEventsForSession(session.id).then(setSessionEvents).catch(() => {})
+      // Load recent session analyses for context
+      getAllSessions().then(sessions => {
+        const withAnalysis = sessions
+          .filter(s => s.analysisummary && s.id !== session.id)
+          .sort((a, b) => b.date - a.date)
+          .slice(0, RECENT_ANALYSES_COUNT)
+          .map(s => s.analysisummary!)
+        setRecentAnalyses(withAnalysis)
+      }).catch(() => {})
     } else {
       getAllStandaloneGuideEntries().then(setStandaloneHistory).catch(() => {})
     }
     return () => { cancelSpeech() }
   }, [session])
+
+  // ── Auto-expand textarea ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    const lineHeight = 20
+    const minH = 3 * lineHeight + 16  // 3 rows + padding
+    const maxH = 6 * lineHeight + 16  // 6 rows + padding
+    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, minH), maxH)}px`
+  }, [input])
 
   // ── Scroll chat to bottom ────────────────────────────────────────────────────
   useEffect(() => {
@@ -261,6 +287,15 @@ export default function Guide({ session, settings, onClose }: Props) {
     setSpeakingId(id)
     speakText(text, { onEnd: () => setSpeakingId(null) })
   }, [speakingId])
+
+  // ── Save analysisummary to session record ─────────────────────────────────────
+  const saveAnalysisSummary = useCallback((msgs: GuideMessage[]) => {
+    if (!apiKey || !session || !postSessionMode || msgs.length < 2) return
+    generateAnalysisSummary(apiKey, msgs).then(summary => {
+      if (!summary || !session) return
+      void saveSession({ ...session, analysisummary: summary })
+    }).catch(() => {})
+  }, [apiKey, session, postSessionMode])
 
   // ── Save checkpoint (background, non-blocking) ────────────────────────────────
   const saveCheckpoint = useCallback((msgs: GuideMessage[]) => {
@@ -295,13 +330,12 @@ export default function Guide({ session, settings, onClose }: Props) {
     const toCompact = msgs.slice(0, COMPACT_DROP)
     const toKeep    = msgs.slice(COMPACT_DROP)
 
-    // Save checkpoint from the dropped exchanges
     saveCheckpoint(toCompact)
 
     const recap: GuideMessage = {
       id: nanoid(),
       role: 'user',
-      content: `[Earlier conversation was summarized and saved. Continuing from that context.]`,
+      content: '[Earlier conversation was summarized and saved. Continuing from that context.]',
     }
     const ack: GuideMessage = {
       id: nanoid(),
@@ -312,31 +346,32 @@ export default function Guide({ session, settings, onClose }: Props) {
     return [recap, ack, ...toKeep]
   }, [saveCheckpoint])
 
-  // ── Build system prompt (memoised per send) ───────────────────────────────────
+  // ── Build system prompt ───────────────────────────────────────────────────────
   const getSystemPrompt = useCallback((userText: string): string => {
     const includePattern = patternInjected || mentionsHistory(userText)
     if (includePattern && !patternInjected) setPatternInjected(true)
     const patternSummary = includePattern ? (loadPatternCache()?.summary) : undefined
-    return buildGuideSystemPrompt(session, sessionEvents, patternSummary)
-  }, [session, sessionEvents, patternInjected])
+    return buildGuideSystemPrompt(session, sessionEvents, patternSummary, recentAnalyses)
+  }, [session, sessionEvents, patternInjected, recentAnalyses])
 
-  // ── Core send (shared by send button and retry) ───────────────────────────────
+  // ── Core send ─────────────────────────────────────────────────────────────────
   const doSend = useCallback(async (
     userText: string,
     apiContent: Anthropic.Messages.MessageParam['content'],
     displayText: string,
     hasImage: boolean,
+    existingMessages?: GuideMessage[],
   ) => {
     setError(null)
     setRetryContent(null)
 
+    const base = existingMessages ?? messages
     const userMsg: GuideMessage = { id: nanoid(), role: 'user', content: displayText, hasImage }
-    const newMessages = [...messages, userMsg]
+    const newMessages = [...base, userMsg]
     const compacted = compactIfNeeded(newMessages)
     setMessages([...compacted, { id: nanoid(), role: 'assistant', content: '' }])
     setStreaming(true)
 
-    // Refresh session events in background
     if (session) void getEventsForSession(session.id).then(setSessionEvents)
 
     const systemPrompt = getSystemPrompt(userText)
@@ -353,7 +388,6 @@ export default function Guide({ session, settings, onClose }: Props) {
         })
       }
 
-      // Auto-speak the response
       const replyId = nanoid()
       setMessages(prev => {
         const arr = [...prev]
@@ -365,7 +399,6 @@ export default function Guide({ session, settings, onClose }: Props) {
         speakText(reply, { onEnd: () => setSpeakingId(null) })
       }
 
-      // Save image interpretation as GuideEvent
       if (hasImage && session && reply) {
         void saveEvent({
           type: 'Guide Image Analysis',
@@ -375,15 +408,33 @@ export default function Guide({ session, settings, onClose }: Props) {
           content: reply,
         })
       }
+
+      // In post-session mode: save analysisummary every 4 exchanges
+      if (postSessionMode) {
+        exchangeCountRef.current += 1
+        if (exchangeCountRef.current % 4 === 0) {
+          const finalMsgs = [...compacted, userMsg, { id: replyId, role: 'assistant' as const, content: reply }]
+          saveAnalysisSummary(finalMsgs)
+        }
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg)
       setRetryContent(apiContent)
-      setMessages(prev => prev.slice(0, -1))  // remove empty placeholder
+      setMessages(prev => prev.slice(0, -1))
     } finally {
       setStreaming(false)
     }
-  }, [messages, compactIfNeeded, getSystemPrompt, apiKey, session])
+  }, [messages, compactIfNeeded, getSystemPrompt, apiKey, session, postSessionMode, saveAnalysisSummary])
+
+  // ── Auto-generate opening analysis in post-session mode ───────────────────────
+  useEffect(() => {
+    if (!postSessionMode || !apiKey || !online || openingDone || sessionEvents.length === 0) return
+    if (!session) return
+    setOpeningDone(true)
+    const prompt = 'Please give me a concise post-session analysis. Cover what worked, what the data suggests about current patterns, and 1–2 actionable takeaways for next time.'
+    void doSend(prompt, prompt, prompt, false, [])
+  }, [postSessionMode, apiKey, online, openingDone, sessionEvents, session]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Send message ─────────────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
@@ -430,64 +481,44 @@ export default function Guide({ session, settings, onClose }: Props) {
     e.target.value = ''
   }, [])
 
-  // ── Microphone ────────────────────────────────────────────────────────────────
-  const toggleMic = useCallback(() => {
-    if (isRecording) {
-      recognitionRef.current?.stop()
-      setIsRecording(false)
-      return
-    }
-    type AnySR = new () => {
-      continuous: boolean; interimResults: boolean; lang: string
-      onresult: ((e: { results: { [i: number]: { [i: number]: { transcript: string } }; length: number } }) => void) | null
-      onend: (() => void) | null
-      onerror: (() => void) | null
-      start: () => void
-      stop: () => void
-    }
-    const w = window as unknown as { SpeechRecognition?: AnySR; webkitSpeechRecognition?: AnySR }
-    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition
-    if (!SR) return
-    const rec = new SR()
-    rec.continuous      = false
-    rec.interimResults  = true
-    rec.lang            = 'en-US'
-    rec.onresult = (e) => {
-      const transcript = Array.from({ length: e.results.length }, (_, i) => e.results[i][0].transcript).join('')
-      setInput(transcript)
-    }
-    rec.onend = () => setIsRecording(false)
-    rec.onerror = () => setIsRecording(false)
-    recognitionRef.current = rec
-    rec.start()
-    setIsRecording(true)
-  }, [isRecording])
-
-  const hasSR = !!(
-    (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition ??
-    (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition
-  )
-
-  // ── On close — save final checkpoint ─────────────────────────────────────────
+  // ── On close — save final checkpoint + analysisummary ────────────────────────
   const handleClose = useCallback(() => {
-    if (messages.length >= 4) saveCheckpoint(messages)
+    if (messages.length >= 4) {
+      saveCheckpoint(messages)
+      if (postSessionMode) saveAnalysisSummary(messages)
+    }
     onClose()
-  }, [messages, saveCheckpoint, onClose])
+  }, [messages, saveCheckpoint, postSessionMode, saveAnalysisSummary, onClose])
 
   // ─── Render ──────────────────────────────────────────────────────────────────
-  const showHistory = !session && messages.length === 0
+  const showHistory = !session && !postSessionMode && messages.length === 0
+
+  const wrapperClass = isTab
+    ? 'th-base flex flex-col h-full'
+    : 'fixed inset-0 z-50 th-base flex flex-col'
+
+  const headerTitle = postSessionMode
+    ? 'Post-Session Analysis'
+    : session
+      ? 'Guide'
+      : 'Guide'
 
   return (
-    <div className="fixed inset-0 z-50 th-base flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+    <div className={wrapperClass} style={{ paddingTop: isTab ? 0 : 'env(safe-area-inset-top)' }}>
       {/* Header */}
       <div className="th-surface-deep border-b th-border px-4 py-3 flex items-center gap-3 shrink-0">
         <button onClick={handleClose} className="th-text-muted text-sm font-semibold min-w-[44px] min-h-[44px] flex items-center">
           ← Back
         </button>
         <div className="flex-1">
-          <span className="th-text font-bold text-base">Guide</span>
-          {session && (
+          <span className="th-text font-bold text-base">{headerTitle}</span>
+          {session && !postSessionMode && (
             <span className="th-text-muted text-xs ml-2">{session.launchSite}</span>
+          )}
+          {postSessionMode && session && (
+            <span className="th-text-muted text-xs ml-2">
+              {new Date(session.date).toLocaleDateString([], { month: 'short', day: 'numeric' })} · {session.launchSite}
+            </span>
           )}
         </div>
         {!online && (
@@ -500,7 +531,6 @@ export default function Guide({ session, settings, onClose }: Props) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
 
-        {/* Standalone history */}
         {showHistory && (
           <GuideHistory
             entries={standaloneHistory}
@@ -515,18 +545,23 @@ export default function Guide({ session, settings, onClose }: Props) {
           />
         )}
 
-        {/* No API key warning */}
+        {/* Post-session waiting indicator */}
+        {postSessionMode && messages.length === 0 && !streaming && (
+          <div className="text-center py-8">
+            <p className="th-text-muted text-sm animate-pulse">Analyzing your session…</p>
+          </div>
+        )}
+
         {!apiKey && (
           <div className="bg-amber-900/20 border border-amber-700/60 rounded-xl p-3">
             <p className="text-amber-300 text-sm">Add your Anthropic API key in Settings to use Guide.</p>
           </div>
         )}
 
-        {/* Chat messages */}
         {messages.map((msg, i) => {
-          const isAssistant = msg.role === 'assistant'
+          const isAssistant    = msg.role === 'assistant'
           const isLastStreaming = streaming && i === messages.length - 1
-          const msgId = msg.id
+          const msgId          = msg.id
 
           return (
             <div key={msgId} className={`flex ${isAssistant ? 'justify-start' : 'justify-end'}`}>
@@ -564,7 +599,6 @@ export default function Guide({ session, settings, onClose }: Props) {
           )
         })}
 
-        {/* Error banner */}
         {error && (
           <div className="bg-red-900/30 border border-red-700/60 rounded-xl p-3 flex items-start gap-2">
             <div className="flex-1">
@@ -593,7 +627,6 @@ export default function Guide({ session, settings, onClose }: Props) {
         </div>
       )}
 
-      {/* Offline tooltip */}
       {!online && (
         <div className="px-4 pb-1 shrink-0">
           <p className="text-amber-400 text-xs text-center">Guide requires a connection.</p>
@@ -602,7 +635,7 @@ export default function Guide({ session, settings, onClose }: Props) {
 
       {/* Input bar */}
       <div className="th-surface-deep border-t th-border px-3 py-2 flex gap-2 items-end shrink-0"
-           style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}>
+           style={{ paddingBottom: isTab ? '8px' : 'max(env(safe-area-inset-bottom), 8px)' }}>
 
         {/* Camera */}
         <button
@@ -618,7 +651,9 @@ export default function Guide({ session, settings, onClose }: Props) {
 
         {/* Text input */}
         <textarea
-          className="flex-1 th-surface border th-border rounded-xl px-3 py-2.5 th-text text-sm resize-none min-h-[40px] max-h-[120px]"
+          ref={textareaRef}
+          className="flex-1 th-surface border th-border rounded-xl px-3 py-2.5 th-text text-sm resize-none"
+          style={{ minHeight: '76px', maxHeight: '136px' }}
           placeholder={online ? 'Ask anything — attach a photo if it helps.' : 'Offline — reconnect to use Guide.'}
           value={input}
           onChange={e => setInput(e.target.value)}
@@ -626,24 +661,8 @@ export default function Guide({ session, settings, onClose }: Props) {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage() }
           }}
           disabled={streaming || !online}
-          rows={1}
+          rows={3}
         />
-
-        {/* Mic */}
-        {hasSR && (
-          <button
-            onClick={toggleMic}
-            disabled={streaming || !online}
-            className={`shrink-0 w-10 h-10 flex items-center justify-center rounded-xl border transition-colors disabled:opacity-30 ${
-              isRecording
-                ? 'bg-red-700 border-red-600 text-white'
-                : 'th-surface th-border th-text-muted'
-            }`}
-            title={isRecording ? 'Stop recording' : 'Dictate'}
-          >
-            🎙️
-          </button>
-        )}
 
         {/* Send */}
         <button

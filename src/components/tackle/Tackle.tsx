@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type {
   OwnedLure,
   TackleCategory,
@@ -14,7 +14,9 @@ import {
   deleteOwnedLure,
   bulkDeleteOwnedLures,
   exportTackleJSON,
+  getAllEvents,
 } from '../../db/database'
+import type { LandedFish } from '../../types'
 import { nanoid } from '../logger/nanoid'
 import { identifyLureForCatalog, type LureIdentification } from '../../api/claude'
 
@@ -81,6 +83,53 @@ function sortItems(items: OwnedLure[]): OwnedLure[] {
 
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+// ─── Color → hex mapping ───────────────────────────────────────────────────────
+
+const COLOR_HEX: Record<string, string> = {
+  'white':          '#f5f5f5',
+  'black':          '#1a1a1a',
+  'red':            '#dc2626',
+  'chartreuse':     '#a3e635',
+  'green':          '#16a34a',
+  'green pumpkin':  '#4a5c2a',
+  'pumpkin':        '#ea580c',
+  'blue':           '#2563eb',
+  'purple':         '#9333ea',
+  'pink':           '#ec4899',
+  'orange':         '#f97316',
+  'yellow':         '#eab308',
+  'brown':          '#92400e',
+  'tan':            '#d4a574',
+  'gray':           '#6b7280',
+  'grey':           '#6b7280',
+  'silver':         '#c0c0c0',
+  'gold':           '#d4af37',
+  'watermelon':     '#f43f5e',
+  'crawfish':       '#b45309',
+  'junebug':        '#312e81',
+  'june bug':       '#312e81',
+  'smoke':          '#9ca3af',
+  'natural':        '#c4a882',
+  'cinnamon':       '#b45309',
+  'plum':           '#7e22ce',
+  'tequila':        '#d97706',
+  'albino':         '#fef9c3',
+  'electric blue':  '#0ea5e9',
+  'midnight':       '#1e1b4b',
+  'tilapia':        '#64748b',
+  'melon':          '#fb923c',
+}
+
+function colorToHex(name: string): string {
+  if (!name) return '#6b7280'
+  const lower = name.toLowerCase().trim()
+  if (COLOR_HEX[lower]) return COLOR_HEX[lower]
+  for (const [key, val] of Object.entries(COLOR_HEX)) {
+    if (lower.includes(key)) return val
+  }
+  return '#6b7280'
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -271,32 +320,6 @@ function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelet
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ─── Accordion ────────────────────────────────────────────────────────────────
-
-interface AccordionGroupProps {
-  label: string
-  count: number
-  defaultExpanded?: boolean
-  children: React.ReactNode
-}
-
-function AccordionGroup({ label, count, defaultExpanded = false, children }: AccordionGroupProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
-  return (
-    <div>
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-2 py-2 px-1 text-left min-h-[44px]"
-      >
-        <span className="th-text font-semibold text-sm flex-1">{label}</span>
-        <span className="th-text-muted text-xs">({count})</span>
-        <span className="th-text-muted text-xs ml-1">{expanded ? '▾' : '▸'}</span>
-      </button>
-      {expanded && <div className="space-y-2 mb-2">{children}</div>}
     </div>
   )
 }
@@ -564,15 +587,103 @@ function AddFab({ onAdd }: { onAdd: (cat: TackleCategory) => void }) {
   )
 }
 
+// ─── Dense list row ───────────────────────────────────────────────────────────
+
+function DenseRow({ item, onEdit, onDelete }: {
+  item: OwnedLure
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const cat = effectiveCategory(item)
+
+  const primaryLabel = cat === 'hook'
+    ? (item.hookStyle ?? 'Hook')
+    : cat === 'spoon'
+      ? (item.spoonStyle ?? 'Spoon')
+      : (item.lureType ?? 'Lure')
+
+  const colorLabel = item.color || ''
+  const hex = colorToHex(colorLabel)
+  const weightLabel = item.weightNA ? 'N/A' : (item.weight ?? '')
+  const sub = [weightLabel, item.brand].filter(Boolean).join(' · ')
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 min-h-[44px] ${item.condition === 'Retired' ? 'opacity-50' : ''}`}>
+      {/* Color swatch */}
+      <span style={{
+        width: 10, height: 10, borderRadius: 2, flexShrink: 0,
+        background: hex, border: '1px solid rgba(128,128,128,0.4)',
+      }} />
+
+      {/* Photo thumbnail */}
+      {item.photoDataUrl && (
+        <img src={item.photoDataUrl} className="w-8 h-8 rounded-md object-cover shrink-0" alt="" />
+      )}
+
+      {/* Name + details */}
+      <div className="flex-1 min-w-0">
+        <div className="th-text text-sm font-medium leading-tight truncate">
+          {primaryLabel}{colorLabel ? ` · ${colorLabel}` : ''}
+        </div>
+        {sub && <div className="th-text-muted text-xs leading-tight truncate">{sub}</div>}
+      </div>
+
+      {/* Origin badge (compact) */}
+      {item.origin === 'Hand Poured by Me' && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-300 shrink-0 leading-tight">🫗</span>
+      )}
+      {item.origin === 'Homemade — Other' && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-900/30 text-sky-400 shrink-0 leading-tight">HM</span>
+      )}
+
+      {/* Condition badge (compact) */}
+      {item.condition === 'New' && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400 shrink-0 leading-tight">New</span>
+      )}
+      {item.condition === 'Retired' && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-900/30 text-red-400 shrink-0 leading-tight">Ret</span>
+      )}
+
+      {/* Edit */}
+      <button
+        onClick={onEdit}
+        className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted text-xs opacity-50 active:opacity-100"
+      >
+        ✎
+      </button>
+
+      {/* Delete */}
+      {confirmDelete ? (
+        <div className="flex gap-1 shrink-0">
+          <button
+            onClick={() => { onDelete(); setConfirmDelete(false) }}
+            className="text-red-400 text-xs px-2 py-1 border border-red-900/50 rounded-lg min-h-[32px]"
+          >Del</button>
+          <button
+            onClick={() => setConfirmDelete(false)}
+            className="th-text-muted text-xs px-1 py-1 border th-border rounded-lg min-h-[32px]"
+          >✕</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm"
+        >✕</button>
+      )}
+    </div>
+  )
+}
+
 // ─── List view ────────────────────────────────────────────────────────────────
 
-type CategoryFilter = 'all' | TackleCategory
 type OriginFilter = 'all' | TackleOrigin
 type ConditionFilter = 'all' | TackleCondition
 
 interface ListViewProps {
   items: OwnedLure[]
   settings: AppSettings
+  mruItems: OwnedLure[]
   onAdd: (cat: TackleCategory) => void
   onEdit: (item: OwnedLure) => void
   onDelete: (id: string) => void
@@ -580,79 +691,86 @@ interface ListViewProps {
   onExport: () => void
 }
 
-function ListView({
-  items,
-  onAdd,
-  onEdit,
-  onDelete,
-  onBulkDelete,
-  onExport,
-}: ListViewProps) {
-  const [catFilter, setCatFilter] = useState<CategoryFilter>('all')
+function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onExport }: ListViewProps) {
+  const [search, setSearch]           = useState('')
   const [originFilter, setOriginFilter] = useState<OriginFilter>('all')
-  const [condFilter, setCondFilter] = useState<ConditionFilter>('all')
-  const [lureTypeFilter, setLureTypeFilter] = useState<string>('all')
+  const [condFilter, setCondFilter]   = useState<ConditionFilter>('all')
+  const [gridView, setGridView]       = useState<boolean>(() => {
+    try { return localStorage.getItem('tackle-view') === 'grid' } catch { return false }
+  })
   const [multiSelect, setMultiSelect] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected]       = useState<Set<string>>(new Set())
   const [bulkConfirm, setBulkConfirm] = useState(false)
-  const [subExpanded, setSubExpanded] = useState<Record<string, boolean>>({})
 
-  const lures  = items.filter(i => effectiveCategory(i) === 'lure')
-  const hooks  = items.filter(i => effectiveCategory(i) === 'hook')
-  const spoons = items.filter(i => effectiveCategory(i) === 'spoon')
+  const toggleView = () => {
+    const next = !gridView
+    setGridView(next)
+    try { localStorage.setItem('tackle-view', next ? 'grid' : 'list') } catch {}
+  }
 
-  const lureTypesInData = Array.from(new Set(lures.map(l => l.lureType ?? 'Other'))).sort()
+  const isFiltered = search.trim() !== '' || originFilter !== 'all' || condFilter !== 'all'
 
   const filterItem = (item: OwnedLure): boolean => {
-    const cat = effectiveCategory(item)
-    if (catFilter !== 'all' && cat !== catFilter) return false
     if (originFilter !== 'all' && item.origin !== originFilter) return false
     if (condFilter !== 'all' && (item.condition ?? 'Good') !== condFilter) return false
-    if (catFilter === 'lure' && lureTypeFilter !== 'all' && (item.lureType ?? 'Other') !== lureTypeFilter) return false
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      const fields = [
+        item.lureType, item.hookStyle, item.spoonStyle,
+        item.color, item.secondaryColor, item.weight, item.brand, item.subType,
+      ]
+      if (!fields.some(f => f?.toLowerCase().includes(q))) return false
+    }
     return true
   }
 
-  const filtered        = items.filter(filterItem)
-  const filteredLures   = filtered.filter(i => effectiveCategory(i) === 'lure')
-  const filteredHooks   = filtered.filter(i => effectiveCategory(i) === 'hook')
-  const filteredSpoons  = filtered.filter(i => effectiveCategory(i) === 'spoon')
+  const filtered = items.filter(filterItem)
 
-  const buildGroups = (arr: OwnedLure[], keyFn: (i: OwnedLure) => string): Record<string, OwnedLure[]> =>
-    arr.reduce<Record<string, OwnedLure[]>>((acc, item) => {
-      const k = keyFn(item)
-      if (!acc[k]) acc[k] = []
-      acc[k].push(item)
-      return acc
-    }, {})
+  // Build flat sections with sticky headers
+  type Section = { key: string; header: string; items: OwnedLure[] }
+  const sections: Section[] = []
 
-  const lureGroups  = buildGroups(filteredLures,  i => i.lureType  ?? 'Other')
-  const hookGroups  = buildGroups(filteredHooks,   i => i.hookStyle ?? 'Other')
-  const spoonGroups = buildGroups(filteredSpoons,  i => i.spoonStyle ?? 'Other')
+  const lures  = filtered.filter(i => effectiveCategory(i) === 'lure')
+  const hooks  = filtered.filter(i => effectiveCategory(i) === 'hook')
+  const spoons = filtered.filter(i => effectiveCategory(i) === 'spoon')
 
-  const initSubKeys = useCallback((cat: TackleCategory, groups: Record<string, OwnedLure[]>) => {
-    setSubExpanded(prev => {
-      const next = { ...prev }
-      Object.keys(groups).forEach((k, idx) => {
-        const key = `${cat}::${k}`
-        if (!(key in next)) next[key] = idx === 0
-      })
-      return next
-    })
-  }, [])
+  // Lures grouped by type
+  const lureTypeMap = new Map<string, OwnedLure[]>()
+  for (const l of lures) {
+    const k = l.lureType ?? 'Other'
+    if (!lureTypeMap.has(k)) lureTypeMap.set(k, [])
+    lureTypeMap.get(k)!.push(l)
+  }
+  for (const [type, typeItems] of lureTypeMap) {
+    sections.push({ key: `lure::${type}`, header: `🎣 ${type}`, items: sortItems(typeItems) })
+  }
 
-  useEffect(() => { initSubKeys('lure',  lureGroups)  }, [filteredLures.length])  // eslint-disable-line
-  useEffect(() => { initSubKeys('hook',  hookGroups)  }, [filteredHooks.length])  // eslint-disable-line
-  useEffect(() => { initSubKeys('spoon', spoonGroups) }, [filteredSpoons.length]) // eslint-disable-line
+  // Hooks grouped by style
+  const hookStyleMap = new Map<string, OwnedLure[]>()
+  for (const h of hooks) {
+    const k = h.hookStyle ?? 'Other'
+    if (!hookStyleMap.has(k)) hookStyleMap.set(k, [])
+    hookStyleMap.get(k)!.push(h)
+  }
+  for (const [style, styleItems] of hookStyleMap) {
+    sections.push({ key: `hook::${style}`, header: `🪝 ${style}`, items: styleItems })
+  }
 
-  const toggleSub = (cat: TackleCategory, key: string) => {
-    const full = `${cat}::${key}`
-    setSubExpanded(prev => ({ ...prev, [full]: !prev[full] }))
+  // Spoons grouped by style
+  const spoonStyleMap = new Map<string, OwnedLure[]>()
+  for (const s of spoons) {
+    const k = s.spoonStyle ?? 'Other'
+    if (!spoonStyleMap.has(k)) spoonStyleMap.set(k, [])
+    spoonStyleMap.get(k)!.push(s)
+  }
+  for (const [style, styleItems] of spoonStyleMap) {
+    sections.push({ key: `spoon::${style}`, header: `🥄 ${style}`, items: styleItems })
   }
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
+      next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
   }
@@ -668,92 +786,98 @@ function ListView({
     exitMultiSelect()
   }
 
-  const renderSubGroup = (
-    cat: TackleCategory,
-    groupKey: string,
-    groupItems: OwnedLure[],
-    isFirst: boolean,
-  ) => {
-    const fullKey = `${cat}::${groupKey}`
-    const isExpanded = subExpanded[fullKey] ?? isFirst
-    return (
-      <div key={groupKey}>
-        <button
-          onClick={() => toggleSub(cat, groupKey)}
-          className="w-full flex items-center gap-2 py-1.5 px-2 text-left min-h-[40px]"
-        >
-          <span className="section-label flex-1">{groupKey}</span>
-          <span className="th-text-muted text-xs">({groupItems.length})</span>
-          <span className="th-text-muted text-xs ml-1">{isExpanded ? '▾' : '▸'}</span>
-        </button>
-        {isExpanded && (
-          <div className="space-y-2 pl-1">
-            {sortItems(groupItems).map(item => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                multiSelect={multiSelect}
-                selected={selected.has(item.id)}
-                onToggleSelect={() => toggleSelect(item.id)}
-                onEdit={() => onEdit(item)}
-                onDelete={() => onDelete(item.id)}
-                onLongPress={() => { setMultiSelect(true); setSelected(new Set([item.id])) }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const showLures  = (catFilter === 'all' || catFilter === 'lure')  && filteredLures.length  > 0
-  const showHooks  = (catFilter === 'all' || catFilter === 'hook')  && filteredHooks.length  > 0
-  const showSpoons = (catFilter === 'all' || catFilter === 'spoon') && filteredSpoons.length > 0
-  const isEmpty    = filtered.length === 0
+  const showMru = !isFiltered && mruItems.length > 0
+  const isEmpty = filtered.length === 0
 
   return (
     <div className="pb-32">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3 px-4 pt-4">
+      <div className="flex items-center gap-2 px-4 pt-4 pb-2">
         <h1 className="th-text font-bold text-xl flex-1">Tackle</h1>
         <button
+          onClick={toggleView}
+          className="w-9 h-9 flex items-center justify-center th-surface border th-border rounded-xl th-text-muted text-sm"
+          title={gridView ? 'List view' : 'Grid view'}
+        >
+          {gridView ? '☰' : '⊞'}
+        </button>
+        <button
           onClick={onExport}
-          className="text-xs th-text-muted border th-border px-3 py-2 rounded-xl min-h-[40px]"
+          className="text-xs th-text-muted border th-border px-3 py-2 rounded-xl min-h-[36px]"
         >
           Export
         </button>
       </div>
 
-      {/* Category + filter chips */}
-      <div className="overflow-x-auto scrollbar-hide px-4 pb-1">
-        <div className="flex gap-2 w-max">
-          <Chip label="All" active={catFilter === 'all'} onClick={() => { setCatFilter('all'); setLureTypeFilter('all') }} />
-          <Chip label="🎣 Lures" active={catFilter === 'lure'} onClick={() => { setCatFilter('lure'); setLureTypeFilter('all') }} />
-          <Chip label="🪝 Hooks" active={catFilter === 'hook'} onClick={() => { setCatFilter('hook'); setLureTypeFilter('all') }} />
-          <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
-
-          <Chip label="Any Origin" active={originFilter === 'all'} onClick={() => setOriginFilter('all')} />
-          <Chip label="🫗 Hand Poured" active={originFilter === 'Hand Poured by Me'} onClick={() => setOriginFilter('Hand Poured by Me')} />
-          <Chip label="Store Bought" active={originFilter === 'Store Bought'} onClick={() => setOriginFilter('Store Bought')} />
-
-          <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
-
-          <Chip label="Any Condition" active={condFilter === 'all'} onClick={() => setCondFilter('all')} />
-          <Chip label="New" active={condFilter === 'New'} onClick={() => setCondFilter('New')} />
-          <Chip label="Good" active={condFilter === 'Good'} onClick={() => setCondFilter('Good')} />
-          <Chip label="Retired" active={condFilter === 'Retired'} onClick={() => setCondFilter('Retired')} />
+      {/* Always-visible search bar */}
+      <div className="px-4 pb-2">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 th-text-muted text-sm pointer-events-none">🔍</span>
+          <input
+            type="search"
+            className="w-full th-surface border th-border rounded-xl pl-8 pr-8 py-2.5 th-text text-sm"
+            placeholder="Search by type, color, weight…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 th-text-muted text-sm"
+            >✕</button>
+          )}
         </div>
       </div>
 
-      {/* Lure-type quick-filter */}
-      {catFilter === 'lure' && lureTypesInData.length > 1 && (
-        <div className="overflow-x-auto scrollbar-hide px-4 pb-2 mt-1">
-          <div className="flex gap-2 w-max">
-            <Chip label="All Types" active={lureTypeFilter === 'all'} onClick={() => setLureTypeFilter('all')} />
-            {lureTypesInData.map(t => (
-              <Chip key={t} label={t} active={lureTypeFilter === t} onClick={() => setLureTypeFilter(t)} />
-            ))}
+      {/* Filter chips — origin + condition */}
+      <div className="overflow-x-auto scrollbar-hide px-4 pb-2">
+        <div className="flex gap-2 w-max">
+          <Chip label="Any Origin"     active={originFilter === 'all'}               onClick={() => setOriginFilter('all')} />
+          <Chip label="🫗 Hand Poured" active={originFilter === 'Hand Poured by Me'} onClick={() => setOriginFilter('Hand Poured by Me')} />
+          <Chip label="Homemade"       active={originFilter === 'Homemade — Other'}  onClick={() => setOriginFilter('Homemade — Other')} />
+          <Chip label="Store Bought"   active={originFilter === 'Store Bought'}       onClick={() => setOriginFilter('Store Bought')} />
+          <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
+          <Chip label="Any Condition" active={condFilter === 'all'}      onClick={() => setCondFilter('all')} />
+          <Chip label="New"           active={condFilter === 'New'}      onClick={() => setCondFilter('New')} />
+          <Chip label="Good"          active={condFilter === 'Good'}     onClick={() => setCondFilter('Good')} />
+          <Chip label="Retired"       active={condFilter === 'Retired'}  onClick={() => setCondFilter('Retired')} />
+        </div>
+      </div>
+
+      {/* MRU — last 5 lures used in catches */}
+      {showMru && (
+        <div className="mb-1">
+          <div className="sticky top-0 z-10 px-4 py-1.5 th-surface-deep border-y th-border flex items-center justify-between">
+            <span className="text-xs font-bold th-text-muted uppercase tracking-wide">Recently Used</span>
+            <span className="text-xs th-text-muted">({mruItems.length})</span>
           </div>
+          {gridView ? (
+            <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
+              {mruItems.map(item => (
+                <ItemCard
+                  key={`mru::${item.id}`}
+                  item={item}
+                  multiSelect={false}
+                  selected={false}
+                  onToggleSelect={() => {}}
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item.id)}
+                  onLongPress={() => {}}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="divide-y th-border">
+              {mruItems.map(item => (
+                <DenseRow
+                  key={`mru::${item.id}`}
+                  item={item}
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -761,49 +885,49 @@ function ListView({
       {isEmpty && (
         <div className="text-center py-16 th-text-muted px-4">
           <div className="text-4xl mb-3">🎣</div>
-          <p className="text-sm font-medium">No tackle found</p>
-          <p className="text-xs mt-1">Adjust filters or tap + to add tackle.</p>
+          <p className="text-sm font-medium">{search ? 'No matches' : 'No tackle yet'}</p>
+          <p className="text-xs mt-1">
+            {search ? 'Try a different search term.' : 'Tap + to add your first lure, hook, or spoon.'}
+          </p>
         </div>
       )}
 
-      {/* Accordion list */}
-      <div className="px-4 mt-2 space-y-1">
-        {showLures && (
-          <AccordionGroup
-            label={`🎣 Lures (${lures.length})`}
-            count={filteredLures.length}
-
-          >
-            {Object.entries(lureGroups).map(([key, groupItems], idx) =>
-              renderSubGroup('lure', key, groupItems, idx === 0)
-            )}
-          </AccordionGroup>
-        )}
-
-        {showHooks && (
-          <AccordionGroup
-            label={`🪝 Hooks (${hooks.length})`}
-            count={filteredHooks.length}
-
-          >
-            {Object.entries(hookGroups).map(([key, groupItems], idx) =>
-              renderSubGroup('hook', key, groupItems, idx === 0)
-            )}
-          </AccordionGroup>
-        )}
-
-        {showSpoons && (
-          <AccordionGroup
-            label={`🥄 Spoons (${spoons.length})`}
-            count={filteredSpoons.length}
-
-          >
-            {Object.entries(spoonGroups).map(([key, groupItems], idx) =>
-              renderSubGroup('spoon', key, groupItems, idx === 0)
-            )}
-          </AccordionGroup>
-        )}
-      </div>
+      {/* Flat sections with sticky headers */}
+      {sections.map(section => (
+        <div key={section.key}>
+          <div className="sticky top-0 z-10 px-4 py-1.5 th-surface-deep border-y th-border flex items-center justify-between">
+            <span className="text-xs font-bold th-text-muted uppercase tracking-wide">{section.header}</span>
+            <span className="text-xs th-text-muted">({section.items.length})</span>
+          </div>
+          {gridView ? (
+            <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
+              {section.items.map(item => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  multiSelect={multiSelect}
+                  selected={selected.has(item.id)}
+                  onToggleSelect={() => toggleSelect(item.id)}
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item.id)}
+                  onLongPress={() => { setMultiSelect(true); setSelected(new Set([item.id])) }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="divide-y th-border">
+              {section.items.map(item => (
+                <DenseRow
+                  key={item.id}
+                  item={item}
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
 
       {/* Multi-select bottom bar */}
       {multiSelect && (
@@ -1310,12 +1434,42 @@ interface Props {
 }
 
 export default function Tackle({ settings }: Props) {
-  const [items, setItems] = useState<OwnedLure[]>([])
+  const [items, setItems]       = useState<OwnedLure[]>([])
+  const [mruItems, setMruItems] = useState<OwnedLure[]>([])
   const [formView, setFormView] = useState<FormView | null>(null)
 
   useEffect(() => {
     getAllOwnedLures().then(setItems)
   }, [])
+
+  // Build MRU from recent catch events — last 5 unique (lureType + color) combos
+  useEffect(() => {
+    if (items.length === 0) return
+    getAllEvents().then(events => {
+      const landed = events
+        .filter((e): e is LandedFish => e.type === 'Landed Fish')
+        .sort((a, b) => b.timestamp - a.timestamp)
+
+      const seen = new Set<string>()
+      const matched: OwnedLure[] = []
+
+      for (const ev of landed) {
+        if (matched.length >= 5) break
+        const key = `${ev.lureType}::${(ev.lureColor ?? '').toLowerCase()}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const found = items.find(i =>
+          effectiveCategory(i) === 'lure' &&
+          i.lureType === ev.lureType &&
+          i.color.toLowerCase() === (ev.lureColor ?? '').toLowerCase()
+        )
+        if (found && !matched.find(m => m.id === found.id)) {
+          matched.push(found)
+        }
+      }
+      setMruItems(matched)
+    }).catch(() => {})
+  }, [items])
 
   const handleSave = (item: OwnedLure) => {
     setItems(prev => {
@@ -1390,6 +1544,7 @@ export default function Tackle({ settings }: Props) {
     <ListView
       items={items}
       settings={settings}
+      mruItems={mruItems}
       onAdd={cat => setFormView({ mode: 'add', category: cat })}
       onEdit={item => setFormView({ mode: 'edit', item })}
       onDelete={handleDelete}

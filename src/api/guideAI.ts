@@ -36,6 +36,7 @@ export function buildGuideSystemPrompt(
   session: Session | null,
   sessionEvents: CatchEvent[],
   patternSummary?: string,
+  recentAnalysisSummaries?: string[],
 ): string {
   const parts: string[] = [GUIDE_PERSONA]
 
@@ -86,6 +87,10 @@ export function buildGuideSystemPrompt(
     parts.push(`\nHISTORICAL PATTERN DATA:\n${patternSummary}`)
   }
 
+  if (recentAnalysisSummaries && recentAnalysisSummaries.length > 0) {
+    parts.push(`\nRECENT SESSION ANALYSES (most recent first):\n${recentAnalysisSummaries.join('\n\n---\n\n')}`)
+  }
+
   return parts.filter(Boolean).join('\n')
 }
 
@@ -117,6 +122,42 @@ export async function* streamGuideResponse(
       yield event.delta.text
     }
   }
+}
+
+// ─── Post-session opening analysis ────────────────────────────────────────────
+
+export async function generatePostSessionOpening(
+  apiKey: string,
+  systemPrompt: string,
+): Promise<AsyncGenerator<string>> {
+  return streamGuideResponse(apiKey, systemPrompt, [], [{
+    type: 'text',
+    text: 'Please give me a concise post-session analysis. Cover what worked, what the data suggests about current patterns, and 1–2 actionable takeaways for next time.',
+  }])
+}
+
+// ─── Analysis summary for session record (4–8 sentences) ──────────────────────
+
+export async function generateAnalysisSummary(
+  apiKey: string,
+  messages: GuideMessage[],
+): Promise<string> {
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+
+  const transcript = messages
+    .map(m => `${m.role === 'user' ? 'Angler' : 'Guide'}: ${m.content}`)
+    .join('\n\n')
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 400,
+    messages: [{
+      role: 'user',
+      content: `Write a 4–8 sentence post-session analysis summary based on this Guide conversation. Include what was caught, what techniques worked, key conditions, and the most actionable takeaway for next time. Be specific and data-driven — this will be stored as the session's permanent analysis.\n\nCONVERSATION:\n${transcript}`,
+    }],
+  })
+
+  return response.content[0].type === 'text' ? response.content[0].text.trim() : ''
 }
 
 // ─── Checkpoint summary (background, non-blocking) ────────────────────────────

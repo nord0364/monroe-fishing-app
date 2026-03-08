@@ -12,7 +12,6 @@ import type { NavTab } from './components/layout/BottomNav'
 import PreSessionBriefing from './components/briefing/PreSessionBriefing'
 import SessionLogger from './components/logger/SessionLogger'
 import TrophyRoom from './components/patterns/TrophyRoom'
-import Debrief from './components/debrief/Debrief'
 import Tackle from './components/tackle/Tackle'
 import Settings from './components/settings/Settings'
 import Guide from './components/guide/Guide'
@@ -63,7 +62,6 @@ function applyTheme(settings: AppSettings) {
   if (theme === 'adaptive') {
     dataTheme = getAdaptivePhase(settings.sunriseSunsetCache)
   } else if (theme === 'auto') {
-    // Let CSS media query handle it, but also set explicitly for non-media contexts
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     dataTheme = prefersDark ? 'dark' : 'light'
   } else {
@@ -79,7 +77,7 @@ function applyTheme(settings: AppSettings) {
 }
 
 export default function App() {
-  const [tab, setTab]         = useState<NavTab | null>(null)  // null = home screen
+  const [tab, setTab]           = useState<NavTab | null>(null)  // null = home screen
   const [showSettings, setShowSettings] = useState(false)
   const [settings, setSettings] = useState<AppSettings>({
     anthropicApiKey: '',
@@ -90,10 +88,10 @@ export default function App() {
   })
   const [activeSession, setActiveSession] = useState<Session | null>(loadPersistedSession)
   const [ready, setReady] = useState(false)
-  // For Debrief — carry ended session into Debrief tab
-  const [pendingDebriefSession, setPendingDebriefSession] = useState<Session | null>(null)
-  // Guide overlay
+  // Guide overlay — opened from Log tab during active session
   const [showGuide, setShowGuide] = useState(false)
+  // Post-session Guide overlay — opened via Analyze button in PostSessionReview
+  const [postSessionGuideSession, setPostSessionGuideSession] = useState<Session | null>(null)
 
   useEffect(() => {
     getSettings().then(s => { setSettings(s); applyTheme(s); setReady(true) })
@@ -105,17 +103,14 @@ export default function App() {
     loadGoogleIdentityServices(clientId).catch(() => {})
   }, [ready, settings.googleClientId])
 
-  // Register data provider so Drive module can retry queued syncs when back online
   useEffect(() => {
     setQueuedSyncProvider(() => exportAllDataFull())
   }, [])
 
-  // Apply theme whenever settings change
   useEffect(() => {
     if (ready) applyTheme(settings)
   }, [settings, ready])
 
-  // For adaptive theme: re-evaluate phase every minute
   useEffect(() => {
     if ((settings.colorTheme ?? 'adaptive') !== 'adaptive') return
     const tick = () => applyTheme(settings)
@@ -123,12 +118,10 @@ export default function App() {
     return () => clearInterval(id)
   }, [settings])
 
-  // Fetch and cache sunrise/sunset daily — always, regardless of current theme
-  // so the cache is warm if the user switches to Adaptive.
   useEffect(() => {
     if (!ready) return
     const today = new Date().toISOString().slice(0, 10)
-    if (settings.sunriseSunsetCache?.date === today) return  // Already fresh for today
+    if (settings.sunriseSunsetCache?.date === today) return
     fetchMoonData().then(data => {
       if (data.sunrise && data.sunset) {
         const cache: SunriseSunsetCache = {
@@ -150,13 +143,11 @@ export default function App() {
     try { await syncToGoogleDrive(await exportAllDataFull()) } catch {}
   }, [])
 
-  // Immediate sync (1 s to let DB flush) — used on session end
   const triggerDriveSyncNow = useCallback(() => {
     if (syncTimer.current) clearTimeout(syncTimer.current)
     syncTimer.current = setTimeout(doSync, 1_000)
   }, [doSync])
 
-  // Debounced sync (30 s) — used on catch saves / mid-session edits
   const triggerDriveSyncDebounced = useCallback(() => {
     if (syncTimer.current) clearTimeout(syncTimer.current)
     syncTimer.current = setTimeout(doSync, 30_000)
@@ -172,12 +163,18 @@ export default function App() {
     setSettings(s)
   }
 
-  // When session ends → immediate sync then navigate to debrief
+  // When session ends → stay on Log tab (PostSessionReview will show), trigger sync
   const handleSessionEnd = (session: Session) => {
-    setPendingDebriefSession(session)
     setActiveSession(null)
     persistSession(null)
     triggerDriveSyncNow()
+    // Keep tab on 'log' so PostSessionReview is visible
+    void session  // used by caller
+  }
+
+  // Open Guide as post-session overlay from PostSessionReview
+  const handleOpenGuidePostSession = (session: Session) => {
+    setPostSessionGuideSession(session)
   }
 
   // Splash while loading
@@ -213,7 +210,6 @@ export default function App() {
     return (
       <div className="th-base min-h-screen th-text relative">
         <OfflineBanner />
-        {/* First-launch API key prompt */}
         {!settings.onboardingDone && !settings.anthropicApiKey && (
           <ApiKeyOverlay onSave={async (key) => {
             const updated = { ...settings, anthropicApiKey: key, onboardingDone: true }
@@ -231,31 +227,20 @@ export default function App() {
             }
           }}
           onSettings={() => setShowSettings(true)}
-          onOpenGuide={() => setShowGuide(true)}
         />
-        {showGuide && (
-          <Guide
-            session={activeSession}
-            settings={settings}
-            onClose={() => setShowGuide(false)}
-          />
-        )}
       </div>
     )
   }
 
-  const showSessionBanner = Boolean(activeSession && tab !== 'log')
+  const showSessionBanner = Boolean(activeSession && tab !== 'log' && tab !== 'guide')
 
-  // Top nav bar sits below the session banner when it's visible (~44px)
   const topBarTop    = showSessionBanner ? 'top-11' : 'top-0'
-  // Main content is padded for top nav (44px) + optional session banner (44px)
   const mainPaddingTop = showSessionBanner ? 'pt-[88px]' : 'pt-11'
 
   return (
     <div className="th-base min-h-screen th-text">
       <OfflineBanner />
 
-      {/* Active session banner when away from Log */}
       {showSessionBanner && (
         <button
           onClick={() => setTab('log')}
@@ -265,7 +250,6 @@ export default function App() {
         </button>
       )}
 
-      {/* Global top navigation bar — home + section title + settings */}
       <TopNav
         tab={tab}
         onHome={() => setTab(null)}
@@ -277,6 +261,14 @@ export default function App() {
         className={`overflow-y-auto ${mainPaddingTop}`}
         style={{ minHeight: 'calc(100vh - 58px)', paddingBottom: '58px' }}
       >
+        {tab === 'guide' && (
+          <Guide
+            session={activeSession}
+            settings={settings}
+            onClose={() => setTab(null)}
+            isTab={true}
+          />
+        )}
         {tab === 'scout' && (
           <PreSessionBriefing
             settings={settings}
@@ -292,16 +284,9 @@ export default function App() {
             onSessionChanged={handleSessionChanged}
             onSessionEnded={(session) => {
               handleSessionEnd(session)
-              setTab('debrief')
             }}
             onOpenGuide={() => setShowGuide(true)}
-          />
-        )}
-        {tab === 'debrief' && (
-          <Debrief
-            settings={settings}
-            pendingSession={pendingDebriefSession}
-            onPendingConsumed={() => setPendingDebriefSession(null)}
+            onOpenGuidePostSession={handleOpenGuidePostSession}
           />
         )}
         {tab === 'trophy' && <TrophyRoom settings={settings} />}
@@ -310,12 +295,22 @@ export default function App() {
 
       <BottomNav active={tab} onChange={setTab} />
 
-      {/* Guide overlay — accessible from home screen and active Log session */}
+      {/* Guide overlay — opened from Log tab during active session */}
       {showGuide && (
         <Guide
           session={activeSession}
           settings={settings}
           onClose={() => setShowGuide(false)}
+        />
+      )}
+
+      {/* Post-session Guide overlay — opened via Analyze button */}
+      {postSessionGuideSession && (
+        <Guide
+          session={postSessionGuideSession}
+          settings={settings}
+          onClose={() => setPostSessionGuideSession(null)}
+          postSessionMode={true}
         />
       )}
     </div>
@@ -324,11 +319,11 @@ export default function App() {
 
 // ── Global top navigation bar ──────────────────────────────────────────────────
 const TAB_TITLES: Record<string, string> = {
-  scout:   'Scout',
-  log:     'Log',
-  debrief: 'Debrief',
-  trophy:  'Trophy Room',
-  tackle:  'Tackle',
+  guide:  'Guide',
+  scout:  'Scout',
+  log:    'Log',
+  trophy: 'Trophy Room',
+  tackle: 'Tackle',
 }
 
 function TopNav({
@@ -343,11 +338,12 @@ function TopNav({
   topClass: string
 }) {
   if (!tab) return null
+  // Guide tab is full-screen — no top nav
+  if (tab === 'guide') return null
   return (
     <div
       className={`fixed ${topClass} inset-x-0 z-30 h-11 flex items-center px-3 th-nav-bg border-b th-nav-border`}
     >
-      {/* Home button */}
       <button
         onClick={onHome}
         aria-label="Home"
@@ -357,12 +353,10 @@ function TopNav({
         <span className="text-[10px] font-semibold tracking-wide">HOME</span>
       </button>
 
-      {/* Section title */}
       <span className="flex-1 text-center text-sm font-bold th-text">
         {TAB_TITLES[tab] ?? ''}
       </span>
 
-      {/* Settings button */}
       <button
         onClick={onSettings}
         aria-label="Settings"
@@ -381,21 +375,20 @@ const HOME_CARDS: {
   label: string
   desc: string
 }[] = [
-  { tab: 'scout',   icon: '🌅', label: 'Scout',       desc: 'AI briefing, conditions & session launch' },
-  { tab: 'log',     icon: '🎣', label: 'Log',          desc: 'Active session · catch entry · history' },
-  { tab: 'debrief', icon: '💬', label: 'Debrief',      desc: 'Post-session AI coaching conversations' },
-  { tab: 'trophy',  icon: '🏆', label: 'Trophy Room',  desc: 'Photos, personal bests & pattern analysis' },
-  { tab: 'tackle',  icon: '🧰', label: 'Tackle',        desc: 'Lure, hook & spoon inventory' },
+  { tab: 'guide',  icon: '🧭', label: 'Guide',       desc: 'On-water AI assistant — ask anything' },
+  { tab: 'scout',  icon: '🌅', label: 'Scout',        desc: 'AI briefing, conditions & session launch' },
+  { tab: 'log',    icon: '🎣', label: 'Log',           desc: 'Active session · catch entry · history' },
+  { tab: 'trophy', icon: '🏆', label: 'Trophy Room',  desc: 'Photos, personal bests & pattern analysis' },
+  { tab: 'tackle', icon: '🧰', label: 'Tackle',        desc: 'Lure, hook & spoon inventory' },
 ]
 
 function HomeScreen({
-  activeSession, onNavigate, onSettings, onOpenGuide,
+  activeSession, onNavigate, onSettings,
 }: {
   activeSession: Session | null
   settings?: AppSettings
   onNavigate: (tab: NavTab) => void
   onSettings: () => void
-  onOpenGuide: () => void
 }) {
   return (
     <div className="flex flex-col min-h-screen max-w-sm mx-auto px-4 pb-10">
@@ -429,21 +422,6 @@ function HomeScreen({
         </button>
       )}
 
-      {/* Guide card — opens overlay, not a tab */}
-      <button
-        onClick={onOpenGuide}
-        className="w-full flex items-center gap-4 px-5 py-4 th-surface rounded-3xl border th-border text-left transition-all active:scale-[0.98] th-card-glow mb-3"
-      >
-        <span className="text-3xl shrink-0 w-12 h-12 flex items-center justify-center rounded-2xl th-surface-deep">
-          🗣️
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="th-text font-bold text-base leading-tight">Guide</div>
-          <div className="th-text-muted text-xs mt-0.5 leading-relaxed">On-water AI assistant — ask anything</div>
-        </div>
-        <span className="th-text-muted text-base shrink-0">›</span>
-      </button>
-
       {/* Destination cards */}
       <div className="flex flex-col gap-3 flex-1">
         {HOME_CARDS.map((card, i) => (
@@ -453,9 +431,7 @@ function HomeScreen({
             className="w-full flex items-center gap-4 px-5 py-4 th-surface rounded-3xl border th-border text-left transition-all active:scale-[0.98] th-card-glow"
             style={{ animationDelay: `${i * 40}ms` }}
           >
-            <span
-              className="text-3xl shrink-0 w-12 h-12 flex items-center justify-center rounded-2xl th-surface-deep"
-            >
+            <span className="text-3xl shrink-0 w-12 h-12 flex items-center justify-center rounded-2xl th-surface-deep">
               {card.icon}
             </span>
             <div className="flex-1 min-w-0">
