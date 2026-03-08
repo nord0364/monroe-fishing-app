@@ -108,12 +108,12 @@ export default function App() {
     return () => clearInterval(id)
   }, [settings])
 
-  // Fetch and cache sunrise/sunset when online (for adaptive theme)
+  // Fetch and cache sunrise/sunset daily — always, regardless of current theme
+  // so the cache is warm if the user switches to Adaptive.
   useEffect(() => {
     if (!ready) return
-    if ((settings.colorTheme ?? 'adaptive') !== 'adaptive') return
     const today = new Date().toISOString().slice(0, 10)
-    if (settings.sunriseSunsetCache?.date === today) return  // Already fresh
+    if (settings.sunriseSunsetCache?.date === today) return  // Already fresh for today
     fetchMoonData().then(data => {
       if (data.sunrise && data.sunset) {
         const cache: SunriseSunsetCache = {
