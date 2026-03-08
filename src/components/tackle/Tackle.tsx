@@ -775,7 +775,7 @@ function ListView({
           <AccordionGroup
             label={`🎣 Lures (${lures.length})`}
             count={filteredLures.length}
-            defaultExpanded
+
           >
             {Object.entries(lureGroups).map(([key, groupItems], idx) =>
               renderSubGroup('lure', key, groupItems, idx === 0)
@@ -787,7 +787,7 @@ function ListView({
           <AccordionGroup
             label={`🪝 Hooks (${hooks.length})`}
             count={filteredHooks.length}
-            defaultExpanded
+
           >
             {Object.entries(hookGroups).map(([key, groupItems], idx) =>
               renderSubGroup('hook', key, groupItems, idx === 0)
@@ -799,7 +799,7 @@ function ListView({
           <AccordionGroup
             label={`🥄 Spoons (${spoons.length})`}
             count={filteredSpoons.length}
-            defaultExpanded
+
           >
             {Object.entries(spoonGroups).map(([key, groupItems], idx) =>
               renderSubGroup('spoon', key, groupItems, idx === 0)
