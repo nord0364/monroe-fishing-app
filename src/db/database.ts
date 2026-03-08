@@ -288,6 +288,11 @@ export async function bulkDeleteOwnedLures(ids: string[]): Promise<void> {
   for (const id of ids) await db.delete('ownedLures', id)
 }
 
+export async function bulkSaveOwnedLures(items: OwnedLure[]): Promise<void> {
+  const db = await getDB()
+  for (const item of items) await db.put('ownedLures', item)
+}
+
 export async function saveRodSetup(rod: RodSetup): Promise<void> {
   const db = await getDB()
   await db.put('rodSetups', rod)

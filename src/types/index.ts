@@ -95,7 +95,7 @@ export type LaunchSite =
 
 export type TackleCategory = 'lure' | 'hook' | 'spoon'
 
-export type TackleOrigin = 'Hand Poured by Me' | 'Homemade — Other' | 'Store Bought'
+export type TackleOrigin = 'Hand Poured by Me' | 'Store Bought'
 
 export type TackleCondition = 'New' | 'Good' | 'Retired'
 
@@ -297,9 +297,12 @@ export interface OwnedLure {
   brand?: string
   origin?: TackleOrigin          // 3-way: Hand Poured by Me | Homemade — Other | Store Bought
   condition?: TackleCondition
+  // Jig-specific fields
+  jigSubgroup?: string           // e.g. "Swim Jig", "Football Jig"
   // Hook-specific fields
   hookStyle?: HookStyle
   hookSize?: string              // e.g. "3/0", "5/0"
+  hookType?: 'standard' | 'weighted'
   quantity?: number
   // Spoon-specific fields
   spoonStyle?: SpoonStyle

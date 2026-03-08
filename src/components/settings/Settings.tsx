@@ -28,13 +28,6 @@ const THEME_OPTIONS: { value: ColorTheme; label: string; desc: string }[] = [
   { value: 'auto',     label: '📱 Auto',     desc: 'Follows your phone system setting' },
 ]
 
-const VERSION_HISTORY: { version: string; date: string }[] = [
-  { version: 'v1.4.0', date: 'March 8, 2026' },
-  { version: 'v1.3.0', date: 'March 7, 2026' },
-  { version: 'v1.2.0', date: 'February 20, 2026' },
-  { version: 'v1.1.0', date: 'January 15, 2026' },
-  { version: 'v1.0.0', date: 'December 1, 2025' },
-]
 
 type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods' | 'catches' | 'drive-restore' | 'drive-manage'
 
@@ -888,18 +881,7 @@ export default function Settings({ settings, onUpdate }: Props) {
         </p>
       </div>
 
-      {/* ── Version History ──────────────────────────────────────────────── */}
-      <div className="th-surface-deep rounded-xl p-4 border th-border space-y-2">
-        <h2 className="font-semibold th-text text-sm">Version History</h2>
-        <div className="space-y-1.5 pt-1">
-          {VERSION_HISTORY.map(({ version, date }) => (
-            <div key={version} className="flex items-center justify-between">
-              <span className="th-text text-xs font-medium font-mono">{version}</span>
-              <span className="th-text-muted text-xs">{date}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <p className="text-center th-text-muted text-xs pb-2">v1.4.0</p>
     </div>
   )
 }

@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import type { OwnedLure } from '../../types'
-import { getAllOwnedLures, saveOwnedLure, deleteOwnedLure } from '../../db/database'
+import { getAllOwnedLures, saveOwnedLure, deleteOwnedLure, bulkSaveOwnedLures } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
 import { identifyLureForCatalog, type LureIdentification } from '../../api/claude'
 
 interface Props { onClose: () => void; apiKey?: string }
 
 const WEIGHTS = ['Weightless', '3/16 oz', '1/4 oz', '3/8 oz', '1/2 oz', '3/4 oz', '1 oz', 'Other']
-const LURE_TYPES = [
-  'Spinnerbait','Swim Jig','Chatterbait','Football Jig','Flipping Jig',
-  'Wacky Rig','Texas Rig','Buzzbait','Swimbait','Crankbait',
-  'Topwater','Drop Shot','Jerkbait','Swimbait (hard)','Other',
+const REASSIGN_CATEGORIES = [
+  'Spinnerbait', 'Chatterbait', 'Jig', 'Soft Plastics',
+  'Topwater', 'Crankbait', 'Swimbait', 'Ned Rig', 'Other',
+]
+const JIG_SUBGROUPS = [
+  'Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig', 'Other Jig',
 ]
 
 async function resizePhoto(file: File): Promise<string> {
@@ -37,8 +39,12 @@ async function resizePhoto(file: File): Promise<string> {
 
 export default function LureCatalog({ onClose, apiKey }: Props) {
   const [lures, setLures] = useState<OwnedLure[]>([])
-  const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<OwnedLure | null>(null)
+  const [multiSelect, setMultiSelect] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [showReassign, setShowReassign] = useState(false)
+  const [reassignCat, setReassignCat] = useState('')
+  const [reassignSub, setReassignSub] = useState('')
 
   useEffect(() => { getAllOwnedLures().then(setLures) }, [])
 
@@ -47,7 +53,6 @@ export default function LureCatalog({ onClose, apiKey }: Props) {
       const idx = prev.findIndex(l => l.id === lure.id)
       return idx >= 0 ? prev.map(l => l.id === lure.id ? lure : l) : [lure, ...prev]
     })
-    setAdding(false)
     setEditing(null)
   }
 
@@ -56,46 +61,185 @@ export default function LureCatalog({ onClose, apiKey }: Props) {
     setLures(prev => prev.filter(l => l.id !== id))
   }
 
-  if (adding || editing) {
-    return <LureForm initial={editing ?? undefined} apiKey={apiKey} onSave={saved} onCancel={() => { setAdding(false); setEditing(null) }} />
+  const exitMultiSelect = () => {
+    setMultiSelect(false)
+    setSelected(new Set())
+    setShowReassign(false)
+    setReassignCat('')
+    setReassignSub('')
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const handleReassignConfirm = async () => {
+    if (!reassignCat) return
+    const resolvedType = reassignCat
+    const items = lures.filter(l => selected.has(l.id))
+    const updated = items.map(l => ({
+      ...l,
+      lureType: resolvedType,
+      jigSubgroup: reassignCat === 'Jig' ? (reassignSub || undefined) : undefined,
+    }))
+    await bulkSaveOwnedLures(updated)
+    setLures(prev => prev.map(l => {
+      const u = updated.find(u => u.id === l.id)
+      return u ?? l
+    }))
+    exitMultiSelect()
+  }
+
+  const longPressHandlers = (id: string) => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    return {
+      onPointerDown: () => { timer = setTimeout(() => { setMultiSelect(true); setSelected(new Set([id])) }, 500) },
+      onPointerUp:   () => { if (timer) { clearTimeout(timer); timer = null } },
+      onPointerLeave: () => { if (timer) { clearTimeout(timer); timer = null } },
+    }
+  }
+
+  if (editing) {
+    return <LureForm initial={editing} apiKey={apiKey} onSave={saved} onCancel={() => setEditing(null)} />
   }
 
   return (
-    <div className="p-4 pb-24 max-w-lg mx-auto">
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={onClose} className="th-accent-text text-sm font-medium">← Back</button>
+    <div className="pb-36 max-w-lg mx-auto">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-2">
+        <button onClick={onClose} className="th-accent-text text-sm font-medium min-h-[44px] px-1">← Back</button>
         <h2 className="th-text font-bold text-lg flex-1">My Lures</h2>
-        <button onClick={() => setAdding(true)} className="th-btn-primary px-4 py-2 rounded-xl text-sm font-semibold">
-          + Add
-        </button>
       </div>
 
       {lures.length === 0 ? (
-        <div className="text-center py-12 th-text-muted">
+        <div className="text-center py-12 th-text-muted px-4">
           <div className="text-4xl mb-3">🎣</div>
           <p className="text-sm">No lures cataloged yet.</p>
-          <p className="text-xs mt-1">Add your lures so the AI can recommend from what you actually own.</p>
+          <p className="text-xs mt-1">Add lures from the Tackle tab so the AI can prioritize what you own.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {lures.map(l => (
-            <div key={l.id} className="th-surface rounded-xl border th-border flex items-center gap-3 p-3">
-              {l.photoDataUrl
-                ? <img src={l.photoDataUrl} className="w-14 h-14 rounded-lg object-cover shrink-0" alt="" />
-                : <div className="w-14 h-14 rounded-lg th-surface-deep flex items-center justify-center text-2xl shrink-0">🎣</div>
-              }
-              <div className="flex-1 min-w-0">
-                <div className="th-text font-semibold text-sm">{l.lureType}</div>
-                <div className="th-text-muted text-xs">{l.weight} · {l.color}</div>
-                {l.brand && <div className="th-text-muted text-xs">{l.brand}</div>}
-                {l.notes && <div className="th-text-muted text-xs italic">{l.notes}</div>}
+        <div className="divide-y th-border">
+          {lures.map(l => {
+            const lph = longPressHandlers(l.id)
+            const isSelected = selected.has(l.id)
+            const displayType = l.lureType === 'Jig' && l.jigSubgroup ? l.jigSubgroup : (l.lureType ?? '—')
+            return (
+              <div
+                key={l.id}
+                className={`flex items-center gap-3 px-4 py-3 min-h-[60px] transition-colors ${isSelected ? 'bg-blue-900/20' : ''}`}
+                {...lph}
+                onClick={() => {
+                  if (multiSelect) { toggleSelect(l.id) } else { setEditing(l) }
+                }}
+              >
+                {multiSelect && (
+                  <div
+                    className="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center"
+                    style={{ borderColor: isSelected ? '#3b82f6' : 'var(--th-border)', background: isSelected ? '#3b82f6' : 'transparent' }}
+                  >
+                    {isSelected && <span className="text-white text-[10px]">✓</span>}
+                  </div>
+                )}
+                {l.photoDataUrl
+                  ? <img src={l.photoDataUrl} className="w-12 h-12 rounded-lg object-cover shrink-0" alt="" />
+                  : <div className="w-12 h-12 rounded-lg th-surface-deep flex items-center justify-center text-xl shrink-0">🎣</div>
+                }
+                <div className="flex-1 min-w-0">
+                  <div className="th-text font-semibold text-sm">{displayType}</div>
+                  <div className="th-text-muted text-xs">{l.weight} · {l.color}</div>
+                  {l.brand && <div className="th-text-muted text-xs">{l.brand}</div>}
+                </div>
+                {!multiSelect && (
+                  <button
+                    onClick={e => { e.stopPropagation(); remove(l.id) }}
+                    className="text-xs text-red-400 px-2 py-1 min-h-[36px]"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
-              <div className="flex flex-col gap-1 shrink-0">
-                <button onClick={() => setEditing(l)} className="text-xs th-accent-text px-2 py-1">Edit</button>
-                <button onClick={() => remove(l.id)} className="text-xs text-red-400 px-2 py-1">Remove</button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Multi-select bottom bar */}
+      {multiSelect && !showReassign && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 th-surface border-t th-border">
+          <div className="flex items-center gap-3 mb-2">
+            <button onClick={exitMultiSelect} className="th-text-muted text-sm min-h-[44px] px-1">
+              Cancel
+            </button>
+            <span className="flex-1 th-text text-sm font-medium text-center">
+              {selected.size} selected
+            </span>
+            <button
+              onClick={() => { if (selected.size > 0) setShowReassign(true) }}
+              disabled={selected.size === 0}
+              className="px-4 py-2 th-btn-primary rounded-xl text-sm font-semibold min-h-[44px] disabled:opacity-40"
+            >
+              Reassign
+            </button>
+          </div>
+          <p className="text-xs th-text-muted text-center">Tap items to select · Long-press to start</p>
+        </div>
+      )}
+
+      {/* Reassign category picker */}
+      {showReassign && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 th-surface border-t th-border px-4 pb-6 pt-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <h3 className="th-text font-semibold text-sm">Reassign {selected.size} item{selected.size !== 1 ? 's' : ''} to…</h3>
+            <button onClick={exitMultiSelect} className="th-text-muted text-sm min-h-[36px] px-2">Cancel</button>
+          </div>
+
+          <div>
+            <p className="text-xs th-text-muted mb-2 font-medium uppercase tracking-wide">Category</p>
+            <div className="flex flex-wrap gap-2">
+              {REASSIGN_CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => { setReassignCat(cat); setReassignSub('') }}
+                  className={`px-3 py-2 rounded-xl text-sm border min-h-[40px] ${
+                    reassignCat === cat
+                      ? 'th-btn-selected border-transparent'
+                      : 'th-surface th-text border-[color:var(--th-border)]'
+                  }`}
+                >{cat}</button>
+              ))}
+            </div>
+          </div>
+
+          {reassignCat === 'Jig' && (
+            <div>
+              <p className="text-xs th-text-muted mb-2 font-medium uppercase tracking-wide">Jig Type</p>
+              <div className="flex flex-wrap gap-2">
+                {JIG_SUBGROUPS.map(sub => (
+                  <button
+                    key={sub}
+                    onClick={() => setReassignSub(sub)}
+                    className={`px-3 py-2 rounded-xl text-sm border min-h-[40px] ${
+                      reassignSub === sub
+                        ? 'th-btn-selected border-transparent'
+                        : 'th-surface th-text border-[color:var(--th-border)]'
+                    }`}
+                  >{sub}</button>
+                ))}
               </div>
             </div>
-          ))}
+          )}
+
+          <button
+            onClick={handleReassignConfirm}
+            disabled={!reassignCat || (reassignCat === 'Jig' && !reassignSub)}
+            className="w-full py-3.5 th-btn-primary rounded-xl font-semibold text-sm disabled:opacity-40"
+          >
+            Confirm Reassign
+          </button>
         </div>
       )}
     </div>
@@ -195,7 +339,6 @@ function LureForm({ initial, apiKey, onSave, onCancel }: { initial?: OwnedLure; 
             </div>
           </div>
 
-          {/* AI suggestion banner */}
           {aiSuggestion && !analyzing && (
             <div className="th-surface-deep border th-border rounded-xl p-3 space-y-1.5">
               <div className="flex items-center justify-between">
@@ -214,18 +357,11 @@ function LureForm({ initial, apiKey, onSave, onCancel }: { initial?: OwnedLure; 
                 {aiSuggestion.brand && <span className="th-text-muted"> · {aiSuggestion.brand}</span>}
               </div>
               {aiSuggestion.notes && <div className="th-text-muted text-xs italic">{aiSuggestion.notes}</div>}
-              <p className="th-text-muted text-xs">Review and adjust below before saving — color descriptions are AI-generated.</p>
               <div className="flex gap-2 pt-0.5">
-                <button
-                  onClick={applyAiSuggestion}
-                  className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold text-center"
-                >
+                <button onClick={applyAiSuggestion} className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold text-center">
                   Use These Values
                 </button>
-                <button
-                  onClick={() => setAiSuggestion(null)}
-                  className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text text-center"
-                >
+                <button onClick={() => setAiSuggestion(null)} className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text text-center">
                   Enter Manually
                 </button>
               </div>
@@ -233,22 +369,16 @@ function LureForm({ initial, apiKey, onSave, onCancel }: { initial?: OwnedLure; 
           )}
         </div>
 
-        {/* Lure Type */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Lure Type *</label>
           <input
-            list="lure-types-list"
             className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
             placeholder="e.g. Spinnerbait, Crankbait…"
             value={lureType}
             onChange={e => setLureType(e.target.value)}
           />
-          <datalist id="lure-types-list">
-            {LURE_TYPES.map(t => <option key={t} value={t} />)}
-          </datalist>
         </div>
 
-        {/* Weight */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Weight</label>
           <div className="flex flex-wrap gap-2">
@@ -265,7 +395,6 @@ function LureForm({ initial, apiKey, onSave, onCancel }: { initial?: OwnedLure; 
           </div>
         </div>
 
-        {/* Color */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Color *</label>
           <input
@@ -276,7 +405,6 @@ function LureForm({ initial, apiKey, onSave, onCancel }: { initial?: OwnedLure; 
           />
         </div>
 
-        {/* Brand */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Brand (optional)</label>
           <input
@@ -287,7 +415,6 @@ function LureForm({ initial, apiKey, onSave, onCancel }: { initial?: OwnedLure; 
           />
         </div>
 
-        {/* Notes */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Notes (optional)</label>
           <input

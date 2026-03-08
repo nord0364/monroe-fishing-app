@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Session, CatchEvent, LandedFish } from '../types'
+import { getLaunchPointContext } from '../data/launchPointContext'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ You give direct, practical recommendations — not generic fishing advice. When 
 
 You ask at most one clarifying question per response and only when it materially changes your recommendation. You do not pad responses with disclaimers or generic encouragement. Keep responses concise and scannable — short paragraphs, no walls of text. If a response includes a recommendation list, format it as a simple numbered sequence.
 
-The angler is fishing from a kayak, primarily targeting largemouth bass larger than average, during early morning sessions.`
+The angler is fishing from a kayak, primarily targeting largemouth bass larger than average, during early morning sessions. The kayak limits range to roughly 0.5–1 nautical mile from the launch point. When recommending locations, reference specific structure within that range using the launch point context provided in the system prompt. Do not suggest areas that require a long paddle across open water unless the angler explicitly asks about a distant spot.`
 
 export function buildGuideSystemPrompt(
   session: Session | null,
@@ -61,6 +62,13 @@ export function buildGuideSystemPrompt(
 
     parts.push(`\nSESSION CONDITIONS:\n${condParts || 'Not available'}`)
     parts.push(`Launch site: ${session.launchSite}`)
+
+    // Launch point context (Layer 1 stable context)
+    const launchCtx = getLaunchPointContext(String(session.launchSite))
+    if (launchCtx) {
+      const detail = launchCtx.detailedSummary.startsWith('TODO') ? '' : `\nDetailed: ${launchCtx.detailedSummary}`
+      parts.push(`\nLAUNCH POINT CONTEXT — ${launchCtx.name}:\nReachable range (kayak): ~${launchCtx.maxRecommendedRange} nmi. All location recs must be within this range.\nStructures: ${launchCtx.structures}\nDepths: ${launchCtx.depths}\nSeasonal: ${launchCtx.seasonalNotes}${detail}`)
+    }
 
     // Session working memory — compact event block
     const landed = sessionEvents.filter((e): e is LandedFish => e.type === 'Landed Fish')

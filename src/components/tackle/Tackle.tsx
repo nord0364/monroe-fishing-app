@@ -22,25 +22,36 @@ import { identifyLureForCatalog, type LureIdentification } from '../../api/claud
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LURE_TYPES = [
-  'Spinnerbait', 'Swim Jig', 'Chatterbait', 'Football Jig', 'Flipping Jig',
-  'Wacky Rig', 'Texas Rig', 'Buzzbait', 'Swimbait', 'Crankbait',
-  'Topwater', 'Drop Shot', 'Spoon', 'Other',
-]
+// Top-level lure categories for form picker
+const LURE_CATEGORIES = [
+  'Spinnerbait', 'Chatterbait', 'Jig', 'Soft Plastics',
+  'Topwater', 'Crankbait', 'Swimbait', 'Ned Rig', 'Other',
+] as const
+
+const JIG_SUBGROUPS = [
+  'Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig', 'Other Jig',
+] as const
+
+// Accordion section display order
+const SECTION_ORDER = [
+  'Spinnerbaits and Chatterbaits',
+  'Jigs',
+  'Soft Plastics',
+  'Topwater',
+  'Crankbaits',
+  'Swimbaits',
+  'Ned Rig',
+  'Hooks',
+  'Other',
+] as const
+type TackleSection = typeof SECTION_ORDER[number]
 
 const WEIGHT_OPTIONS = ['Weightless', '3/16 oz', '1/4 oz', '3/8 oz', '1/2 oz', '3/4 oz', '1 oz', 'Other']
 
 const HOOK_STYLES: HookStyle[] = ['Worm Hook', 'EWG', 'Wacky', 'Ned', 'Drop Shot', 'Treble', 'Other']
 const SPOON_STYLES: SpoonStyle[] = ['Casting', 'Trolling', 'Jigging']
-const ORIGINS: TackleOrigin[] = ['Hand Poured by Me', 'Homemade — Other', 'Store Bought']
+const ORIGINS: TackleOrigin[] = ['Hand Poured by Me', 'Store Bought']
 const CONDITIONS: TackleCondition[] = ['New', 'Good', 'Retired']
-
-const SUBTYPES: Record<string, string[]> = {
-  'Swimbait':   ['Hard', 'Soft'],
-  'Wacky Rig':  ['Weighted', 'Unweighted'],
-  'Texas Rig':  ['Standard', 'Finesse'],
-  'Topwater':   ['Frog', 'Prop', 'Walker', 'Popper'],
-}
 
 const BLADE_CONFIG_TYPES = ['Spinnerbait', 'Chatterbait']
 
@@ -70,6 +81,19 @@ async function resizePhoto(file: File): Promise<string> {
 
 function effectiveCategory(item: OwnedLure): TackleCategory {
   return item.category ?? 'lure'
+}
+
+function effectiveTackleSection(item: OwnedLure): TackleSection {
+  if (effectiveCategory(item) === 'hook') return 'Hooks'
+  const t = item.lureType ?? ''
+  if (['Spinnerbait', 'Chatterbait'].includes(t)) return 'Spinnerbaits and Chatterbaits'
+  if (t === 'Jig' || ['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return 'Jigs'
+  if (['Wacky Rig', 'Texas Rig', 'Drop Shot', 'Soft Plastics'].includes(t)) return 'Soft Plastics'
+  if (['Topwater', 'Buzzbait', 'Frog'].includes(t)) return 'Topwater'
+  if (t === 'Crankbait') return 'Crankbaits'
+  if (t === 'Swimbait') return 'Swimbaits'
+  if (t === 'Ned Rig') return 'Ned Rig'
+  return 'Other'
 }
 
 function sortItems(items: OwnedLure[]): OwnedLure[] {
@@ -154,12 +178,7 @@ function ConditionBadge({ condition }: { condition: TackleCondition }) {
 
 function OriginBadge({ origin }: { origin?: TackleOrigin }) {
   if (!origin || origin === 'Store Bought') return null
-  if (origin === 'Hand Poured by Me') return <HandPouredBadge />
-  return (
-    <span className="text-xs px-2 py-0.5 rounded-full bg-sky-900/30 text-sky-400 shrink-0">
-      Homemade
-    </span>
-  )
+  return <HandPouredBadge />
 }
 
 interface DeleteConfirmProps {
@@ -219,6 +238,7 @@ function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelet
   }
 
   const categoryEmoji = cat === 'hook' ? '🪝' : cat === 'spoon' ? '🥄' : '🎣'
+  const lureDisplayType = item.lureType === 'Jig' && item.jigSubgroup ? item.jigSubgroup : (item.lureType ?? 'Lure')
 
   return (
     <div
@@ -249,7 +269,7 @@ function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelet
         {cat === 'lure' && (
           <>
             <div className="th-text font-semibold text-sm leading-tight">
-              {item.lureType ?? 'Lure'}{item.subType ? ` — ${item.subType}` : ''}
+              {lureDisplayType}{item.subType ? ` — ${item.subType}` : ''}
             </div>
             <div className="th-text-muted text-xs mt-0.5">
               {item.weightNA ? 'Weight N/A' : (item.weight || '—')} · {item.color}
@@ -568,12 +588,6 @@ function AddFab({ onAdd }: { onAdd: (cat: TackleCategory) => void }) {
             >
               🪝 Add Hook
             </button>
-            <button
-              onClick={() => { setOpen(false); onAdd('spoon') }}
-              className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
-            >
-              🥄 Add Spoon
-            </button>
           </>
         )}
         <button
@@ -601,7 +615,9 @@ function DenseRow({ item, onEdit, onDelete }: {
     ? (item.hookStyle ?? 'Hook')
     : cat === 'spoon'
       ? (item.spoonStyle ?? 'Spoon')
-      : (item.lureType ?? 'Lure')
+      : item.lureType === 'Jig' && item.jigSubgroup
+        ? item.jigSubgroup
+        : (item.lureType ?? 'Lure')
 
   const colorLabel = item.color || ''
   const hex = colorToHex(colorLabel)
@@ -632,9 +648,6 @@ function DenseRow({ item, onEdit, onDelete }: {
       {/* Origin badge (compact) */}
       {item.origin === 'Hand Poured by Me' && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-300 shrink-0 leading-tight">🫗</span>
-      )}
-      {item.origin === 'Homemade — Other' && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-900/30 text-sky-400 shrink-0 leading-tight">HM</span>
       )}
 
       {/* Condition badge (compact) */}
@@ -671,6 +684,26 @@ function DenseRow({ item, onEdit, onDelete }: {
           className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm"
         >✕</button>
       )}
+    </div>
+  )
+}
+
+// ─── Accordion section ────────────────────────────────────────────────────────
+
+function AccordionSection({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  if (count === 0) return null
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-4 py-2 th-surface-deep border-y th-border"
+      >
+        <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide text-left">{title}</span>
+        <span className="text-xs th-text-muted">({count})</span>
+        <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && children}
     </div>
   )
 }
@@ -726,45 +759,12 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
 
   const filtered = items.filter(filterItem)
 
-  // Build flat sections with sticky headers
-  type Section = { key: string; header: string; items: OwnedLure[] }
-  const sections: Section[] = []
-
-  const lures  = filtered.filter(i => effectiveCategory(i) === 'lure')
-  const hooks  = filtered.filter(i => effectiveCategory(i) === 'hook')
-  const spoons = filtered.filter(i => effectiveCategory(i) === 'spoon')
-
-  // Lures grouped by type
-  const lureTypeMap = new Map<string, OwnedLure[]>()
-  for (const l of lures) {
-    const k = l.lureType ?? 'Other'
-    if (!lureTypeMap.has(k)) lureTypeMap.set(k, [])
-    lureTypeMap.get(k)!.push(l)
-  }
-  for (const [type, typeItems] of lureTypeMap) {
-    sections.push({ key: `lure::${type}`, header: `🎣 ${type}`, items: sortItems(typeItems) })
-  }
-
-  // Hooks grouped by style
-  const hookStyleMap = new Map<string, OwnedLure[]>()
-  for (const h of hooks) {
-    const k = h.hookStyle ?? 'Other'
-    if (!hookStyleMap.has(k)) hookStyleMap.set(k, [])
-    hookStyleMap.get(k)!.push(h)
-  }
-  for (const [style, styleItems] of hookStyleMap) {
-    sections.push({ key: `hook::${style}`, header: `🪝 ${style}`, items: styleItems })
-  }
-
-  // Spoons grouped by style
-  const spoonStyleMap = new Map<string, OwnedLure[]>()
-  for (const s of spoons) {
-    const k = s.spoonStyle ?? 'Other'
-    if (!spoonStyleMap.has(k)) spoonStyleMap.set(k, [])
-    spoonStyleMap.get(k)!.push(s)
-  }
-  for (const [style, styleItems] of spoonStyleMap) {
-    sections.push({ key: `spoon::${style}`, header: `🥄 ${style}`, items: styleItems })
+  // Build section map using new taxonomy
+  const sectionMap = new Map<TackleSection, OwnedLure[]>()
+  for (const sec of SECTION_ORDER) sectionMap.set(sec, [])
+  for (const item of filtered) {
+    const sec = effectiveTackleSection(item)
+    sectionMap.get(sec)!.push(item)
   }
 
   const toggleSelect = (id: string) => {
@@ -834,7 +834,6 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
         <div className="flex gap-2 w-max">
           <Chip label="Any Origin"     active={originFilter === 'all'}               onClick={() => setOriginFilter('all')} />
           <Chip label="🫗 Hand Poured" active={originFilter === 'Hand Poured by Me'} onClick={() => setOriginFilter('Hand Poured by Me')} />
-          <Chip label="Homemade"       active={originFilter === 'Homemade — Other'}  onClick={() => setOriginFilter('Homemade — Other')} />
           <Chip label="Store Bought"   active={originFilter === 'Store Bought'}       onClick={() => setOriginFilter('Store Bought')} />
           <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
           <Chip label="Any Condition" active={condFilter === 'all'}      onClick={() => setCondFilter('all')} />
@@ -892,42 +891,41 @@ function ListView({ items, mruItems, onAdd, onEdit, onDelete, onBulkDelete, onEx
         </div>
       )}
 
-      {/* Flat sections with sticky headers */}
-      {sections.map(section => (
-        <div key={section.key}>
-          <div className="sticky top-0 z-10 px-4 py-1.5 th-surface-deep border-y th-border flex items-center justify-between">
-            <span className="text-xs font-bold th-text-muted uppercase tracking-wide">{section.header}</span>
-            <span className="text-xs th-text-muted">({section.items.length})</span>
-          </div>
-          {gridView ? (
-            <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
-              {section.items.map(item => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  multiSelect={multiSelect}
-                  selected={selected.has(item.id)}
-                  onToggleSelect={() => toggleSelect(item.id)}
-                  onEdit={() => onEdit(item)}
-                  onDelete={() => onDelete(item.id)}
-                  onLongPress={() => { setMultiSelect(true); setSelected(new Set([item.id])) }}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="divide-y th-border">
-              {section.items.map(item => (
-                <DenseRow
-                  key={item.id}
-                  item={item}
-                  onEdit={() => onEdit(item)}
-                  onDelete={() => onDelete(item.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+      {/* Accordion sections */}
+      {SECTION_ORDER.map(sec => {
+        const secItems = sortItems(sectionMap.get(sec) ?? [])
+        return (
+          <AccordionSection key={sec} title={sec} count={secItems.length}>
+            {gridView ? (
+              <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
+                {secItems.map(item => (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    multiSelect={multiSelect}
+                    selected={selected.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
+                    onEdit={() => onEdit(item)}
+                    onDelete={() => onDelete(item.id)}
+                    onLongPress={() => { setMultiSelect(true); setSelected(new Set([item.id])) }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="divide-y th-border">
+                {secItems.map(item => (
+                  <DenseRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => onEdit(item)}
+                    onDelete={() => onDelete(item.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </AccordionSection>
+        )
+      })}
 
       {/* Multi-select bottom bar */}
       {multiSelect && (
@@ -983,8 +981,29 @@ interface LureFormProps {
 }
 
 function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
-  const [lureType,        setLureType]        = useState(initial?.lureType ?? '')
-  const [subType,         setSubType]         = useState(initial?.subType ?? '')
+  // Determine initial lureType — map legacy jig subtypes into "Jig" + subgroup
+  const initialCategory = (() => {
+    const t = initial?.lureType ?? ''
+    if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return 'Jig'
+    if (LURE_CATEGORIES.includes(t as typeof LURE_CATEGORIES[number])) return t
+    return t || ''
+  })()
+  const initialSubgroup = (() => {
+    const t = initial?.lureType ?? ''
+    if (initial?.jigSubgroup) return initial.jigSubgroup
+    if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return t
+    return ''
+  })()
+  const initialOtherType = (() => {
+    const t = initial?.lureType ?? ''
+    if (LURE_CATEGORIES.includes(t as typeof LURE_CATEGORIES[number])) return ''
+    if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return ''
+    return t
+  })()
+
+  const [lureCategory,    setLureCategory]    = useState(initialCategory)
+  const [jigSubgroup,     setJigSubgroup]     = useState(initialSubgroup)
+  const [otherTypeText,   setOtherTypeText]   = useState(initialOtherType)
   const [weight,          setWeight]          = useState(initial?.weight ?? '')
   const [weightNA,        setWeightNA]        = useState(initial?.weightNA ?? false)
   const [color,           setColor]           = useState(initial?.color ?? '')
@@ -997,24 +1016,26 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
   const [photo,           setPhoto]           = useState(initial?.photoDataUrl ?? '')
   const [saving,          setSaving]          = useState(false)
 
-  const subTypeOptions = SUBTYPES[lureType] ?? []
-  const showBladeConfig = BLADE_CONFIG_TYPES.includes(lureType)
+  const showBladeConfig = BLADE_CONFIG_TYPES.includes(lureCategory)
+  const showJigSubgroup = lureCategory === 'Jig'
+  const showOtherText   = lureCategory === 'Other'
 
   const applyAi = (s: LureIdentification) => {
-    if (s.lureType) setLureType(s.lureType)
-    if (s.color)    setColor(s.color)
-    if (s.brand)    setBrand(s.brand)
-    if (s.notes)    setNotes(s.notes ?? '')
+    if (s.color) setColor(s.color)
+    if (s.brand) setBrand(s.brand)
+    if (s.notes) setNotes(s.notes ?? '')
   }
 
   const submit = async () => {
-    if (!lureType.trim() || (!weightNA && !weight) || !color.trim()) return
+    const resolvedType = lureCategory === 'Other' ? (otherTypeText.trim() || 'Other') : lureCategory
+    if (!resolvedType || (!weightNA && !weight) || !color.trim()) return
+    if (showJigSubgroup && !jigSubgroup) return
     setSaving(true)
     const item: OwnedLure = {
       id:             initial?.id ?? nanoid(),
       category:       'lure',
-      lureType:       lureType.trim(),
-      subType:        subType.trim() || undefined,
+      lureType:       resolvedType,
+      jigSubgroup:    showJigSubgroup ? jigSubgroup : undefined,
       weight:         weightNA ? undefined : (weight || undefined),
       weightNA:       weightNA || undefined,
       color:          color.trim(),
@@ -1031,7 +1052,14 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
     onSave(item)
   }
 
-  const canSave = lureType.trim() && (weightNA || weight) && color.trim() && !saving
+  const canSave = (() => {
+    if (!lureCategory) return false
+    if (showJigSubgroup && !jigSubgroup) return false
+    if (showOtherText && !otherTypeText.trim()) return false
+    if (!weightNA && !weight) return false
+    if (!color.trim()) return false
+    return !saving
+  })()
 
   return (
     <div className="p-4 pb-28 max-w-lg mx-auto space-y-5">
@@ -1055,23 +1083,49 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
         <p className="section-label">Lure Details</p>
 
         <div>
-          <FieldLabel>Lure Type *</FieldLabel>
-          <input
-            list="tackle-lure-types"
-            className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
-            placeholder="e.g. Spinnerbait, Crankbait…"
-            value={lureType}
-            onChange={e => { setLureType(e.target.value); setSubType('') }}
-          />
-          <datalist id="tackle-lure-types">
-            {LURE_TYPES.map(t => <option key={t} value={t} />)}
-          </datalist>
+          <FieldLabel>Category *</FieldLabel>
+          <div className="flex flex-wrap gap-2">
+            {LURE_CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                onClick={() => { setLureCategory(cat); setJigSubgroup('') }}
+                className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
+                  lureCategory === cat
+                    ? 'th-btn-selected border-transparent'
+                    : 'th-surface th-text border-[color:var(--th-border)]'
+                }`}
+              >{cat}</button>
+            ))}
+          </div>
         </div>
 
-        {subTypeOptions.length > 0 && (
+        {showOtherText && (
           <div>
-            <FieldLabel>Sub-type</FieldLabel>
-            <ButtonGrid options={subTypeOptions} value={subType} onChange={setSubType} />
+            <FieldLabel>Type Name *</FieldLabel>
+            <TextInput
+              value={otherTypeText}
+              onChange={setOtherTypeText}
+              placeholder="e.g. Jerkbait, Drop Shot…"
+            />
+          </div>
+        )}
+
+        {showJigSubgroup && (
+          <div>
+            <FieldLabel>Jig Type *</FieldLabel>
+            <div className="flex flex-wrap gap-2">
+              {JIG_SUBGROUPS.map(sub => (
+                <button
+                  key={sub}
+                  onClick={() => setJigSubgroup(sub)}
+                  className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
+                    jigSubgroup === sub
+                      ? 'th-btn-selected border-transparent'
+                      : 'th-surface th-text border-[color:var(--th-border)]'
+                  }`}
+                >{sub}</button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1202,8 +1256,10 @@ interface HookFormProps {
 }
 
 function HookForm({ initial, onSave, onCancel }: HookFormProps) {
+  const [hookType,  setHookType]  = useState<'standard' | 'weighted' | ''>(initial?.hookType ?? '')
   const [hookStyle, setHookStyle] = useState<HookStyle | ''>(initial?.hookStyle ?? '')
   const [hookSize,  setHookSize]  = useState(initial?.hookSize ?? '')
+  const [weight,    setWeight]    = useState(initial?.weight ?? '')
   const [brand,     setBrand]     = useState(initial?.brand ?? '')
   const [quantity,  setQuantity]  = useState<string>(
     initial?.quantity !== undefined ? String(initial.quantity) : ''
@@ -1219,8 +1275,10 @@ function HookForm({ initial, onSave, onCancel }: HookFormProps) {
       id:        initial?.id ?? nanoid(),
       category:  'hook',
       color:     '',
+      hookType:  hookType || undefined,
       hookStyle: hookStyle as HookStyle,
       hookSize:  hookSize.trim() || undefined,
+      weight:    hookType === 'weighted' ? (weight.trim() || undefined) : undefined,
       brand:     brand.trim() || undefined,
       quantity:  qty !== undefined && !isNaN(qty) ? qty : undefined,
       notes:     notes.trim() || undefined,
@@ -1245,6 +1303,42 @@ function HookForm({ initial, onSave, onCancel }: HookFormProps) {
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
         <p className="section-label">Hook Details</p>
+
+        <div>
+          <FieldLabel>Hook Type</FieldLabel>
+          <div className="flex gap-2">
+            {(['standard', 'weighted'] as const).map(ht => (
+              <button
+                key={ht}
+                onClick={() => setHookType(ht)}
+                className={`flex-1 py-2.5 rounded-xl text-sm border min-h-[44px] capitalize ${
+                  hookType === ht
+                    ? 'th-btn-selected border-transparent'
+                    : 'th-surface th-text border-[color:var(--th-border)]'
+                }`}
+              >{ht}</button>
+            ))}
+          </div>
+        </div>
+
+        {hookType === 'weighted' && (
+          <div>
+            <FieldLabel>Weight</FieldLabel>
+            <div className="flex flex-wrap gap-2">
+              {WEIGHT_OPTIONS.map(w => (
+                <button
+                  key={w}
+                  onClick={() => setWeight(w)}
+                  className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
+                    weight === w
+                      ? 'th-btn-selected border-transparent'
+                      : 'th-surface th-text border-[color:var(--th-border)]'
+                  }`}
+                >{w}</button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <FieldLabel>Hook Style *</FieldLabel>
@@ -1439,7 +1533,17 @@ export default function Tackle({ settings }: Props) {
   const [formView, setFormView] = useState<FormView | null>(null)
 
   useEffect(() => {
-    getAllOwnedLures().then(setItems)
+    getAllOwnedLures().then(lures => {
+      // Migrate: clear 'Homemade — Other' origin (removed category)
+      const needsMigration = lures.filter(l => (l.origin as string) === 'Homemade — Other')
+      if (needsMigration.length > 0) {
+        const migrated = needsMigration.map(l => ({ ...l, origin: undefined }))
+        Promise.all(migrated.map(saveOwnedLure)).catch(() => {})
+        setItems(lures.map(l => (l.origin as string) === 'Homemade — Other' ? { ...l, origin: undefined } : l))
+      } else {
+        setItems(lures)
+      }
+    })
   }, [])
 
   // Build MRU from recent catch events — last 5 unique (lureType + color) combos

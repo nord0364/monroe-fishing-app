@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { LandedFish, Session, EnvironmentalConditions, AIBriefing, CatchEvent, OwnedLure, RodSetup } from '../types'
+import { getLaunchPointContext } from '../data/launchPointContext'
 
 function buildClientWithKey(apiKey: string) {
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
@@ -34,7 +35,16 @@ export async function generatePreSessionBriefing(
     `${(f.weightLbs + f.weightOz / 16).toFixed(1)} lbs on ${f.lureType} (${f.lureColor}), ${f.waterColumn ?? 'N/A'}, ${f.retrieveStyle ?? 'N/A'}, ${f.structure ?? 'N/A'}, ${new Date(f.timestamp).toLocaleDateString()}`
   ).join('\n')
 
-  const prompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana.
+  const launchCtx = getLaunchPointContext(launchSite)
+  const launchContextBlock = launchCtx
+    ? `\nLAUNCH POINT CONTEXT — ${launchCtx.name}:
+Accessible range from kayak: ~${launchCtx.maxRecommendedRange} nautical mile(s). All location recommendations must be within this range.
+Structures: ${launchCtx.structures}
+Depths: ${launchCtx.depths}
+Seasonal notes: ${launchCtx.seasonalNotes}${launchCtx.detailedSummary.startsWith('TODO') ? '' : `\nDetailed: ${launchCtx.detailedSummary}`}`
+    : ''
+
+  const prompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana. The angler fishes from a kayak and stays within 0.5–1 nautical mile of the launch point. All location recommendations must be reachable within this range — do not suggest areas that require long paddles across open water unless the angler is launching from a central location with easy access.
 
 CURRENT CONDITIONS:
 - Date/Time: ${sessionContext ?? new Date().toLocaleString()}
@@ -48,7 +58,7 @@ CURRENT CONDITIONS:
 - Water Temp: ${conditions.waterTempF ?? '?'}°F
 - Water Level: ${conditions.waterLevelFt ?? '?'} ft (${conditions.waterLevelVsNormal ?? 'N/A'})
 - Water Clarity: ${conditions.waterClarity ?? 'N/A'}
-- Launch Site: ${launchSite}
+- Launch Site: ${launchSite}${launchContextBlock}
 
 CATCH HISTORY (${historyNote}):
 ${catchSummary || 'No catch history yet.'}
