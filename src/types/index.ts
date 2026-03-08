@@ -189,6 +189,8 @@ export interface EnvironmentalConditions {
   baroPressureInHg?: number
   baroTrend?: BaroTrend
   waterTempF?: number
+  waterTempSource?: string   // e.g. 'USGS gauge' | 'Open-Meteo estimate' | 'cached'
+  waterDataAge?: number      // ms since cached value was fetched (present when serving cache)
   waterLevelFt?: number
   waterLevelVsNormal?: WaterLevelVsNormal
   waterClarity?: WaterClarity

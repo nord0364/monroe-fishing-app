@@ -367,8 +367,19 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
               <CondRow label="Wind"     value={conditions.windSpeedMph != null ? `${conditions.windSpeedMph}mph ${conditions.windDirection ?? ''}` : undefined} />
               <CondRow label="Sky"      value={conditions.skyCondition} />
               <CondRow label="Baro"     value={conditions.baroPressureInHg != null ? `${conditions.baroPressureInHg} inHg` : undefined} />
-              <CondRow label="Water °F" value={conditions.waterTempF != null ? `${conditions.waterTempF}°F` : undefined} />
-              <CondRow label="Level"    value={conditions.waterLevelFt != null ? `${conditions.waterLevelFt} ft` : undefined} />
+              <CondRow
+                label="Water °F"
+                value={conditions.waterTempF != null ? `${conditions.waterTempF}°F` : 'N/A'}
+                subValue={
+                  conditions.waterDataAge != null
+                    ? `cached · ${Math.round(conditions.waterDataAge / 3_600_000)}h ago`
+                    : conditions.waterTempSource
+                }
+              />
+              <CondRow
+                label="Level"
+                value={conditions.waterLevelFt != null ? `${conditions.waterLevelFt} ft` : 'N/A'}
+              />
             </div>
           </div>
 
@@ -539,11 +550,14 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
   )
 }
 
-function CondRow({ label, value }: { label: string; value?: string | number }) {
+function CondRow({ label, value, subValue }: { label: string; value?: string | number; subValue?: string }) {
   return (
     <>
       <span className="th-text-muted text-xs">{label}</span>
-      <span className="th-text text-xs font-medium">{value ?? '—'}</span>
+      <span className="flex flex-col">
+        <span className="th-text text-xs font-medium">{value ?? '—'}</span>
+        {subValue && <span className="th-text-muted text-[10px] opacity-70">{subValue}</span>}
+      </span>
     </>
   )
 }
