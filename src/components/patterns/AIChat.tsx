@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import type { LandedFish, Session, AppSettings } from '../../types'
 import type { ChatMessage } from '../../api/claude'
 import { chatWithPatternData } from '../../api/claude'
 import SpeakButton from '../layout/SpeakButton'
 import { useSpeech } from '../../hooks/useSpeech'
+import { generatePatternSummary, needsRefresh, loadPatternCache, savePatternCache } from '../../ai/patternMemory'
 
 interface Props {
   fish: LandedFish[]
@@ -25,6 +26,16 @@ export default function AIChat({ fish, sessions, settings }: Props) {
   const [error, setError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const { speak, pause, resume, stop, speaking, paused } = useSpeech()
+
+  // Build or load pattern summary — refresh when catch count grows by threshold
+  const patternSummary = useMemo(() => {
+    if (needsRefresh(fish.length)) {
+      const summary = generatePatternSummary(fish, sessions)
+      savePatternCache({ catchCountSnapshot: fish.length, generatedAt: Date.now(), summary })
+      return summary
+    }
+    return loadPatternCache()?.summary ?? generatePatternSummary(fish, sessions)
+  }, [fish.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -49,8 +60,7 @@ export default function AIChat({ fish, sessions, settings }: Props) {
       const gen = chatWithPatternData(
         settings.anthropicApiKey,
         [...messages, userMsg],
-        fish,
-        sessions
+        patternSummary,
       )
       let full = ''
       for await (const chunk of gen) {

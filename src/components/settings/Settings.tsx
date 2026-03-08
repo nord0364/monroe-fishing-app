@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { AppSettings, ColorTheme, FontSize } from '../../types'
-import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, getEntryCount, replaceAllData } from '../../db/database'
+import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, getEntryCount, replaceAllData, getLandedFish, getAllSessions } from '../../db/database'
+import { loadPatternCache, generatePatternSummary, savePatternCache } from '../../ai/patternMemory'
 import {
   getDriveStatus, wasEverConnected, onDriveStatusChange, getLastSyncTime, hasSyncQueued,
   connectGoogleDrive, disconnectGoogleDrive, syncToGoogleDrive,
@@ -390,6 +391,10 @@ export default function Settings({ settings, onUpdate }: Props) {
   const [newLure, setNewLure]   = useState('')
   const [saved, setSaved]       = useState(false)
 
+  // Pattern intelligence
+  const [patternCache, setPatternCache] = useState(() => loadPatternCache())
+  const [patternRefreshing, setPatternRefreshing] = useState(false)
+
   // Drive state
   const [driveStatus, setDriveStatus]     = useState<DriveStatus>(getDriveStatus())
   const [driveConnecting, setDriveConnecting] = useState(false)
@@ -427,6 +432,16 @@ export default function Settings({ settings, onUpdate }: Props) {
       setSyncQueued(false)
     } catch {}
     setDriveSyncing(false)
+  }
+
+  const handleRefreshPattern = async () => {
+    setPatternRefreshing(true)
+    const [fish, sessions] = await Promise.all([getLandedFish(), getAllSessions()])
+    const summary = generatePatternSummary(fish, sessions)
+    const cache = { catchCountSnapshot: fish.length, generatedAt: Date.now(), summary }
+    savePatternCache(cache)
+    setPatternCache(cache)
+    setPatternRefreshing(false)
   }
 
   const handleSave = async () => {
@@ -614,6 +629,29 @@ export default function Settings({ settings, onUpdate }: Props) {
           />
           <span className="th-text-muted text-sm">lbs and above</span>
         </div>
+      </div>
+
+      {/* ── Pattern Intelligence ─────────────────────────────────────────── */}
+      <div className="th-surface rounded-xl p-4 border th-border space-y-3">
+        <h2 className="font-semibold th-text text-sm">Pattern Intelligence</h2>
+        <p className="th-text-muted text-xs leading-relaxed">
+          AI coaching uses a computed summary of your catch patterns. It refreshes automatically after every 10 new catches.
+        </p>
+        {patternCache ? (
+          <div className="text-xs th-text-muted space-y-0.5">
+            <div>Last generated: <span className="th-text">{new Date(patternCache.generatedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>
+            <div>Catch snapshot: <span className="th-text">{patternCache.catchCountSnapshot} catches</span></div>
+          </div>
+        ) : (
+          <p className="text-xs th-text-muted italic">No pattern data yet — generated automatically before your first AI session.</p>
+        )}
+        <button
+          onClick={handleRefreshPattern}
+          disabled={patternRefreshing}
+          className="w-full py-2.5 th-surface-deep border th-border rounded-lg th-text text-sm font-medium disabled:opacity-50"
+        >
+          {patternRefreshing ? 'Refreshing…' : '↻ Refresh Pattern Analysis'}
+        </button>
       </div>
 
       <button

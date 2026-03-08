@@ -4,7 +4,8 @@ import { fetchWeather, fetchForecastWeather } from '../../api/weather'
 import { fetchMoonData } from '../../api/moon'
 import { fetchWaterData } from '../../api/water'
 import { generatePreSessionBriefing, askPreSessionQuestion } from '../../api/claude'
-import { saveSession, getLandedFish, getAllOwnedLures, getAllRodSetups } from '../../db/database'
+import { saveSession, getLandedFish, getAllOwnedLures, getAllRodSetups, getAllSessions } from '../../db/database'
+import { generatePatternSummary, needsRefresh, loadPatternCache, savePatternCache } from '../../ai/patternMemory'
 import { LAUNCH_SITES } from '../../constants'
 import QuickSelect from '../layout/QuickSelect'
 import { nanoid } from '../logger/nanoid'
@@ -218,11 +219,29 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
     }
 
     try {
-      const [history, ownedLures, rodSetups] = await Promise.all([
+      const [allHistory, ownedLures, rodSetups] = await Promise.all([
         getLandedFish(),
         getAllOwnedLures(),
         getAllRodSetups(),
       ])
+
+      // Build or load pattern summary
+      let patternSummary: string
+      if (needsRefresh(allHistory.length)) {
+        const sessions = await getAllSessions()
+        patternSummary = generatePatternSummary(allHistory, sessions)
+        savePatternCache({ catchCountSnapshot: allHistory.length, generatedAt: Date.now(), summary: patternSummary })
+      } else {
+        patternSummary = loadPatternCache()?.summary ?? generatePatternSummary(allHistory, [])
+      }
+
+      // Filter to same-month catches for the briefing (max 15), sorted by weight
+      const targetMonth = targetDate.getMonth()
+      const history = allHistory
+        .filter(f => new Date(f.timestamp).getMonth() === targetMonth)
+        .sort((a, b) => (b.weightLbs + b.weightOz / 16) - (a.weightLbs + a.weightOz / 16))
+        .slice(0, 15)
+
       const briefing = await generatePreSessionBriefing(
         settings.anthropicApiKey,
         finalConditions,
@@ -231,7 +250,7 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
         ownedLures,
         rodSetups,
         undefined,
-        sessionContextStr,
+        sessionContextStr + '\n\n' + patternSummary,
       )
 
       session.aiBriefing = briefing.narrative

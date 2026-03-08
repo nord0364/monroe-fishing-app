@@ -142,27 +142,20 @@ export interface ChatMessage {
 export async function* chatWithPatternData(
   apiKey: string,
   messages: ChatMessage[],
-  catchHistory: LandedFish[],
-  sessions: Session[]
+  patternSummary: string,
 ): AsyncGenerator<string> {
   const client = buildClientWithKey(apiKey)
 
-  const historyCount = catchHistory.length
   const systemPrompt = `You are an expert bass fishing data analyst and guide for Lake Monroe, Bloomington Indiana.
-You have access to the angler's full catch log below. Answer questions with specific references to their data where available.
+Answer questions with specific references to the angler's data where available.
 Always note when a pattern is based on limited sample size (fewer than 5 catches).
-${historyCount} total catches logged.
 
-FULL CATCH LOG:
-${JSON.stringify(catchHistory.slice(0, 100), null, 2)}
-
-SESSION HISTORY (last 20):
-${JSON.stringify(sessions.slice(0, 20), null, 2)}`
+${patternSummary}`
 
   const stream = client.messages.stream({
     model: 'claude-opus-4-6',
     max_tokens: 1500,
-    system: systemPrompt,
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages: messages.map(m => ({ role: m.role, content: m.content })),
   })
 
@@ -224,7 +217,7 @@ CATCH HISTORY CONTEXT: ${catchHistory.length} total catches logged. Top producer
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 400,
-    system: systemPrompt,
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages: messages.map(m => ({ role: m.role, content: m.content })),
   })
 

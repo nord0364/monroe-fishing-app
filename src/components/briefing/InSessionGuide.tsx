@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Session, AIBriefing } from '../../types'
+import type { Session, AIBriefing, CatchEvent, LandedFish } from '../../types'
 import { getEventsForSession, getLandedFish } from '../../db/database'
 import { chatWithSessionGuide, type ChatMessage } from '../../api/claude'
 import { speakText, cancelSpeech, hasSpeech } from '../../utils/speech'
+import { compactMessages } from '../../ai/patternMemory'
 
 interface Props {
   session: Session
@@ -43,10 +44,24 @@ export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger
   const [input, setInput]             = useState('')
   const [streaming, setStreaming]     = useState(false)
   const [speakingId, setSpeakingId]   = useState<string | null>(null)
+  // Cache session data — fetch once on mount, refresh on new catches logged
+  const [sessionEvents, setSessionEvents] = useState<CatchEvent[]>([])
+  const [catchHistory, setCatchHistory]   = useState<LandedFish[]>([])
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // Cancel speech on unmount
   useEffect(() => () => { cancelSpeech() }, [])
+
+  // Fetch session events + catch history once on mount
+  useEffect(() => {
+    void Promise.all([
+      getEventsForSession(session.id),
+      getLandedFish(),
+    ]).then(([events, history]) => {
+      setSessionEvents(events)
+      setCatchHistory(history)
+    })
+  }, [session.id])
 
   // Scroll chat to bottom whenever messages change
   useEffect(() => {
@@ -64,21 +79,22 @@ export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger
     const text = input.trim()
     if (!text || streaming) return
 
-    const updated: ChatMessage[] = [...messages, { role: 'user', content: text }]
-    setMessages(updated)
+    // Refresh session events in background so we always have the latest catches
+    void getEventsForSession(session.id).then(setSessionEvents)
+
+    const newMessages: ChatMessage[] = [...messages, { role: 'user', content: text }]
+    const compacted = compactMessages(newMessages)
+    setMessages(newMessages)
     setInput('')
     setStreaming(true)
 
-    const assistantIdx = updated.length // index of the soon-to-be-appended assistant msg
-
-    const events = await getEventsForSession(session.id)
-    const history = await getLandedFish()
+    const assistantIdx = newMessages.length // index of the soon-to-be-appended assistant msg
 
     let reply = ''
     setMessages(m => [...m, { role: 'assistant', content: '' }])
 
     try {
-      const gen = chatWithSessionGuide(apiKey, updated, session.launchSite, session.conditions, briefing, history, events)
+      const gen = chatWithSessionGuide(apiKey, compacted, session.launchSite, session.conditions, briefing, catchHistory, sessionEvents)
       for await (const chunk of gen) {
         reply += chunk
         setMessages(m => {

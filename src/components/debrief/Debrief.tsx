@@ -19,6 +19,14 @@ import {
 } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
 import { speakText, cancelSpeech, hasSpeech } from '../../utils/speech'
+import { compactMessages } from '../../ai/patternMemory'
+
+interface DebriefSessionCache {
+  sessionId: string
+  events:    CatchEvent[]
+  allFish:   LandedFish[]
+  session:   Session
+}
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -204,7 +212,7 @@ async function* streamDebriefResponse(
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
-    system,
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
     messages: messages.map(m => ({ role: m.role, content: m.content })),
   })
 
@@ -420,6 +428,9 @@ export default function Debrief({ settings, pendingSession, onPendingConsumed }:
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamError, setStreamError] = useState('')
 
+  // Cached session data — fetched once per open conversation
+  const [debriefCache, setDebriefCache] = useState<DebriefSessionCache | null>(null)
+
   // Voice
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState<number | null>(null)
 
@@ -457,6 +468,26 @@ export default function Debrief({ settings, pendingSession, onPendingConsumed }:
     })
     setLoading(false)
   }
+
+  // ── Cache session data when conversation opens ────────────────────────────────
+  useEffect(() => {
+    if (!openConversation) { setDebriefCache(null); return }
+    if (debriefCache?.sessionId === openConversation.sessionId) return
+    void Promise.all([
+      getEventsForSession(openConversation.sessionId),
+      getAllEvents(),
+      getAllSessions(),
+    ]).then(([sessionEvents, allEvents, allSessions]) => {
+      const session = allSessions.find(s => s.id === openConversation.sessionId)
+      if (!session) return
+      setDebriefCache({
+        sessionId: openConversation.sessionId,
+        events:    sessionEvents,
+        allFish:   allEvents.filter((e): e is LandedFish => e.type === 'Landed Fish'),
+        session,
+      })
+    })
+  }, [openConversation?.sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Handle pendingSession ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -523,6 +554,9 @@ export default function Debrief({ settings, pendingSession, onPendingConsumed }:
       void allSessions // used for context awareness, not directly needed here
 
       const allFish = allEvents.filter((e): e is LandedFish => e.type === 'Landed Fish')
+
+      // Populate cache so sendMessage doesn't re-fetch
+      setDebriefCache({ sessionId: session.id, events: sessionEvents, allFish, session })
       const landed = sessionEvents.filter((e): e is LandedFish => e.type === 'Landed Fish')
 
       const sessionDateStr = new Date(session.date).toLocaleDateString([], {
@@ -651,23 +685,29 @@ export default function Debrief({ settings, pendingSession, onPendingConsumed }:
     )
     setIsStreaming(true)
 
-    const [sessionEvents, allEvents, allSessions] = await Promise.all([
-      getEventsForSession(openConversation.sessionId),
-      getAllEvents(),
-      getAllSessions(),
-    ])
-
-    const allFish = allEvents.filter((e): e is LandedFish => e.type === 'Landed Fish')
-    const session = allSessions.find(s => s.id === openConversation.sessionId)
-
-    if (!session) {
-      setStreamError('Could not find session data.')
-      setIsStreaming(false)
-      return
+    // Use cached session data — fall back to re-fetch if not ready
+    let cacheData = debriefCache?.sessionId === openConversation.sessionId ? debriefCache : null
+    if (!cacheData) {
+      const [sessionEvents, allEvents, allSessions] = await Promise.all([
+        getEventsForSession(openConversation.sessionId),
+        getAllEvents(),
+        getAllSessions(),
+      ])
+      const session = allSessions.find(s => s.id === openConversation.sessionId)
+      if (!session) {
+        setStreamError('Could not find session data.')
+        setIsStreaming(false)
+        return
+      }
+      const allFish = allEvents.filter((e): e is LandedFish => e.type === 'Landed Fish')
+      cacheData = { sessionId: openConversation.sessionId, events: sessionEvents, allFish, session }
+      setDebriefCache(cacheData)
     }
 
-    // API gets all messages except the empty placeholder
-    const historyForApi = [...priorMessages, userMsg]
+    const { session, events: sessionEvents, allFish } = cacheData
+
+    // API gets all messages except the empty placeholder; compact long histories
+    const historyForApi = compactMessages([...priorMessages, userMsg])
 
     try {
       const gen = streamDebriefResponse(settings.anthropicApiKey, historyForApi, {
