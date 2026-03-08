@@ -313,7 +313,7 @@ function Chip({ label, active, onClick }: ChipProps) {
   return (
     <button
       onClick={onClick}
-      className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors min-h-[36px] ${
+      className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors min-h-[36px] whitespace-nowrap ${
         active
           ? 'th-btn-selected border-transparent'
           : 'th-surface th-text border-[color:var(--th-border)]'
