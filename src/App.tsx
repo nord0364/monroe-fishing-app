@@ -212,22 +212,37 @@ export default function App() {
     )
   }
 
+  const showSessionBanner = Boolean(activeSession && tab !== 'log')
+
+  // Top nav bar sits below the session banner when it's visible (~44px)
+  const topBarTop    = showSessionBanner ? 'top-11' : 'top-0'
+  // Main content is padded for top nav (44px) + optional session banner (44px)
+  const mainPaddingTop = showSessionBanner ? 'pt-[88px]' : 'pt-11'
+
   return (
     <div className="th-base min-h-screen th-text">
       <OfflineBanner />
 
       {/* Active session banner when away from Log */}
-      {activeSession && tab !== 'log' && (
+      {showSessionBanner && (
         <button
           onClick={() => setTab('log')}
           className="fixed top-0 inset-x-0 z-40 py-3 px-4 th-banner text-sm font-semibold tracking-wide"
         >
-          🎣 {activeSession.launchSite} · Session active — tap to log
+          🎣 {activeSession!.launchSite} · Session active — tap to log
         </button>
       )}
 
+      {/* Global top navigation bar — home + section title + settings */}
+      <TopNav
+        tab={tab}
+        onHome={() => setTab(null)}
+        onSettings={() => setShowSettings(true)}
+        topClass={topBarTop}
+      />
+
       <main
-        className={`overflow-y-auto ${activeSession && tab !== 'log' ? 'pt-8' : ''}`}
+        className={`overflow-y-auto ${mainPaddingTop}`}
         style={{ minHeight: 'calc(100vh - 58px)', paddingBottom: '58px' }}
       >
         {tab === 'scout' && (
@@ -261,6 +276,58 @@ export default function App() {
       </main>
 
       <BottomNav active={tab} onChange={setTab} />
+    </div>
+  )
+}
+
+// ── Global top navigation bar ──────────────────────────────────────────────────
+const TAB_TITLES: Record<string, string> = {
+  scout:   'Scout',
+  log:     'Log',
+  debrief: 'Debrief',
+  trophy:  'Trophy Room',
+  tackle:  'Tackle',
+}
+
+function TopNav({
+  tab,
+  onHome,
+  onSettings,
+  topClass,
+}: {
+  tab: NavTab | null
+  onHome: () => void
+  onSettings: () => void
+  topClass: string
+}) {
+  if (!tab) return null
+  return (
+    <div
+      className={`fixed ${topClass} inset-x-0 z-30 h-11 flex items-center px-3 th-nav-bg border-b th-nav-border`}
+    >
+      {/* Home button */}
+      <button
+        onClick={onHome}
+        aria-label="Home"
+        className="flex items-center gap-1.5 min-w-[44px] min-h-[44px] px-1 th-nav-inactive"
+      >
+        <span className="text-base leading-none">🎣</span>
+        <span className="text-[10px] font-semibold tracking-wide">HOME</span>
+      </button>
+
+      {/* Section title */}
+      <span className="flex-1 text-center text-sm font-bold th-text">
+        {TAB_TITLES[tab] ?? ''}
+      </span>
+
+      {/* Settings button */}
+      <button
+        onClick={onSettings}
+        aria-label="Settings"
+        className="flex items-center justify-center min-w-[44px] min-h-[44px] px-1 th-nav-inactive"
+      >
+        <span className="text-lg leading-none">⚙️</span>
+      </button>
     </div>
   )
 }
