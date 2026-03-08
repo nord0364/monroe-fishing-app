@@ -730,13 +730,10 @@ function ListView({
           <Chip label="All" active={catFilter === 'all'} onClick={() => { setCatFilter('all'); setLureTypeFilter('all') }} />
           <Chip label="🎣 Lures" active={catFilter === 'lure'} onClick={() => { setCatFilter('lure'); setLureTypeFilter('all') }} />
           <Chip label="🪝 Hooks" active={catFilter === 'hook'} onClick={() => { setCatFilter('hook'); setLureTypeFilter('all') }} />
-          <Chip label="🥄 Spoons" active={catFilter === 'spoon'} onClick={() => { setCatFilter('spoon'); setLureTypeFilter('all') }} />
-
           <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
 
           <Chip label="Any Origin" active={originFilter === 'all'} onClick={() => setOriginFilter('all')} />
           <Chip label="🫗 Hand Poured" active={originFilter === 'Hand Poured by Me'} onClick={() => setOriginFilter('Hand Poured by Me')} />
-          <Chip label="Homemade" active={originFilter === 'Homemade — Other'} onClick={() => setOriginFilter('Homemade — Other')} />
           <Chip label="Store Bought" active={originFilter === 'Store Bought'} onClick={() => setOriginFilter('Store Bought')} />
 
           <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
