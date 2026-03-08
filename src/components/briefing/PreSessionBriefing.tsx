@@ -48,6 +48,13 @@ function fmtHour(h: number) {
   return `${h - 12} PM`
 }
 
+function fmtAgo(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins === 1) return '1 min ago'
+  return `${mins} min ago`
+}
+
 function toDateStr(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -383,9 +390,22 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
               <CondRow label="Moon"     value={conditions.moonPhase} />
               <CondRow label="Illum."   value={conditions.moonIlluminationPct != null ? `${conditions.moonIlluminationPct}%` : undefined} />
               <CondRow label="Air Temp" value={conditions.airTempF != null ? `${conditions.airTempF}°F` : undefined} />
+              <CondRow label="Dewpoint" value={conditions.dewpointF != null ? `${conditions.dewpointF}°F` : undefined} />
               <CondRow label="Wind"     value={conditions.windSpeedMph != null ? `${conditions.windSpeedMph}mph ${conditions.windDirection ?? ''}` : undefined} />
-              <CondRow label="Sky"      value={conditions.skyCondition} />
+              <CondRow label="Sky"      value={
+                conditions.skyCondition && conditions.skyCoverPct != null
+                  ? `${conditions.skyCondition} · ${conditions.skyCoverPct}%`
+                  : conditions.skyCondition ?? (conditions.skyCoverPct != null ? `${conditions.skyCoverPct}% cover` : undefined)
+              } />
+              <CondRow label="Rain %"   value={conditions.precipProbPct != null ? `${conditions.precipProbPct}%` : undefined} />
               <CondRow label="Baro"     value={conditions.baroPressureInHg != null ? `${conditions.baroPressureInHg} inHg` : undefined} />
+              <CondRow label="Trend"    value={
+                conditions.baroTrend
+                  ? conditions.baroTrendMb != null
+                    ? `${conditions.baroTrend} ${conditions.baroTrendMb} mb`
+                    : conditions.baroTrend
+                  : undefined
+              } />
               <CondRow
                 label="Water °F"
                 value={conditions.waterTempF != null ? `${conditions.waterTempF}°F` : 'N/A'}
@@ -400,6 +420,11 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
                 value={conditions.waterLevelFt != null ? `${conditions.waterLevelFt} ft` : 'N/A'}
               />
             </div>
+            {conditions.weatherUpdatedAt != null && (
+              <p className="th-text-muted text-[10px] text-right mt-1">
+                Weather updated {fmtAgo(conditions.weatherUpdatedAt)}
+              </p>
+            )}
           </div>
 
           {/* Temp overrides */}
@@ -435,7 +460,12 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
 
           <QuickSelect label="Barometric Trend" options={['Rising', 'Falling', 'Steady'] as const}
             value={baroTrend} onChange={v => { setBaroTrend(v); setBaroTrendAuto(false) }} columns={3}
-            autoDetected={baroTrendAuto && baroTrend != null} />
+            autoDetected={baroTrendAuto && baroTrend != null}
+            detailText={
+              baroTrendAuto && conditions.baroTrend && conditions.baroTrendMb != null
+                ? `${conditions.baroTrend} ${conditions.baroTrendMb} mb`
+                : undefined
+            } />
 
           <QuickSelect label="Water Level vs Normal" options={['High', 'Normal', 'Low'] as const}
             value={waterLevelVsNormal} onChange={v => { setWaterLevelVsNormal(v); setWaterLevelAuto(false) }} columns={3}

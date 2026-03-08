@@ -5,6 +5,7 @@ interface QuickSelectProps<T extends string> {
   label?: string
   columns?: number
   autoDetected?: boolean
+  detailText?: string   // extra text shown in the auto-detected badge, e.g. "Falling 2.4 mb"
 }
 
 export default function QuickSelect<T extends string>({
@@ -14,6 +15,7 @@ export default function QuickSelect<T extends string>({
   label,
   columns = 2,
   autoDetected = false,
+  detailText,
 }: QuickSelectProps<T>) {
   const colClass = {
     1: 'grid-cols-1',
@@ -25,11 +27,11 @@ export default function QuickSelect<T extends string>({
   return (
     <div>
       {label && (
-        <div className="flex items-center gap-2 mb-1.5">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
           <label className="block text-xs th-text-muted font-medium uppercase tracking-wide">{label}</label>
           {autoDetected && (
             <span className="text-xs th-accent-text bg-opacity-10 px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--th-accent-subtle)' }}>
-              auto · tap to override
+              {detailText ? `${detailText} · tap to override` : 'auto · tap to override'}
             </span>
           )}
         </div>

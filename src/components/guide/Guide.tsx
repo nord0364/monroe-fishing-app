@@ -409,6 +409,10 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
         })
       }
 
+      if (hasImage && !session && reply) {
+        saveCheckpoint([...compacted, userMsg, { id: replyId, role: 'assistant' as const, content: reply }])
+      }
+
       // In post-session mode: save analysisummary every 4 exchanges
       if (postSessionMode) {
         exchangeCountRef.current += 1
@@ -425,7 +429,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
     } finally {
       setStreaming(false)
     }
-  }, [messages, compactIfNeeded, getSystemPrompt, apiKey, session, postSessionMode, saveAnalysisSummary])
+  }, [messages, compactIfNeeded, getSystemPrompt, apiKey, session, postSessionMode, saveAnalysisSummary, saveCheckpoint])
 
   // ── Auto-generate opening analysis in post-session mode ───────────────────────
   useEffect(() => {
