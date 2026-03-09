@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Session, AppSettings, CatchEvent, StandaloneGuideEntry, Rod, SoftPlastic } from '../../types'
+import type { Session, AppSettings, CatchEvent, StandaloneGuideEntry, Rod, SoftPlastic, OwnedLure } from '../../types'
 import {
   getEventsForSession, saveEvent, saveStandaloneGuideEntry,
   getAllStandaloneGuideEntries, deleteStandaloneGuideEntry,
-  bulkDeleteStandaloneGuideEntries, getAllSessions, saveSession, getAllRods, getAllSoftPlastics,
+  bulkDeleteStandaloneGuideEntries, getAllSessions, saveSession,
+  getAllRods, getAllSoftPlastics, getAllOwnedLures,
 } from '../../db/database'
 import {
   buildGuideSystemPrompt, streamGuideResponse, generateCheckpointSummary,
@@ -229,6 +230,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
   const [openingDone, setOpeningDone]         = useState(false)
   const [rodInventory, setRodInventory]       = useState<Rod[]>([])
   const [spInventory, setSpInventory]         = useState<SoftPlastic[]>([])
+  const [lureInventory, setLureInventory]     = useState<OwnedLure[]>([])
 
   const chatEndRef             = useRef<HTMLDivElement>(null)
   const imgInputRef            = useRef<HTMLInputElement>(null)
@@ -251,6 +253,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
   useEffect(() => {
     getAllRods().then(setRodInventory).catch(() => {})
     getAllSoftPlastics().then(setSpInventory).catch(() => {})
+    getAllOwnedLures().then(setLureInventory).catch(() => {})
     if (session) {
       getEventsForSession(session.id).then(setSessionEvents).catch(() => {})
       // Load recent session analyses for context
@@ -360,8 +363,9 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
       session?.selectedRods ?? undefined,
       rodInventory.length > 0 ? rodInventory : undefined,
       spInventory.length > 0 ? spInventory : undefined,
+      lureInventory.length > 0 ? lureInventory : undefined,
     )
-  }, [session, sessionEvents, patternInjected, recentAnalyses, rodInventory, spInventory])
+  }, [session, sessionEvents, patternInjected, recentAnalyses, rodInventory, spInventory, lureInventory])
 
   // ── Core send ─────────────────────────────────────────────────────────────────
   const doSend = useCallback(async (

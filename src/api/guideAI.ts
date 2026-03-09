@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { Session, CatchEvent, LandedFish, Rod, SoftPlastic } from '../types'
+import type { Session, CatchEvent, LandedFish, Rod, SoftPlastic, OwnedLure } from '../types'
 import { getLaunchPointContext, fmtStructures, fmtDepths, fmtSeasonalNotes } from '../data/launchPointContext'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -41,6 +41,7 @@ export function buildGuideSystemPrompt(
   selectedRods?: Rod[],
   rodInventory?: Rod[],
   softPlastics?: SoftPlastic[],
+  ownedLures?: OwnedLure[],
 ): string {
   const parts: string[] = [GUIDE_PERSONA]
 
@@ -71,6 +72,17 @@ export function buildGuideSystemPrompt(
     if (launchCtx) {
       const detail = launchCtx.detailedSummary.startsWith('TODO') ? '' : `\nDetailed: ${launchCtx.detailedSummary}`
       parts.push(`\nLAUNCH POINT CONTEXT — ${launchCtx.name}:\nReachable range (kayak): ~${launchCtx.maxRecommendedRange} nmi. All location recs must be within this range.\nStructures: ${fmtStructures(launchCtx)}\nDepths: ${fmtDepths(launchCtx)}\nSeasonal: ${fmtSeasonalNotes(launchCtx)}${detail}`)
+    }
+
+    // Lure inventory (stable context — hardbaits, jigs, spinnerbaits, etc.)
+    if (ownedLures && ownedLures.length > 0) {
+      const lureLines = ownedLures
+        .filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired')
+        .map(l => `- ${l.lureType ?? 'Lure'}, ${l.weight ?? 'N/A'}, ${l.color}${l.brand ? ` (${l.brand})` : ''}${l.notes ? ` — ${l.notes}` : ''}`)
+        .join('\n')
+      if (lureLines) {
+        parts.push(`\nANGLER'S LURE INVENTORY — PRIORITIZE owned lures in all recommendations:\n${lureLines}\nOnly suggest lures the angler does not own as a last resort, and flag them clearly.`)
+      }
     }
 
     // Full rod inventory (stable context)
@@ -147,7 +159,15 @@ export function buildGuideSystemPrompt(
     parts.push(`\nRECENT SESSION ANALYSES (most recent first):\n${recentAnalysisSummaries.join('\n\n---\n\n')}`)
   }
 
-  return parts.filter(Boolean).join('\n')
+  const result = parts.filter(Boolean).join('\n')
+  console.debug('[Guide] system prompt assembled —', {
+    hasLureInventory: !!ownedLures && ownedLures.filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired').length,
+    hasRodInventory:  !!rodInventory && rodInventory.length,
+    hasSoftPlastics:  !!softPlastics && softPlastics.filter(s => s.condition !== 'Out').length,
+    hasSelectedRods:  !!selectedRods && selectedRods.length,
+    promptLength:     result.length,
+  })
+  return result
 }
 
 // ─── Streaming Guide response ─────────────────────────────────────────────────

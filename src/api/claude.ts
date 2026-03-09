@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { LandedFish, Session, EnvironmentalConditions, AIBriefing, CatchEvent, OwnedLure, RodSetup, Rod, SoftPlastic, SoftPlasticScanResult, SoftPlasticRiggingStyle } from '../types'
+import type { LandedFish, Session, EnvironmentalConditions, AIBriefing, CatchEvent, OwnedLure, Rod, SoftPlastic, SoftPlasticScanResult, SoftPlasticRiggingStyle } from '../types'
 import { getLaunchPointContext, fmtStructures, fmtDepths, fmtSeasonalNotes } from '../data/launchPointContext'
 
 function buildClientWithKey(apiKey: string) {
@@ -14,7 +14,7 @@ export async function generatePreSessionBriefing(
   launchSite: string,
   catchHistory: LandedFish[],
   ownedLures?: OwnedLure[],
-  rodSetups?: RodSetup[],
+  allRods?: Rod[],
   onChunk?: (text: string) => void,
   sessionContext?: string,
   selectedRods?: Rod[],
@@ -46,9 +46,60 @@ Depths: ${fmtDepths(launchCtx)}
 Seasonal notes: ${fmtSeasonalNotes(launchCtx)}${launchCtx.detailedSummary.startsWith('TODO') ? '' : `\nDetailed: ${launchCtx.detailedSummary}`}`
     : ''
 
-  const prompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana. The angler fishes from a kayak and stays within 0.5–1 nautical mile of the launch point. All location recommendations must be reachable within this range — do not suggest areas that require long paddles across open water unless the angler is launching from a central location with easy access.
+  // ── System prompt: stable inventory blocks (cached) ──────────────────────────
+  const systemParts: string[] = [
+    'You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington Indiana. The angler fishes from a kayak and stays within 0.5–1 nautical mile of the launch point. All location recommendations must be reachable within this range — do not suggest areas that require long paddles across open water unless the angler is launching from a central location with easy access.',
+  ]
 
-CURRENT CONDITIONS:
+  const activeLures = (ownedLures ?? []).filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired')
+  if (activeLures.length > 0) {
+    const lureLines = activeLures
+      .map(l => `- ${l.lureType ?? 'Lure'}, ${l.weight ?? 'N/A'}, ${l.color}${l.brand ? ` (${l.brand})` : ''}${l.notes ? ` — ${l.notes}` : ''}`)
+      .join('\n')
+    systemParts.push(`\nANGLER'S LURE INVENTORY — PRIORITIZE these in all recommendations:\n${lureLines}\n\nIMPORTANT: Rank lures the angler OWNS first. If no owned lure perfectly matches conditions, recommend the closest owned option and note the adjustment needed. Only recommend non-owned lures as a last resort, and flag them clearly.`)
+  }
+
+  const availableSoftPlastics = (softPlastics ?? []).filter(s => s.condition !== 'Out')
+  if (availableSoftPlastics.length > 0) {
+    const spLines = availableSoftPlastics.map(s => {
+      const parts = [
+        s.productName ? `"${s.productName}"` : null,
+        s.brand ?? null,
+        s.bodyStyle ?? null,
+        s.sizeInches != null ? `${s.sizeInches}"` : null,
+        s.colorName ?? null,
+        s.colorFamily ?? null,
+        s.riggingStyles && s.riggingStyles.length > 0 ? `rigs: ${s.riggingStyles.join('/')}` : null,
+        s.condition === 'Low Stock' ? '(low stock)' : null,
+      ].filter(Boolean).join(', ')
+      return `- ${parts}`
+    }).join('\n')
+    systemParts.push(`\nANGLER'S SOFT PLASTIC INVENTORY:\n${spLines}`)
+  }
+
+  if (allRods && allRods.length > 0) {
+    const rodLines = allRods.map(r => {
+      const specs = [
+        r.rodType,
+        r.power,
+        r.action,
+        r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
+        r.lineType,
+        r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
+        r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
+        r.reelName ? `reel: ${r.reelName}` : null,
+      ].filter(Boolean).join(', ')
+      return `- "${r.nickname}": ${specs || 'no specs recorded'}`
+    }).join('\n')
+    systemParts.push(`\nFULL ROD INVENTORY:\n${rodLines}`)
+  }
+
+  const systemPrompt = systemParts.join('\n')
+
+  // ── User message: session-specific content (changes per call) ─────────────────
+  const userParts: string[] = []
+
+  userParts.push(`CURRENT CONDITIONS:
 - Date/Time: ${sessionContext ?? new Date().toLocaleString()}
 - Sunrise: ${conditions.sunrise ?? 'N/A'} | Sunset: ${conditions.sunset ?? 'N/A'}
 - Moon Phase: ${conditions.moonPhase ?? 'N/A'} (${conditions.moonIlluminationPct ?? '?'}% illumination)
@@ -60,52 +111,30 @@ CURRENT CONDITIONS:
 - Water Temp: ${conditions.waterTempF ?? '?'}°F
 - Water Level: ${conditions.waterLevelFt ?? '?'} ft (${conditions.waterLevelVsNormal ?? 'N/A'})
 - Water Clarity: ${conditions.waterClarity ?? 'N/A'}
-- Launch Site: ${launchSite}${launchContextBlock}
+- Launch Site: ${launchSite}${launchContextBlock}`)
 
-CATCH HISTORY (${historyNote}):
-${catchSummary || 'No catch history yet.'}
-${ownedLures && ownedLures.length > 0 ? `
-ANGLER'S LURE INVENTORY — PRIORITIZE these in all recommendations:
-${ownedLures.filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired').map(l => `- ${l.lureType ?? 'Lure'}, ${l.weight ?? 'N/A'}, ${l.color}${l.brand ? ` (${l.brand})` : ''}${l.notes ? ` — ${l.notes}` : ''}`).join('\n')}
+  userParts.push(`\nCATCH HISTORY (${historyNote}):\n${catchSummary || 'No catch history yet.'}`)
 
-IMPORTANT: Rank lures the angler OWNS first. If no owned lure perfectly matches conditions, recommend the closest owned option and note the adjustment needed. Only recommend non-owned lures as a last resort, and flag them clearly.` : ''}${softPlastics && softPlastics.filter(s => s.condition !== 'Out').length > 0 ? `
-ANGLER'S SOFT PLASTIC INVENTORY:
-${softPlastics.filter(s => s.condition !== 'Out').map(s => {
-  const parts = [
-    s.productName ? `"${s.productName}"` : null,
-    s.brand ?? null,
-    s.bodyStyle ?? null,
-    s.sizeInches != null ? `${s.sizeInches}"` : null,
-    s.colorName ?? null,
-    s.colorFamily ?? null,
-    s.riggingStyles && s.riggingStyles.length > 0 ? `rigs: ${s.riggingStyles.join('/')}` : null,
-    s.condition === 'Low Stock' ? '(low stock)' : null,
-  ].filter(Boolean).join(', ')
-  return `- ${parts}`
-}).join('\n')}` : ''}
-${rodSetups && rodSetups.length > 0 ? `
-AVAILABLE ROD/LINE SETUPS:
-${rodSetups.map(r => `- "${r.name}": ${[r.rodPower, r.rodAction, r.rodLength].filter(Boolean).join('/')} rod, ${r.lineType ?? '?'}${r.lineWeightLbs ? ` ${r.lineWeightLbs}lb` : ''}${r.notes ? ` — ${r.notes}` : ''}`).join('\n')}
+  if (selectedRods && selectedRods.length > 0) {
+    const selLines = selectedRods.map(r => {
+      const specs = [
+        r.rodType,
+        r.power,
+        r.action,
+        r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
+        r.lineType,
+        r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
+        r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
+        r.reelName ? `reel: ${r.reelName}` : null,
+      ].filter(Boolean).join(', ')
+      return `- "${r.nickname}": ${specs || 'no specs recorded'}`
+    }).join('\n')
+    userParts.push(`\nRODS THE ANGLER IS BRINGING TODAY (selected by app based on conditions):\n${selLines}\n\nIMPORTANT ROD INSTRUCTION: In the "suggestedRod" field for each recommendation, specify the rod nickname EXACTLY as listed above. Do not say "a medium heavy rod" — use the exact nickname. Match each lure to the best rod from this list based on lure weight, technique, and line type.`)
+  } else if (allRods && allRods.length > 0) {
+    userParts.push(`\nFor each recommendation, include a "suggestedRod" field with the nickname of the best matching rod from the Full Rod Inventory.`)
+  }
 
-For each recommendation, include a "suggestedRod" field with the name of the best matching setup from the list above.` : ''}
-${selectedRods && selectedRods.length > 0 ? `
-RODS THE ANGLER IS BRINGING TODAY (selected by app based on conditions):
-${selectedRods.map(r => {
-  const parts = [
-    r.rodType,
-    r.power,
-    r.action,
-    r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
-    r.lineType,
-    r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
-    r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
-    r.reelName ? `reel: ${r.reelName}` : null,
-  ].filter(Boolean).join(', ')
-  return `- "${r.nickname}": ${parts || 'no specs recorded'}`
-}).join('\n')}
-
-IMPORTANT ROD INSTRUCTION: In the "suggestedRod" field for each recommendation, specify the rod nickname EXACTLY as listed above (e.g., "Heavy Baitcaster" or "Spinning Finesse"). Do not say "a medium heavy rod" — use the exact nickname. Match each lure to the best rod from this list based on lure weight, technique, and line type.` : ''}
-
+  userParts.push(`
 Respond with ONLY valid JSON — no markdown, no code fences, no explanation before or after. Use this exact structure:
 {
   "recommendations": [
@@ -119,7 +148,7 @@ Respond with ONLY valid JSON — no markdown, no code fences, no explanation bef
       "waterColumn": "string",
       "confidence": "High|Medium|Low",
       "reasoning": "string (2-3 sentences — specific and actionable)",
-      "suggestedRod": "string (name of rod setup to use, or omit if no setups provided)",
+      "suggestedRod": "string (nickname of rod to use, or omit if no rods provided)",
       "inInventory": true
     }
   ],
@@ -130,7 +159,19 @@ Respond with ONLY valid JSON — no markdown, no code fences, no explanation bef
   "narrative": "string (1-2 sentences: any notable observations or timing windows the angler should know)"
 }
 
-Provide 2-3 ranked recommendations. Be specific and data-driven where history supports it.`
+Provide 2-3 ranked recommendations. Be specific and data-driven where history supports it.`)
+
+  const prompt = userParts.join('\n')
+
+  // Debug: log assembled context so the fix can be verified in the browser console
+  console.debug('[Scout] system prompt (cached inventory):', {
+    hasLureInventory:    activeLures.length,
+    hasSoftPlastics:     availableSoftPlastics.length,
+    hasFullRodInventory: allRods?.length ?? 0,
+    hasSelectedRods:     selectedRods?.length ?? 0,
+    systemPromptLength:  systemPrompt.length,
+    userMessageLength:   prompt.length,
+  })
 
   if (onChunk) {
     // Streaming mode
@@ -138,6 +179,7 @@ Provide 2-3 ranked recommendations. Be specific and data-driven where history su
     const stream = client.messages.stream({
       model: 'claude-opus-4-6',
       max_tokens: 2000,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
     })
 
@@ -153,6 +195,7 @@ Provide 2-3 ranked recommendations. Be specific and data-driven where history su
     const response = await client.messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 2000,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
     })
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
