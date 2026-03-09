@@ -110,7 +110,7 @@ async function getDB(): Promise<IDBPDatabase<FishingDB>> {
           if (cat === 'spoon') {
             // Spoons → lure with lureType='Spoon'
             const migrated: OwnedLure = { ...lure, category: 'lure', lureType: 'Spoon' }
-            delete (migrated as Record<string, unknown>).spoonStyle
+            delete (migrated as unknown as Record<string, unknown>).spoonStyle
             await lureStore.put(migrated)
           } else if (lure.lureType === 'Wacky Rig') {
             // Wacky Rig lures → hook with hookStyle='Wacky'
