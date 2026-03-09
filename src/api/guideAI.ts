@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Session, CatchEvent, LandedFish, Rod } from '../types'
-import { getLaunchPointContext } from '../data/launchPointContext'
+import { getLaunchPointContext, fmtStructures, fmtDepths, fmtSeasonalNotes } from '../data/launchPointContext'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export function buildGuideSystemPrompt(
     const launchCtx = getLaunchPointContext(String(session.launchSite))
     if (launchCtx) {
       const detail = launchCtx.detailedSummary.startsWith('TODO') ? '' : `\nDetailed: ${launchCtx.detailedSummary}`
-      parts.push(`\nLAUNCH POINT CONTEXT — ${launchCtx.name}:\nReachable range (kayak): ~${launchCtx.maxRecommendedRange} nmi. All location recs must be within this range.\nStructures: ${launchCtx.structures}\nDepths: ${launchCtx.depths}\nSeasonal: ${launchCtx.seasonalNotes}${detail}`)
+      parts.push(`\nLAUNCH POINT CONTEXT — ${launchCtx.name}:\nReachable range (kayak): ~${launchCtx.maxRecommendedRange} nmi. All location recs must be within this range.\nStructures: ${fmtStructures(launchCtx)}\nDepths: ${fmtDepths(launchCtx)}\nSeasonal: ${fmtSeasonalNotes(launchCtx)}${detail}`)
     }
 
     // Full rod inventory (stable context)

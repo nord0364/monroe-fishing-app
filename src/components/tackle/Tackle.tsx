@@ -19,13 +19,11 @@ import {
   deleteOwnedLure,
   bulkDeleteOwnedLures,
   exportTackleJSON,
-  getAllEvents,
   getAllRods,
   saveRod,
   deleteRod,
   bulkDeleteRods,
 } from '../../db/database'
-import type { LandedFish } from '../../types'
 import { nanoid } from '../logger/nanoid'
 import { identifyLureForCatalog, type LureIdentification } from '../../api/claude'
 
@@ -49,14 +47,17 @@ const JIG_SUBGROUPS = [
 
 // Accordion section display order
 const SECTION_ORDER = [
-  'Spinnerbaits and Chatterbaits',
+  'Spinnerbaits',
+  'Chatterbaits',
   'Jigs',
-  'Soft Plastics',
   'Topwater',
   'Crankbaits',
   'Swimbaits',
+  'Spoons',
+  'Wacky Rigs',
   'Ned Rig',
   'Hooks',
+  'Soft Plastics',
   'Other',
 ] as const
 type TackleSection = typeof SECTION_ORDER[number]
@@ -99,15 +100,21 @@ function effectiveCategory(item: OwnedLure): TackleCategory {
 }
 
 function effectiveTackleSection(item: OwnedLure): TackleSection {
-  if (effectiveCategory(item) === 'hook') return 'Hooks'
+  const cat = effectiveCategory(item)
+  if (cat === 'spoon') return 'Spoons'
+  if (cat === 'hook') {
+    if (item.hookStyle === 'Wacky') return 'Wacky Rigs'
+    if (item.hookStyle === 'Ned')   return 'Ned Rig'
+    return 'Hooks'
+  }
   const t = item.lureType ?? ''
-  if (['Spinnerbait', 'Chatterbait'].includes(t)) return 'Spinnerbaits and Chatterbaits'
-  if (t === 'Jig' || ['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return 'Jigs'
-  if (['Wacky Rig', 'Texas Rig', 'Drop Shot', 'Soft Plastics'].includes(t)) return 'Soft Plastics'
+  if (t === 'Spinnerbait') return 'Spinnerbaits'
+  if (t === 'Chatterbait') return 'Chatterbaits'
+  if (t === 'Jig' || JIG_SUBGROUPS.includes(t as typeof JIG_SUBGROUPS[number])) return 'Jigs'
+  if (['Wacky Rig', 'Texas Rig', 'Drop Shot', 'Soft Plastics', 'Ned Rig'].includes(t)) return 'Soft Plastics'
   if (['Topwater', 'Buzzbait', 'Frog'].includes(t)) return 'Topwater'
   if (t === 'Crankbait') return 'Crankbaits'
   if (t === 'Swimbait') return 'Swimbaits'
-  if (t === 'Ned Rig') return 'Ned Rig'
   return 'Other'
 }
 
@@ -580,7 +587,7 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
 
 // ─── FAB with category picker ─────────────────────────────────────────────────
 
-function AddFab({ onAdd }: { onAdd: (cat: TackleCategory) => void }) {
+function AddFab({ onAdd, onAddRod }: { onAdd: (cat: TackleCategory) => void; onAddRod: () => void }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -601,7 +608,19 @@ function AddFab({ onAdd }: { onAdd: (cat: TackleCategory) => void }) {
               onClick={() => { setOpen(false); onAdd('hook') }}
               className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
             >
-              🪝 Add Hook
+              🪝 Add Hook / Rig
+            </button>
+            <button
+              onClick={() => { setOpen(false); onAdd('spoon') }}
+              className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
+            >
+              🥄 Add Spoon
+            </button>
+            <button
+              onClick={() => { setOpen(false); onAddRod() }}
+              className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
+            >
+              🎣 Add Rod
             </button>
           </>
         )}
@@ -762,8 +781,9 @@ function RodRow({ rod, confirming, onEdit, onDeleteRequest, onDeleteConfirm }: {
 
 // ─── Rods accordion ───────────────────────────────────────────────────────────
 
-function RodsAccordion({ rods, onEdit, onDelete, onBulkDelete }: {
+function RodsAccordion({ rods, onAdd, onEdit, onDelete, onBulkDelete }: {
   rods: Rod[]
+  onAdd: () => void
   onEdit: (rod: Rod) => void
   onDelete: (id: string) => void
   onBulkDelete: (ids: string[]) => void
@@ -773,9 +793,8 @@ function RodsAccordion({ rods, onEdit, onDelete, onBulkDelete }: {
   const [bulkConfirm, setBulkConfirm] = useState(false)
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  if (rods.length === 0) return null
-
   const startLongPress = () => {
+    if (rods.length === 0) return
     longPressRef.current = setTimeout(() => setBulkConfirm(true), 500)
   }
   const cancelLongPress = () => {
@@ -784,17 +803,27 @@ function RodsAccordion({ rods, onEdit, onDelete, onBulkDelete }: {
 
   return (
     <div>
-      <button
+      <div
         className="w-full flex items-center gap-2 px-4 py-2 th-surface-deep border-y th-border"
-        onClick={() => { if (!bulkConfirm) setOpen(o => !o) }}
         onPointerDown={startLongPress}
         onPointerUp={cancelLongPress}
         onPointerLeave={cancelLongPress}
       >
-        <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide text-left">Rods & Reels</span>
-        <span className="text-xs th-text-muted">({rods.length})</span>
-        <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>
-      </button>
+        <button
+          className="flex-1 flex items-center gap-2 text-left"
+          onClick={() => { if (!bulkConfirm && rods.length > 0) setOpen(o => !o) }}
+        >
+          <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide">Rods & Reels</span>
+          <span className="text-xs th-text-muted">({rods.length})</span>
+          {rods.length > 0 && <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>}
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); onAdd() }}
+          className="text-xs th-accent-text px-2 py-1 min-h-[32px] shrink-0"
+        >
+          + Add
+        </button>
+      </div>
 
       {bulkConfirm && (
         <div className="px-4 py-3 th-danger-bg border-b th-border">
@@ -812,7 +841,13 @@ function RodsAccordion({ rods, onEdit, onDelete, onBulkDelete }: {
         </div>
       )}
 
-      {open && (
+      {rods.length === 0 && (
+        <div className="px-4 py-4 text-center th-text-muted text-sm">
+          No rods yet — tap <span className="th-accent-text font-medium">+ Add</span> or use the <span className="th-accent-text font-medium">+</span> button below.
+        </div>
+      )}
+
+      {open && rods.length > 0 && (
         <div className="divide-y th-border">
           {rods.map(rod => (
             <RodRow
@@ -1007,6 +1042,96 @@ function RodForm({ initial, onSave, onCancel }: {
   )
 }
 
+// ─── Jigs accordion (nested subgroups) ────────────────────────────────────────
+
+function JigsAccordion({ items, gridView, multiSelect, selected, onToggleSelect, onEdit, onDelete, onLongPress }: {
+  items: OwnedLure[]
+  gridView: boolean
+  multiSelect: boolean
+  selected: Set<string>
+  onToggleSelect: (id: string) => void
+  onEdit: (item: OwnedLure) => void
+  onDelete: (id: string) => void
+  onLongPress: (id: string) => void
+}) {
+  const [open, setOpen]       = useState(false)
+  const [openSubs, setOpenSubs] = useState<Set<string>>(new Set())
+
+  if (items.length === 0) return null
+
+  const toggleSub = (sub: string) =>
+    setOpenSubs(prev => { const s = new Set(prev); s.has(sub) ? s.delete(sub) : s.add(sub); return s })
+
+  // Group items by subgroup
+  const bySubgroup = new Map<string, OwnedLure[]>()
+  for (const sub of JIG_SUBGROUPS) bySubgroup.set(sub, [])
+  for (const item of items) {
+    const sub = item.jigSubgroup
+      ?? (JIG_SUBGROUPS.includes(item.lureType as typeof JIG_SUBGROUPS[number]) ? item.lureType as string : 'Other Jig')
+    if (bySubgroup.has(sub)) {
+      bySubgroup.set(sub, [...bySubgroup.get(sub)!, item])
+    } else {
+      bySubgroup.set('Other Jig', [...(bySubgroup.get('Other Jig') ?? []), item])
+    }
+  }
+
+  const renderItems = (secItems: OwnedLure[]) =>
+    gridView ? (
+      <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
+        {secItems.map(item => (
+          <ItemCard key={item.id} item={item}
+            multiSelect={multiSelect} selected={selected.has(item.id)}
+            onToggleSelect={() => onToggleSelect(item.id)}
+            onEdit={() => onEdit(item)} onDelete={() => onDelete(item.id)}
+            onLongPress={() => onLongPress(item.id)} />
+        ))}
+      </div>
+    ) : (
+      <div className="divide-y th-border">
+        {secItems.map(item => (
+          <DenseRow key={item.id} item={item}
+            onEdit={() => onEdit(item)} onDelete={() => onDelete(item.id)} />
+        ))}
+      </div>
+    )
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-4 py-2 th-surface-deep border-y th-border"
+      >
+        <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide text-left">Jigs</span>
+        <span className="text-xs th-text-muted">({items.length})</span>
+        <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div>
+          {JIG_SUBGROUPS.map(sub => {
+            const subItems = sortItems(bySubgroup.get(sub) ?? [])
+            if (subItems.length === 0) return null
+            const isSubOpen = openSubs.has(sub)
+            return (
+              <div key={sub}>
+                <button
+                  onClick={() => toggleSub(sub)}
+                  className="w-full flex items-center gap-2 px-6 py-1.5 th-surface border-b th-border"
+                >
+                  <span className="flex-1 text-xs font-semibold th-text-muted text-left">{sub}</span>
+                  <span className="text-xs th-text-muted">({subItems.length})</span>
+                  <span className="text-xs th-text-muted">{isSubOpen ? '▲' : '▼'}</span>
+                </button>
+                {isSubOpen && renderItems(subItems)}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── List view ────────────────────────────────────────────────────────────────
 
 type OriginFilter = 'all' | TackleOrigin
@@ -1015,7 +1140,6 @@ type ConditionFilter = 'all' | TackleCondition
 interface ListViewProps {
   items: OwnedLure[]
   settings: AppSettings
-  mruItems: OwnedLure[]
   rods: Rod[]
   onAdd: (cat: TackleCategory) => void
   onEdit: (item: OwnedLure) => void
@@ -1028,7 +1152,7 @@ interface ListViewProps {
   onBulkDeleteRods: (ids: string[]) => void
 }
 
-function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete, onExport, onEditRod, onDeleteRod, onBulkDeleteRods }: ListViewProps) {
+function ListView({ items, rods, onAdd, onEdit, onDelete, onBulkDelete, onExport, onAddRod, onEditRod, onDeleteRod, onBulkDeleteRods }: ListViewProps) {
   const [search, setSearch]           = useState('')
   const [originFilter, setOriginFilter] = useState<OriginFilter>('all')
   const [condFilter, setCondFilter]   = useState<ConditionFilter>('all')
@@ -1044,8 +1168,6 @@ function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete
     setGridView(next)
     try { localStorage.setItem('tackle-view', next ? 'grid' : 'list') } catch {}
   }
-
-  const isFiltered = search.trim() !== '' || originFilter !== 'all' || condFilter !== 'all'
 
   const filterItem = (item: OwnedLure): boolean => {
     if (originFilter !== 'all' && item.origin !== originFilter) return false
@@ -1097,7 +1219,6 @@ function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete
     exitMultiSelect()
   }
 
-  const showMru = !isFiltered && mruItems.length > 0
   const isEmpty = filtered.length === 0 && filteredRods.length === 0
 
   return (
@@ -1154,43 +1275,6 @@ function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete
         </div>
       </div>
 
-      {/* MRU — last 5 lures used in catches */}
-      {showMru && (
-        <div className="mb-1">
-          <div className="sticky top-0 z-10 px-4 py-1.5 th-surface-deep border-y th-border flex items-center justify-between">
-            <span className="text-xs font-bold th-text-muted uppercase tracking-wide">Recently Used</span>
-            <span className="text-xs th-text-muted">({mruItems.length})</span>
-          </div>
-          {gridView ? (
-            <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
-              {mruItems.map(item => (
-                <ItemCard
-                  key={`mru::${item.id}`}
-                  item={item}
-                  multiSelect={false}
-                  selected={false}
-                  onToggleSelect={() => {}}
-                  onEdit={() => onEdit(item)}
-                  onDelete={() => onDelete(item.id)}
-                  onLongPress={() => {}}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="divide-y th-border">
-              {mruItems.map(item => (
-                <DenseRow
-                  key={`mru::${item.id}`}
-                  item={item}
-                  onEdit={() => onEdit(item)}
-                  onDelete={() => onDelete(item.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Empty state */}
       {isEmpty && (
         <div className="text-center py-16 th-text-muted px-4">
@@ -1202,8 +1286,8 @@ function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete
         </div>
       )}
 
-      {/* Accordion sections — all except 'Other' */}
-      {SECTION_ORDER.filter(sec => sec !== 'Other').map(sec => {
+      {/* Accordion sections — all except 'Jigs' and 'Other' */}
+      {SECTION_ORDER.filter(sec => sec !== 'Jigs' && sec !== 'Other').map(sec => {
         const secItems = sortItems(sectionMap.get(sec) ?? [])
         return (
           <AccordionSection key={sec} title={sec} count={secItems.length}>
@@ -1238,9 +1322,22 @@ function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete
         )
       })}
 
+      {/* Jigs — nested subgroup accordion */}
+      <JigsAccordion
+        items={sortItems(sectionMap.get('Jigs') ?? [])}
+        gridView={gridView}
+        multiSelect={multiSelect}
+        selected={selected}
+        onToggleSelect={toggleSelect}
+        onEdit={onEdit}
+        onDelete={id => onDelete(id)}
+        onLongPress={id => { setMultiSelect(true); setSelected(new Set([id])) }}
+      />
+
       {/* Rods & Reels — above Other */}
       <RodsAccordion
         rods={filteredRods}
+        onAdd={onAddRod}
         onEdit={onEditRod}
         onDelete={onDeleteRod}
         onBulkDelete={onBulkDeleteRods}
@@ -1321,7 +1418,7 @@ function ListView({ items, mruItems, rods, onAdd, onEdit, onDelete, onBulkDelete
       )}
 
       {/* FAB */}
-      {!multiSelect && <AddFab onAdd={onAdd} />}
+      {!multiSelect && <AddFab onAdd={onAdd} onAddRod={onAddRod} />}
     </div>
   )
 }
@@ -1886,7 +1983,6 @@ type RodFormView = { mode: 'add' } | { mode: 'edit'; rod: Rod }
 
 export default function Tackle({ settings }: Props) {
   const [items, setItems]           = useState<OwnedLure[]>([])
-  const [mruItems, setMruItems]     = useState<OwnedLure[]>([])
   const [formView, setFormView]     = useState<FormView | null>(null)
   const [rods, setRods]             = useState<Rod[]>([])
   const [rodFormView, setRodFormView] = useState<RodFormView | null>(null)
@@ -1906,35 +2002,6 @@ export default function Tackle({ settings }: Props) {
       }
     })
   }, [])
-
-  // Build MRU from recent catch events — last 5 unique (lureType + color) combos
-  useEffect(() => {
-    if (items.length === 0) return
-    getAllEvents().then(events => {
-      const landed = events
-        .filter((e): e is LandedFish => e.type === 'Landed Fish')
-        .sort((a, b) => b.timestamp - a.timestamp)
-
-      const seen = new Set<string>()
-      const matched: OwnedLure[] = []
-
-      for (const ev of landed) {
-        if (matched.length >= 5) break
-        const key = `${ev.lureType}::${(ev.lureColor ?? '').toLowerCase()}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        const found = items.find(i =>
-          effectiveCategory(i) === 'lure' &&
-          i.lureType === ev.lureType &&
-          i.color.toLowerCase() === (ev.lureColor ?? '').toLowerCase()
-        )
-        if (found && !matched.find(m => m.id === found.id)) {
-          matched.push(found)
-        }
-      }
-      setMruItems(matched)
-    }).catch(() => {})
-  }, [items])
 
   const handleSave = (item: OwnedLure) => {
     setItems(prev => {
@@ -2038,7 +2105,6 @@ export default function Tackle({ settings }: Props) {
     <ListView
       items={items}
       settings={settings}
-      mruItems={mruItems}
       rods={rods}
       onAdd={cat => setFormView({ mode: 'add', category: cat })}
       onEdit={item => setFormView({ mode: 'edit', item })}

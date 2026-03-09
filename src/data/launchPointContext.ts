@@ -5,12 +5,21 @@
 export interface LaunchPointContext {
   launchSiteId: string
   name: string
-  maxRecommendedRange: number   // nautical miles from launch
-  structures: string            // key structures within range
-  depths: string                // depth profile notes
-  seasonalNotes: string         // seasonal pattern notes
-  detailedSummary: string       // TODO: REPLACE WITH NAVIONICS SUMMARY
+  maxRecommendedRange: number
+  structures: string | string[]
+  depths: string | string[]
+  seasonalNotes: string | string[]
+  detailedSummary: string
+  [key: string]: unknown        // allow extra survey fields without type errors
 }
+
+function joinContext(v: string | string[]): string {
+  return Array.isArray(v) ? v.join('\n') : v
+}
+
+export function fmtStructures(ctx: LaunchPointContext): string { return joinContext(ctx.structures) }
+export function fmtDepths(ctx: LaunchPointContext): string { return joinContext(ctx.depths) }
+export function fmtSeasonalNotes(ctx: LaunchPointContext): string { return joinContext(ctx.seasonalNotes) }
 
 export const LAUNCH_POINT_CONTEXTS: LaunchPointContext[] = [
   {
