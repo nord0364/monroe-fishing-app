@@ -1,121 +1,84 @@
 import { useState, useEffect, useRef } from 'react'
 import type {
-  OwnedLure,
-  TackleCategory,
-  TackleOrigin,
-  TackleCondition,
-  HookStyle,
-  SpoonStyle,
-  AppSettings,
-  Rod,
-  RodType,
-  RodPower,
-  RodAction,
-  RodLineType,
+  OwnedLure, TackleCategory, TackleOrigin, TackleCondition, HookStyle,
+  AppSettings, Rod, RodType, RodPower, RodAction, RodLineType,
+  SoftPlastic, SoftPlasticBodyStyle, SoftPlasticColorFamily,
+  SoftPlasticRiggingStyle, SoftPlasticCondition,
 } from '../../types'
 import {
-  getAllOwnedLures,
-  saveOwnedLure,
-  deleteOwnedLure,
-  bulkDeleteOwnedLures,
-  exportTackleJSON,
-  getAllRods,
-  saveRod,
-  deleteRod,
-  bulkDeleteRods,
+  getAllOwnedLures, saveOwnedLure, deleteOwnedLure, bulkDeleteOwnedLures,
+  exportTackleJSON, getAllRods, saveRod, deleteRod,
+  getAllSoftPlastics, saveSoftPlastic, deleteSoftPlastic,
 } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
-import { identifyLureForCatalog, type LureIdentification } from '../../api/claude'
+import { identifyLureForCatalog, identifySoftPlastic, type LureIdentification } from '../../api/claude'
+import { SP_BODY_STYLES, SP_COLOR_FAMILIES, SP_RIGGING_STYLES, SP_CONDITIONS } from '../../constants'
 
 // ─── Rod constants ─────────────────────────────────────────────────────────────
-const ROD_TYPES:    RodType[]    = ['Baitcasting', 'Spinning']
-const ROD_POWERS:   RodPower[]   = ['Ultra Light', 'Light', 'Medium Light', 'Medium', 'Medium Heavy', 'Heavy', 'Extra Heavy']
-const ROD_ACTIONS:  RodAction[]  = ['Slow', 'Moderate', 'Fast', 'Extra Fast']
+const ROD_TYPES:      RodType[]    = ['Baitcasting', 'Spinning']
+const ROD_POWERS:     RodPower[]   = ['Ultra Light', 'Light', 'Medium Light', 'Medium', 'Medium Heavy', 'Heavy', 'Extra Heavy']
+const ROD_ACTIONS:    RodAction[]  = ['Slow', 'Moderate', 'Fast', 'Extra Fast']
 const ROD_LINE_TYPES: RodLineType[] = ['Fluorocarbon', 'Monofilament', 'Braid', 'Braid with Fluorocarbon Leader']
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Top-level lure categories for form picker
 const LURE_CATEGORIES = [
-  'Spinnerbait', 'Chatterbait', 'Jig', 'Soft Plastics',
-  'Topwater', 'Crankbait', 'Swimbait', 'Ned Rig', 'Other',
+  'Crankbait', 'Jerkbait', 'Jig', 'Spinnerbait', 'Chatterbait',
+  'Spoon', 'Swimbait', 'Topwater', 'Other',
 ] as const
+type LureCategoryOption = typeof LURE_CATEGORIES[number]
 
-const JIG_SUBGROUPS = [
-  'Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig', 'Other Jig',
-] as const
+const JIG_SUBGROUPS = ['Casting Jig', 'Finesse Jig', 'Flipping Jig', 'Football Jig', 'Swim Jig', 'Other Jig'] as const
+type JigSubgroup = typeof JIG_SUBGROUPS[number]
 
-// Accordion section display order
-const SECTION_ORDER = [
-  'Spinnerbaits',
-  'Chatterbaits',
-  'Jigs',
-  'Topwater',
-  'Crankbaits',
-  'Swimbaits',
-  'Spoons',
-  'Wacky Rigs',
-  'Ned Rig',
-  'Hooks',
-  'Soft Plastics',
-  'Other',
-] as const
-type TackleSection = typeof SECTION_ORDER[number]
+const LURE_DISPLAY_CATS = ['Crankbaits', 'Jerkbaits', 'Jigs', 'Spinnerbaits & Chatterbaits', 'Spoons', 'Swimbaits', 'Topwater', 'Other'] as const
+type LureDisplayCat = typeof LURE_DISPLAY_CATS[number]
+
+const HOOK_DISPLAY_CATS = ['Ned Rig Heads', 'Standard Hooks', 'Wacky Hooks', 'Weighted Hooks'] as const
+type HookDisplayCat = typeof HOOK_DISPLAY_CATS[number]
 
 const WEIGHT_OPTIONS = ['Weightless', '3/16 oz', '1/4 oz', '3/8 oz', '1/2 oz', '3/4 oz', '1 oz', 'Other']
-
 const HOOK_STYLES: HookStyle[] = ['Worm Hook', 'EWG', 'Wacky', 'Ned', 'Drop Shot', 'Treble', 'Other']
-const SPOON_STYLES: SpoonStyle[] = ['Casting', 'Trolling', 'Jigging']
 const ORIGINS: TackleOrigin[] = ['Hand Poured by Me', 'Store Bought']
 const CONDITIONS: TackleCondition[] = ['New', 'Good', 'Retired']
-
 const BLADE_CONFIG_TYPES = ['Spinnerbait', 'Chatterbait']
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── View types ────────────────────────────────────────────────────────────────
 
-async function resizePhoto(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      const img = new Image()
-      img.onload = () => {
-        const MAX = 400
-        const scale = Math.min(MAX / img.width, MAX / img.height, 1)
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(img.width * scale)
-        canvas.height = Math.round(img.height * scale)
-        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', 0.75))
-      }
-      img.onerror = reject
-      img.src = e.target?.result as string
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+type FormView =
+  | { mode: 'add-lure'; lureTypeHint?: string }
+  | { mode: 'add-hook'; hookStyleHint?: HookStyle; hookTypeHint?: 'standard' | 'weighted' }
+  | { mode: 'add-rod' }
+  | { mode: 'edit'; item: OwnedLure }
+
+type SpView =
+  | { mode: 'scan' }
+  | { mode: 'form'; prefilled?: Partial<SoftPlastic>; aiFields?: Set<string>; editSp?: SoftPlastic; scanNote?: string }
+
+// ─── Routing helpers ───────────────────────────────────────────────────────────
+
+function getLureCat(item: OwnedLure): LureDisplayCat {
+  if (item.category === 'spoon') return 'Spoons'
+  const t = item.lureType ?? ''
+  if (t === 'Crankbait') return 'Crankbaits'
+  if (t === 'Jerkbait') return 'Jerkbaits'
+  if (t === 'Jig' || item.jigSubgroup || JIG_SUBGROUPS.includes(t as JigSubgroup)) return 'Jigs'
+  if (t === 'Spinnerbait' || t === 'Chatterbait') return 'Spinnerbaits & Chatterbaits'
+  if (t === 'Spoon') return 'Spoons'
+  if (t === 'Swimbait') return 'Swimbaits'
+  if (['Topwater', 'Buzzbait', 'Frog'].includes(t)) return 'Topwater'
+  return 'Other'
+}
+
+function getHookCat(item: OwnedLure): HookDisplayCat {
+  if (item.hookStyle === 'Ned') return 'Ned Rig Heads'
+  if (item.hookStyle === 'Wacky') return 'Wacky Hooks'
+  if (item.hookType === 'weighted') return 'Weighted Hooks'
+  return 'Standard Hooks'
 }
 
 function effectiveCategory(item: OwnedLure): TackleCategory {
   return item.category ?? 'lure'
-}
-
-function effectiveTackleSection(item: OwnedLure): TackleSection {
-  const cat = effectiveCategory(item)
-  if (cat === 'spoon') return 'Spoons'
-  if (cat === 'hook') {
-    if (item.hookStyle === 'Wacky') return 'Wacky Rigs'
-    if (item.hookStyle === 'Ned')   return 'Ned Rig'
-    return 'Hooks'
-  }
-  const t = item.lureType ?? ''
-  if (t === 'Spinnerbait') return 'Spinnerbaits'
-  if (t === 'Chatterbait') return 'Chatterbaits'
-  if (t === 'Jig' || JIG_SUBGROUPS.includes(t as typeof JIG_SUBGROUPS[number])) return 'Jigs'
-  if (['Wacky Rig', 'Texas Rig', 'Drop Shot', 'Soft Plastics', 'Ned Rig'].includes(t)) return 'Soft Plastics'
-  if (['Topwater', 'Buzzbait', 'Frog'].includes(t)) return 'Topwater'
-  if (t === 'Crankbait') return 'Crankbaits'
-  if (t === 'Swimbait') return 'Swimbaits'
-  return 'Other'
 }
 
 function sortItems(items: OwnedLure[]): OwnedLure[] {
@@ -131,7 +94,7 @@ function todayDateString(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-// ─── Color → hex mapping ───────────────────────────────────────────────────────
+// ─── Color helpers ─────────────────────────────────────────────────────────────
 
 const COLOR_HEX: Record<string, string> = {
   'white':          '#f5f5f5',
@@ -178,7 +141,49 @@ function colorToHex(name: string): string {
   return '#6b7280'
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+const SP_COLOR_HEX: Record<string, string> = {
+  'Black and Blue': '#1e1b4b',
+  'Brown': '#92400e',
+  'Chartreuse': '#a3e635',
+  'Green Pumpkin': '#4a5c2a',
+  'Natural': '#c4a882',
+  'Smoke': '#9ca3af',
+  'Watermelon': '#f43f5e',
+  'White': '#f5f5f5',
+  'Other': '#6b7280',
+}
+
+function spColorHex(sp: SoftPlastic): string {
+  if (sp.colorFamily && SP_COLOR_HEX[sp.colorFamily]) return SP_COLOR_HEX[sp.colorFamily]
+  if (sp.colorName) return colorToHex(sp.colorName)
+  return '#6b7280'
+}
+
+// ─── resizePhoto ───────────────────────────────────────────────────────────────
+
+async function resizePhoto(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 400
+        const scale = Math.min(MAX / img.width, MAX / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.75))
+      }
+      img.onerror = reject
+      img.src = e.target?.result as string
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+// ─── Badge / primitive components ────────────────────────────────────────────
 
 function HandPouredBadge() {
   return (
@@ -228,7 +233,7 @@ function DeleteConfirmRow({ onConfirm, onCancel }: DeleteConfirmProps) {
   )
 }
 
-// ─── Item Card ────────────────────────────────────────────────────────────────
+// ─── ItemCard (legacy grid view — kept for reference) ─────────────────────────
 
 interface ItemCardProps {
   item: OwnedLure
@@ -239,7 +244,8 @@ interface ItemCardProps {
   onDelete: () => void
   onLongPress: () => void
 }
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// @ts-expect-error -- kept for reference, not currently rendered
 function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelete, onLongPress }: ItemCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -247,16 +253,10 @@ function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelet
   const isRetired = item.condition === 'Retired'
 
   const handlePointerDown = () => {
-    longPressTimer.current = setTimeout(() => {
-      onLongPress()
-    }, 500)
+    longPressTimer.current = setTimeout(() => { onLongPress() }, 500)
   }
-
   const handlePointerUp = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-    }
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null }
   }
 
   const categoryEmoji = cat === 'hook' ? '🪝' : cat === 'spoon' ? '🥄' : '🎣'
@@ -314,17 +314,14 @@ function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelet
             {item.brand && <div className="th-text-muted text-xs">{item.brand}</div>}
             {item.quantity !== undefined && item.quantity > 0 && (
               <div className="flex gap-1 mt-1">
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400">
-                  Qty: {item.quantity}
-                </span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400">Qty: {item.quantity}</span>
               </div>
             )}
-            {item.notes && <div className="th-text-muted text-xs italic mt-0.5">{item.notes}</div>}
           </>
         )}
         {cat === 'spoon' && (
           <>
-            <div className="th-text font-semibold text-sm leading-tight">{item.spoonStyle ?? 'Spoon'}</div>
+            <div className="th-text font-semibold text-sm leading-tight">{item.lureType ?? 'Spoon'}</div>
             <div className="th-text-muted text-xs mt-0.5">
               {item.weight ? `${item.weight} · ` : ''}{item.color}
             </div>
@@ -340,24 +337,11 @@ function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelet
       {!multiSelect && (
         <div className="flex flex-col gap-1 shrink-0 items-end">
           {confirmDelete ? (
-            <DeleteConfirmRow
-              onConfirm={onDelete}
-              onCancel={() => setConfirmDelete(false)}
-            />
+            <DeleteConfirmRow onConfirm={onDelete} onCancel={() => setConfirmDelete(false)} />
           ) : (
             <>
-              <button
-                onClick={onEdit}
-                className="text-xs th-accent-text px-2 py-1 min-w-[44px] min-h-[36px] text-center"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="text-xs text-red-400 px-2 py-1 min-w-[44px] min-h-[36px] text-center"
-              >
-                Delete
-              </button>
+              <button onClick={onEdit} className="text-xs th-accent-text px-2 py-1 min-w-[44px] min-h-[36px] text-center">Edit</button>
+              <button onClick={() => setConfirmDelete(true)} className="text-xs text-red-400 px-2 py-1 min-w-[44px] min-h-[36px] text-center">Delete</button>
             </>
           )}
         </div>
@@ -389,7 +373,7 @@ function Chip({ label, active, onClick }: ChipProps) {
   )
 }
 
-// ─── Field primitives ─────────────────────────────────────────────────────────
+// ─── Field primitives ──────────────────────────────────────────────────────────
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -400,9 +384,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 function TextInput({
-  value,
-  onChange,
-  placeholder,
+  value, onChange, placeholder,
 }: {
   value: string
   onChange: (v: string) => void
@@ -419,10 +401,7 @@ function TextInput({
 }
 
 function ButtonGrid<T extends string>({
-  options,
-  value,
-  onChange,
-  renderLabel,
+  options, value, onChange, renderLabel,
 }: {
   options: readonly T[]
   value: T | ''
@@ -448,7 +427,7 @@ function ButtonGrid<T extends string>({
   )
 }
 
-// ─── Photo section ────────────────────────────────────────────────────────────
+// ─── PhotoSection ─────────────────────────────────────────────────────────────
 
 interface PhotoSectionProps {
   photo: string
@@ -493,9 +472,7 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
           {photo ? (
             <img src={photo} className="w-20 h-20 rounded-xl object-cover" alt="" />
           ) : (
-            <div className="w-20 h-20 rounded-xl th-surface-deep flex items-center justify-center text-3xl">
-              📸
-            </div>
+            <div className="w-20 h-20 rounded-xl th-surface-deep flex items-center justify-center text-3xl">📸</div>
           )}
           {analyzing && (
             <div className="absolute inset-0 rounded-xl bg-black/60 flex flex-col items-center justify-center gap-1">
@@ -512,21 +489,11 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
             {photo ? 'Retake' : '📷 Take Photo'}
           </button>
           {photo && (
-            <button
-              onClick={() => { setPhoto(''); setSuggestion(null) }}
-              className="text-xs text-red-400 text-left"
-            >
+            <button onClick={() => { setPhoto(''); setSuggestion(null) }} className="text-xs text-red-400 text-left">
               Remove photo
             </button>
           )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handlePhoto}
-          />
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
         </div>
       </div>
 
@@ -535,49 +502,22 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
           <div className="flex items-center justify-between">
             <span className="th-text text-xs font-semibold">
               AI Identified{' '}
-              <span
-                className={`font-normal ${
-                  suggestion.confidence === 'High'
-                    ? 'text-green-400'
-                    : suggestion.confidence === 'Medium'
-                    ? 'text-amber-400'
-                    : 'text-red-400'
-                }`}
-              >
+              <span className={`font-normal ${suggestion.confidence === 'High' ? 'text-green-400' : suggestion.confidence === 'Medium' ? 'text-amber-400' : 'text-red-400'}`}>
                 ({suggestion.confidence} confidence)
               </span>
             </span>
-            <button
-              onClick={() => setSuggestion(null)}
-              className="text-xs th-text-muted px-1 min-h-[36px]"
-            >
-              ✕
-            </button>
+            <button onClick={() => setSuggestion(null)} className="text-xs th-text-muted px-1 min-h-[36px]">✕</button>
           </div>
           <div className="th-text text-sm">
             {suggestion.lureType && <span>{suggestion.lureType}</span>}
             {suggestion.color && <span className="th-accent-text"> · {suggestion.color}</span>}
             {suggestion.brand && <span className="th-text-muted"> · {suggestion.brand}</span>}
           </div>
-          {suggestion.notes && (
-            <div className="th-text-muted text-xs italic">{suggestion.notes}</div>
-          )}
-          <p className="th-text-muted text-xs">
-            Review and adjust — color descriptions are AI-generated.
-          </p>
+          {suggestion.notes && <div className="th-text-muted text-xs italic">{suggestion.notes}</div>}
+          <p className="th-text-muted text-xs">Review and adjust — color descriptions are AI-generated.</p>
           <div className="flex gap-2 pt-0.5">
-            <button
-              onClick={applyAndClose}
-              className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold min-h-[44px]"
-            >
-              Use These Values
-            </button>
-            <button
-              onClick={() => setSuggestion(null)}
-              className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text min-h-[44px]"
-            >
-              Enter Manually
-            </button>
+            <button onClick={applyAndClose} className="flex-1 py-2 th-btn-primary rounded-lg text-xs font-semibold min-h-[44px]">Use These Values</button>
+            <button onClick={() => setSuggestion(null)} className="flex-1 py-2 th-surface border th-border rounded-lg text-xs th-text min-h-[44px]">Enter Manually</button>
           </div>
         </div>
       )}
@@ -585,57 +525,7 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
   )
 }
 
-// ─── FAB with category picker ─────────────────────────────────────────────────
-
-function AddFab({ onAdd, onAddRod }: { onAdd: (cat: TackleCategory) => void; onAddRod: () => void }) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <>
-      {open && (
-        <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-      )}
-      <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-2 items-end">
-        {open && (
-          <>
-            <button
-              onClick={() => { setOpen(false); onAdd('lure') }}
-              className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
-            >
-              🎣 Add Lure
-            </button>
-            <button
-              onClick={() => { setOpen(false); onAdd('hook') }}
-              className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
-            >
-              🪝 Add Hook / Rig
-            </button>
-            <button
-              onClick={() => { setOpen(false); onAdd('spoon') }}
-              className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
-            >
-              🥄 Add Spoon
-            </button>
-            <button
-              onClick={() => { setOpen(false); onAddRod() }}
-              className="th-surface border th-border rounded-2xl px-4 py-3 th-text text-sm font-medium shadow-lg min-h-[48px]"
-            >
-              🎣 Add Rod
-            </button>
-          </>
-        )}
-        <button
-          onClick={() => setOpen(o => !o)}
-          className="w-14 h-14 rounded-full th-btn-primary flex items-center justify-center text-2xl shadow-lg"
-        >
-          {open ? '✕' : '+'}
-        </button>
-      </div>
-    </>
-  )
-}
-
-// ─── Dense list row ───────────────────────────────────────────────────────────
+// ─── DenseRow ─────────────────────────────────────────────────────────────────
 
 function DenseRow({ item, onEdit, onDelete }: {
   item: OwnedLure
@@ -648,7 +538,7 @@ function DenseRow({ item, onEdit, onDelete }: {
   const primaryLabel = cat === 'hook'
     ? (item.hookStyle ?? 'Hook')
     : cat === 'spoon'
-      ? (item.spoonStyle ?? 'Spoon')
+      ? (item.lureType ?? 'Spoon')
       : item.lureType === 'Jig' && item.jigSubgroup
         ? item.jigSubgroup
         : (item.lureType ?? 'Lure')
@@ -659,90 +549,79 @@ function DenseRow({ item, onEdit, onDelete }: {
   const sub = [weightLabel, item.brand].filter(Boolean).join(' · ')
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 min-h-[44px] ${item.condition === 'Retired' ? 'opacity-50' : ''}`}>
-      {/* Color swatch */}
-      <span style={{
-        width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-        background: hex, border: '1px solid rgba(128,128,128,0.4)',
-      }} />
-
-      {/* Photo thumbnail */}
+    <div className={`flex items-center gap-2 pl-9 pr-3 py-2 min-h-[44px] ${item.condition === 'Retired' ? 'opacity-50' : ''}`}>
+      <span style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: hex, border: '1px solid rgba(128,128,128,0.4)' }} />
       {item.photoDataUrl && (
         <img src={item.photoDataUrl} className="w-8 h-8 rounded-md object-cover shrink-0" alt="" />
       )}
-
-      {/* Name + details */}
       <div className="flex-1 min-w-0">
         <div className="th-text text-sm font-medium leading-tight truncate">
           {primaryLabel}{colorLabel ? ` · ${colorLabel}` : ''}
         </div>
         {sub && <div className="th-text-muted text-xs leading-tight truncate">{sub}</div>}
       </div>
-
-      {/* Origin badge (compact) */}
       {item.origin === 'Hand Poured by Me' && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-300 shrink-0 leading-tight">🫗</span>
       )}
-
-      {/* Condition badge (compact) */}
       {item.condition === 'New' && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400 shrink-0 leading-tight">New</span>
       )}
       {item.condition === 'Retired' && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-900/30 text-red-400 shrink-0 leading-tight">Ret</span>
       )}
-
-      {/* Edit */}
-      <button
-        onClick={onEdit}
-        className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted text-xs opacity-50 active:opacity-100"
-      >
-        ✎
-      </button>
-
-      {/* Delete */}
+      <button onClick={onEdit} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted text-xs opacity-50 active:opacity-100">✎</button>
       {confirmDelete ? (
         <div className="flex gap-1 shrink-0">
-          <button
-            onClick={() => { onDelete(); setConfirmDelete(false) }}
-            className="text-white bg-red-700 text-xs px-2 py-1 rounded-lg min-h-[32px]"
-          >Del</button>
-          <button
-            onClick={() => setConfirmDelete(false)}
-            className="th-text-muted text-xs px-1 py-1 border th-border rounded-lg min-h-[32px]"
-          >✕</button>
+          <button onClick={() => { onDelete(); setConfirmDelete(false) }} className="text-white bg-red-700 text-xs px-2 py-1 rounded-lg min-h-[32px]">Del</button>
+          <button onClick={() => setConfirmDelete(false)} className="th-text-muted text-xs px-1 py-1 border th-border rounded-lg min-h-[32px]">✕</button>
         </div>
       ) : (
-        <button
-          onClick={() => setConfirmDelete(true)}
-          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm"
-        >✕</button>
+        <button onClick={() => setConfirmDelete(true)} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm">✕</button>
       )}
     </div>
   )
 }
 
-// ─── Accordion section ────────────────────────────────────────────────────────
+// ─── SpRow ────────────────────────────────────────────────────────────────────
 
-function AccordionSection({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
-  if (count === 0) return null
+function SpRow({ sp, onEdit, onDelete }: {
+  sp: SoftPlastic
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const hex = spColorHex(sp)
+  const isOut = sp.condition === 'Out'
+  const isLow = sp.condition === 'Low Stock'
+  const displayName = sp.productName ?? sp.bodyStyle ?? 'Soft Plastic'
+  const sub = [sp.bodyStyle, sp.sizeInches != null ? `${sp.sizeInches}"` : null].filter(Boolean).join(' · ')
   return (
-    <div>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-4 py-2 th-surface-deep border-y th-border"
-      >
-        <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide text-left">{title}</span>
-        <span className="text-xs th-text-muted">({count})</span>
-        <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>
-      </button>
-      {open && children}
+    <div className={`flex items-center gap-2 px-3 py-2 min-h-[44px] ${isOut ? 'opacity-50' : ''}`}>
+      <span style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: hex, border: '1px solid rgba(128,128,128,0.4)' }} />
+      <div className="flex-1 min-w-0">
+        <div className="th-text text-sm font-medium leading-tight truncate">{displayName}</div>
+        {sub && <div className="th-text-muted text-xs leading-tight truncate">{sub}</div>}
+      </div>
+      {sp.quantity != null && (
+        <span className="text-xs th-text-muted shrink-0">×{sp.quantity}</span>
+      )}
+      {isLow && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-300 shrink-0">Low</span>
+      )}
+      <button onClick={onEdit} className="shrink-0 w-8 h-8 flex items-center justify-center th-text-muted text-xs opacity-50 active:opacity-100">✎</button>
+      {confirmDelete ? (
+        <div className="flex gap-1 shrink-0">
+          <button onClick={() => { onDelete(); setConfirmDelete(false) }} className="text-white bg-red-700 text-xs px-2 py-1 rounded-lg min-h-[32px]">Del</button>
+          <button onClick={() => setConfirmDelete(false)} className="th-text-muted text-xs px-1 py-1 border th-border rounded-lg min-h-[32px]">✕</button>
+        </div>
+      ) : (
+        <button onClick={() => setConfirmDelete(true)} className="shrink-0 w-8 h-8 flex items-center justify-center th-text-muted opacity-30 active:opacity-100 text-sm">✕</button>
+      )}
     </div>
   )
 }
 
-// ─── Rod row ──────────────────────────────────────────────────────────────────
+// ─── RodRow ───────────────────────────────────────────────────────────────────
 
 function RodRow({ rod, confirming, onEdit, onDeleteRequest, onDeleteConfirm }: {
   rod: Rod
@@ -774,136 +653,50 @@ function RodRow({ rod, confirming, onEdit, onDeleteRequest, onDeleteConfirm }: {
           <button onClick={onDeleteRequest} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm">✕</button>
         )}
       </div>
-      {rod.notes && <p className="th-text-muted text-xs italic mt-0.5 pl-0">{rod.notes}</p>}
+      {rod.notes && <p className="th-text-muted text-xs italic mt-0.5">{rod.notes}</p>}
     </div>
   )
 }
 
-// ─── Rods accordion ───────────────────────────────────────────────────────────
-
-function RodsAccordion({ rods, onAdd, onEdit, onDelete, onBulkDelete }: {
-  rods: Rod[]
-  onAdd: () => void
-  onEdit: (rod: Rod) => void
-  onDelete: (id: string) => void
-  onBulkDelete: (ids: string[]) => void
-}) {
-  const [open, setOpen]           = useState(false)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
-  const [bulkConfirm, setBulkConfirm] = useState(false)
-  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const startLongPress = () => {
-    if (rods.length === 0) return
-    longPressRef.current = setTimeout(() => setBulkConfirm(true), 500)
-  }
-  const cancelLongPress = () => {
-    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
-  }
-
-  return (
-    <div>
-      <div
-        className="w-full flex items-center gap-2 px-4 py-2 th-surface-deep border-y th-border"
-        onPointerDown={startLongPress}
-        onPointerUp={cancelLongPress}
-        onPointerLeave={cancelLongPress}
-      >
-        <button
-          className="flex-1 flex items-center gap-2 text-left"
-          onClick={() => { if (!bulkConfirm && rods.length > 0) setOpen(o => !o) }}
-        >
-          <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide">Rods & Reels</span>
-          <span className="text-xs th-text-muted">({rods.length})</span>
-          {rods.length > 0 && <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>}
-        </button>
-        <button
-          onClick={e => { e.stopPropagation(); onAdd() }}
-          className="text-xs th-accent-text px-2 py-1 min-h-[32px] shrink-0"
-        >
-          + Add
-        </button>
-      </div>
-
-      {bulkConfirm && (
-        <div className="px-4 py-3 th-danger-bg border-b th-border">
-          <p className="th-danger-text text-sm mb-2 font-medium">Delete all {rods.length} rod{rods.length !== 1 ? 's' : ''}? This cannot be undone.</p>
-          <div className="flex gap-2">
-            <button onClick={() => { onBulkDelete(rods.map(r => r.id)); setBulkConfirm(false) }}
-              className="flex-1 py-2 bg-red-700 text-white rounded-xl text-sm font-bold">
-              Delete All
-            </button>
-            <button onClick={() => setBulkConfirm(false)}
-              className="flex-1 py-2 th-surface border th-border rounded-xl th-text text-sm">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {rods.length === 0 && (
-        <div className="px-4 py-4 text-center th-text-muted text-sm">
-          No rods yet — tap <span className="th-accent-text font-medium">+ Add</span> or use the <span className="th-accent-text font-medium">+</span> button below.
-        </div>
-      )}
-
-      {open && rods.length > 0 && (
-        <div className="divide-y th-border">
-          {rods.map(rod => (
-            <RodRow
-              key={rod.id}
-              rod={rod}
-              confirming={confirmId === rod.id}
-              onEdit={() => onEdit(rod)}
-              onDeleteRequest={() => setConfirmId(confirmId === rod.id ? null : rod.id)}
-              onDeleteConfirm={() => { onDelete(rod.id); setConfirmId(null) }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Rod form ─────────────────────────────────────────────────────────────────
+// ─── RodForm ──────────────────────────────────────────────────────────────────
 
 function RodForm({ initial, onSave, onCancel }: {
   initial?: Rod
   onSave: (rod: Rod) => void
   onCancel: () => void
 }) {
-  const [nickname,       setNickname]       = useState(initial?.nickname ?? '')
-  const [rodType,        setRodType]        = useState<RodType | undefined>(initial?.rodType)
-  const [lengthFt,       setLengthFt]       = useState(initial?.lengthFt != null ? String(initial.lengthFt) : '')
-  const [lengthIn,       setLengthIn]       = useState(initial?.lengthIn != null ? String(initial.lengthIn) : '')
-  const [power,          setPower]          = useState<RodPower | undefined>(initial?.power)
-  const [action,         setAction]         = useState<RodAction | undefined>(initial?.action)
-  const [lineType,       setLineType]       = useState<RodLineType | undefined>(initial?.lineType)
-  const [lineWeightLbs,  setLineWeightLbs]  = useState(initial?.lineWeightLbs != null ? String(initial.lineWeightLbs) : '')
-  const [lureMinOz,      setLureMinOz]      = useState(initial?.lureWeightMinOz != null ? String(initial.lureWeightMinOz) : '')
-  const [lureMaxOz,      setLureMaxOz]      = useState(initial?.lureWeightMaxOz != null ? String(initial.lureWeightMaxOz) : '')
-  const [reelName,       setReelName]       = useState(initial?.reelName ?? '')
-  const [notes,          setNotes]          = useState(initial?.notes ?? '')
-  const [saving,         setSaving]         = useState(false)
+  const [nickname,      setNickname]      = useState(initial?.nickname ?? '')
+  const [rodType,       setRodType]       = useState<RodType | undefined>(initial?.rodType)
+  const [lengthFt,      setLengthFt]      = useState(initial?.lengthFt != null ? String(initial.lengthFt) : '')
+  const [lengthIn,      setLengthIn]      = useState(initial?.lengthIn != null ? String(initial.lengthIn) : '')
+  const [power,         setPower]         = useState<RodPower | undefined>(initial?.power)
+  const [action,        setAction]        = useState<RodAction | undefined>(initial?.action)
+  const [lineType,      setLineType]      = useState<RodLineType | undefined>(initial?.lineType)
+  const [lineWeightLbs, setLineWeightLbs] = useState(initial?.lineWeightLbs != null ? String(initial.lineWeightLbs) : '')
+  const [lureMinOz,     setLureMinOz]     = useState(initial?.lureWeightMinOz != null ? String(initial.lureWeightMinOz) : '')
+  const [lureMaxOz,     setLureMaxOz]     = useState(initial?.lureWeightMaxOz != null ? String(initial.lureWeightMaxOz) : '')
+  const [reelName,      setReelName]      = useState(initial?.reelName ?? '')
+  const [notes,         setNotes]         = useState(initial?.notes ?? '')
+  const [saving,        setSaving]        = useState(false)
 
   const submit = async () => {
     if (!nickname.trim()) return
     setSaving(true)
     const rod: Rod = {
-      id:               initial?.id ?? nanoid(),
-      nickname:         nickname.trim(),
+      id:              initial?.id ?? nanoid(),
+      nickname:        nickname.trim(),
       rodType,
-      lengthFt:         parseFloat(lengthFt) || undefined,
-      lengthIn:         parseFloat(lengthIn) || undefined,
+      lengthFt:        parseFloat(lengthFt) || undefined,
+      lengthIn:        parseFloat(lengthIn) || undefined,
       power,
       action,
       lineType,
-      lineWeightLbs:    parseFloat(lineWeightLbs) || undefined,
-      lureWeightMinOz:  parseFloat(lureMinOz) || undefined,
-      lureWeightMaxOz:  parseFloat(lureMaxOz) || undefined,
-      reelName:         reelName.trim() || undefined,
-      notes:            notes.trim() || undefined,
-      addedAt:          initial?.addedAt ?? Date.now(),
+      lineWeightLbs:   parseFloat(lineWeightLbs) || undefined,
+      lureWeightMinOz: parseFloat(lureMinOz) || undefined,
+      lureWeightMaxOz: parseFloat(lureMaxOz) || undefined,
+      reelName:        reelName.trim() || undefined,
+      notes:           notes.trim() || undefined,
+      addedAt:         initial?.addedAt ?? Date.now(),
     }
     await saveRod(rod)
     onSave(rod)
@@ -925,7 +718,6 @@ function RodForm({ initial, onSave, onCancel }: {
       </div>
 
       <div className="space-y-4">
-        {/* Nickname */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Nickname *</label>
           <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
@@ -933,7 +725,6 @@ function RodForm({ initial, onSave, onCancel }: {
             value={nickname} onChange={e => setNickname(e.target.value)} />
         </div>
 
-        {/* Rod type */}
         <div>
           <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Rod Type</label>
           <div className="flex gap-2">
@@ -947,7 +738,6 @@ function RodForm({ initial, onSave, onCancel }: {
           </div>
         </div>
 
-        {/* Length */}
         <div>
           <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Length</label>
           <div className="flex gap-2">
@@ -962,7 +752,6 @@ function RodForm({ initial, onSave, onCancel }: {
           </div>
         </div>
 
-        {/* Power */}
         <div>
           <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Power</label>
           <div className="flex flex-wrap gap-2">
@@ -976,7 +765,6 @@ function RodForm({ initial, onSave, onCancel }: {
           </div>
         </div>
 
-        {/* Action */}
         <div>
           <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Action</label>
           <div className="flex flex-wrap gap-2">
@@ -990,7 +778,6 @@ function RodForm({ initial, onSave, onCancel }: {
           </div>
         </div>
 
-        {/* Line type */}
         <div>
           <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Line Type</label>
           <div className="flex flex-wrap gap-2">
@@ -1004,10 +791,8 @@ function RodForm({ initial, onSave, onCancel }: {
           </div>
         </div>
 
-        {/* Line weight */}
         {numInput('Line Weight (lb)', lineWeightLbs, setLineWeightLbs, 'e.g. 15')}
 
-        {/* Lure weight range */}
         <div>
           <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Lure Weight Range (oz)</label>
           <div className="flex gap-2 items-center">
@@ -1019,14 +804,12 @@ function RodForm({ initial, onSave, onCancel }: {
           </div>
         </div>
 
-        {/* Reel */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Reel Name / Model (optional)</label>
           <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
             placeholder="e.g. Shimano Curado 200K" value={reelName} onChange={e => setReelName(e.target.value)} />
         </div>
 
-        {/* Notes */}
         <div>
           <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Notes (optional)</label>
           <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
@@ -1042,398 +825,52 @@ function RodForm({ initial, onSave, onCancel }: {
   )
 }
 
-// ─── Jigs accordion (nested subgroups) ────────────────────────────────────────
-
-function JigsAccordion({ items, gridView, multiSelect, selected, onToggleSelect, onEdit, onDelete, onLongPress }: {
-  items: OwnedLure[]
-  gridView: boolean
-  multiSelect: boolean
-  selected: Set<string>
-  onToggleSelect: (id: string) => void
-  onEdit: (item: OwnedLure) => void
-  onDelete: (id: string) => void
-  onLongPress: (id: string) => void
-}) {
-  const [open, setOpen]       = useState(false)
-  const [openSubs, setOpenSubs] = useState<Set<string>>(new Set())
-
-  if (items.length === 0) return null
-
-  const toggleSub = (sub: string) =>
-    setOpenSubs(prev => { const s = new Set(prev); s.has(sub) ? s.delete(sub) : s.add(sub); return s })
-
-  // Group items by subgroup
-  const bySubgroup = new Map<string, OwnedLure[]>()
-  for (const sub of JIG_SUBGROUPS) bySubgroup.set(sub, [])
-  for (const item of items) {
-    const sub = item.jigSubgroup
-      ?? (JIG_SUBGROUPS.includes(item.lureType as typeof JIG_SUBGROUPS[number]) ? item.lureType as string : 'Other Jig')
-    if (bySubgroup.has(sub)) {
-      bySubgroup.set(sub, [...bySubgroup.get(sub)!, item])
-    } else {
-      bySubgroup.set('Other Jig', [...(bySubgroup.get('Other Jig') ?? []), item])
-    }
-  }
-
-  const renderItems = (secItems: OwnedLure[]) =>
-    gridView ? (
-      <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
-        {secItems.map(item => (
-          <ItemCard key={item.id} item={item}
-            multiSelect={multiSelect} selected={selected.has(item.id)}
-            onToggleSelect={() => onToggleSelect(item.id)}
-            onEdit={() => onEdit(item)} onDelete={() => onDelete(item.id)}
-            onLongPress={() => onLongPress(item.id)} />
-        ))}
-      </div>
-    ) : (
-      <div className="divide-y th-border">
-        {secItems.map(item => (
-          <DenseRow key={item.id} item={item}
-            onEdit={() => onEdit(item)} onDelete={() => onDelete(item.id)} />
-        ))}
-      </div>
-    )
-
-  return (
-    <div>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-4 py-2 th-surface-deep border-y th-border"
-      >
-        <span className="flex-1 text-xs font-bold th-text-muted uppercase tracking-wide text-left">Jigs</span>
-        <span className="text-xs th-text-muted">({items.length})</span>
-        <span className="text-xs th-text-muted">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div>
-          {JIG_SUBGROUPS.map(sub => {
-            const subItems = sortItems(bySubgroup.get(sub) ?? [])
-            if (subItems.length === 0) return null
-            const isSubOpen = openSubs.has(sub)
-            return (
-              <div key={sub}>
-                <button
-                  onClick={() => toggleSub(sub)}
-                  className="w-full flex items-center gap-2 px-6 py-1.5 th-surface border-b th-border"
-                >
-                  <span className="flex-1 text-xs font-semibold th-text-muted text-left">{sub}</span>
-                  <span className="text-xs th-text-muted">({subItems.length})</span>
-                  <span className="text-xs th-text-muted">{isSubOpen ? '▲' : '▼'}</span>
-                </button>
-                {isSubOpen && renderItems(subItems)}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── List view ────────────────────────────────────────────────────────────────
-
-type OriginFilter = 'all' | TackleOrigin
-type ConditionFilter = 'all' | TackleCondition
-
-interface ListViewProps {
-  items: OwnedLure[]
-  settings: AppSettings
-  rods: Rod[]
-  onAdd: (cat: TackleCategory) => void
-  onEdit: (item: OwnedLure) => void
-  onDelete: (id: string) => void
-  onBulkDelete: (ids: string[]) => void
-  onExport: () => void
-  onAddRod: () => void
-  onEditRod: (rod: Rod) => void
-  onDeleteRod: (id: string) => void
-  onBulkDeleteRods: (ids: string[]) => void
-}
-
-function ListView({ items, rods, onAdd, onEdit, onDelete, onBulkDelete, onExport, onAddRod, onEditRod, onDeleteRod, onBulkDeleteRods }: ListViewProps) {
-  const [search, setSearch]           = useState('')
-  const [originFilter, setOriginFilter] = useState<OriginFilter>('all')
-  const [condFilter, setCondFilter]   = useState<ConditionFilter>('all')
-  const [gridView, setGridView]       = useState<boolean>(() => {
-    try { return localStorage.getItem('tackle-view') === 'grid' } catch { return false }
-  })
-  const [multiSelect, setMultiSelect] = useState(false)
-  const [selected, setSelected]       = useState<Set<string>>(new Set())
-  const [bulkConfirm, setBulkConfirm] = useState(false)
-
-  const toggleView = () => {
-    const next = !gridView
-    setGridView(next)
-    try { localStorage.setItem('tackle-view', next ? 'grid' : 'list') } catch {}
-  }
-
-  const filterItem = (item: OwnedLure): boolean => {
-    if (originFilter !== 'all' && item.origin !== originFilter) return false
-    if (condFilter !== 'all' && (item.condition ?? 'Good') !== condFilter) return false
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      const fields = [
-        item.lureType, item.hookStyle, item.spoonStyle,
-        item.color, item.secondaryColor, item.weight, item.brand, item.subType,
-      ]
-      if (!fields.some(f => f?.toLowerCase().includes(q))) return false
-    }
-    return true
-  }
-
-  const filterRod = (rod: Rod): boolean => {
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return [rod.nickname, rod.power, rod.action, rod.lineType].some(f => f?.toLowerCase().includes(q))
-  }
-
-  const filtered = items.filter(filterItem)
-  const filteredRods = rods.filter(filterRod)
-
-  // Build section map using new taxonomy
-  const sectionMap = new Map<TackleSection, OwnedLure[]>()
-  for (const sec of SECTION_ORDER) sectionMap.set(sec, [])
-  for (const item of filtered) {
-    const sec = effectiveTackleSection(item)
-    sectionMap.get(sec)!.push(item)
-  }
-
-  const toggleSelect = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
-  const exitMultiSelect = () => {
-    setMultiSelect(false)
-    setSelected(new Set())
-    setBulkConfirm(false)
-  }
-
-  const handleBulkDelete = () => {
-    onBulkDelete(Array.from(selected))
-    exitMultiSelect()
-  }
-
-  const isEmpty = filtered.length === 0 && filteredRods.length === 0
-
-  return (
-    <div className="pb-32">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-        <h1 className="th-text font-bold text-xl flex-1">Tackle</h1>
-        <button
-          onClick={toggleView}
-          className="w-9 h-9 flex items-center justify-center th-surface border th-border rounded-xl th-text-muted text-sm"
-          title={gridView ? 'List view' : 'Grid view'}
-        >
-          {gridView ? '☰' : '⊞'}
-        </button>
-        <button
-          onClick={onExport}
-          className="text-xs th-text-muted border th-border px-3 py-2 rounded-xl min-h-[36px]"
-        >
-          Export
-        </button>
-      </div>
-
-      {/* Always-visible search bar */}
-      <div className="px-4 pb-2">
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 th-text-muted text-sm pointer-events-none">🔍</span>
-          <input
-            type="search"
-            className="w-full th-surface border th-border rounded-xl pl-8 pr-8 py-2.5 th-text text-sm"
-            placeholder="Search by type, color, weight…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 th-text-muted text-sm"
-            >✕</button>
-          )}
-        </div>
-      </div>
-
-      {/* Filter chips — origin + condition */}
-      <div className="overflow-x-auto scrollbar-hide px-4 pb-2">
-        <div className="flex gap-2 w-max">
-          <Chip label="Any Origin"     active={originFilter === 'all'}               onClick={() => setOriginFilter('all')} />
-          <Chip label="🫗 Hand Poured" active={originFilter === 'Hand Poured by Me'} onClick={() => setOriginFilter('Hand Poured by Me')} />
-          <Chip label="Store Bought"   active={originFilter === 'Store Bought'}       onClick={() => setOriginFilter('Store Bought')} />
-          <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
-          <Chip label="Any Condition" active={condFilter === 'all'}      onClick={() => setCondFilter('all')} />
-          <Chip label="New"           active={condFilter === 'New'}      onClick={() => setCondFilter('New')} />
-          <Chip label="Good"          active={condFilter === 'Good'}     onClick={() => setCondFilter('Good')} />
-          <Chip label="Retired"       active={condFilter === 'Retired'}  onClick={() => setCondFilter('Retired')} />
-        </div>
-      </div>
-
-      {/* Empty state */}
-      {isEmpty && (
-        <div className="text-center py-16 th-text-muted px-4">
-          <div className="text-4xl mb-3">🎣</div>
-          <p className="text-sm font-medium">{search ? 'No matches' : 'No tackle yet'}</p>
-          <p className="text-xs mt-1">
-            {search ? 'Try a different search term.' : 'Tap + to add your first lure, hook, or spoon.'}
-          </p>
-        </div>
-      )}
-
-      {/* All sections in SECTION_ORDER — Jigs uses nested accordion, others use AccordionSection */}
-      {SECTION_ORDER.map(sec => {
-        if (sec === 'Jigs') {
-          return (
-            <JigsAccordion
-              key="Jigs"
-              items={sortItems(sectionMap.get('Jigs') ?? [])}
-              gridView={gridView}
-              multiSelect={multiSelect}
-              selected={selected}
-              onToggleSelect={toggleSelect}
-              onEdit={onEdit}
-              onDelete={id => onDelete(id)}
-              onLongPress={id => { setMultiSelect(true); setSelected(new Set([id])) }}
-            />
-          )
-        }
-        const secItems = sortItems(sectionMap.get(sec) ?? [])
-        return (
-          <AccordionSection key={sec} title={sec} count={secItems.length}>
-            {gridView ? (
-              <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
-                {secItems.map(item => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    multiSelect={multiSelect}
-                    selected={selected.has(item.id)}
-                    onToggleSelect={() => toggleSelect(item.id)}
-                    onEdit={() => onEdit(item)}
-                    onDelete={() => onDelete(item.id)}
-                    onLongPress={() => { setMultiSelect(true); setSelected(new Set([item.id])) }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="divide-y th-border">
-                {secItems.map(item => (
-                  <DenseRow
-                    key={item.id}
-                    item={item}
-                    onEdit={() => onEdit(item)}
-                    onDelete={() => onDelete(item.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </AccordionSection>
-        )
-      })}
-
-      {/* Rods & Reels — always last */}
-      <RodsAccordion
-        rods={filteredRods}
-        onAdd={onAddRod}
-        onEdit={onEditRod}
-        onDelete={onDeleteRod}
-        onBulkDelete={onBulkDeleteRods}
-      />
-
-      {/* Multi-select bottom bar */}
-      {multiSelect && (
-        <div className="fixed bottom-20 left-0 right-0 z-40 px-4">
-          <div className="th-surface border th-border rounded-2xl p-3 flex items-center gap-3 shadow-xl">
-            <button onClick={exitMultiSelect} className="th-text-muted text-sm min-h-[44px] px-1">
-              Cancel
-            </button>
-            <span className="flex-1 th-text text-sm font-medium text-center">
-              {selected.size} selected
-            </span>
-            {bulkConfirm ? (
-              <div className="flex gap-2">
-                <button
-                  onClick={handleBulkDelete}
-                  className="text-sm text-white bg-red-700 px-3 py-2 rounded-xl min-h-[44px]"
-                >
-                  Confirm Delete
-                </button>
-                <button
-                  onClick={() => setBulkConfirm(false)}
-                  className="text-sm th-text-muted border th-border px-3 py-2 rounded-xl min-h-[44px]"
-                >
-                  No
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setBulkConfirm(true)}
-                disabled={selected.size === 0}
-                className="text-sm th-danger-text border border-red-900/50 px-3 py-2 rounded-xl min-h-[44px] disabled:opacity-40"
-              >
-                Delete ({selected.size})
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* FAB */}
-      {!multiSelect && <AddFab onAdd={onAdd} onAddRod={onAddRod} />}
-    </div>
-  )
-}
-
-// ─── Lure Form ────────────────────────────────────────────────────────────────
+// ─── LureForm ─────────────────────────────────────────────────────────────────
 
 interface LureFormProps {
   initial?: OwnedLure
   apiKey?: string
+  lureTypeHint?: string
   onSave: (item: OwnedLure) => void
   onCancel: () => void
 }
 
-function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
-  // Determine initial lureType — map legacy jig subtypes into "Jig" + subgroup
-  const initialCategory = (() => {
-    const t = initial?.lureType ?? ''
-    if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return 'Jig'
-    if (LURE_CATEGORIES.includes(t as typeof LURE_CATEGORIES[number])) return t
-    return t || ''
-  })()
-  const initialSubgroup = (() => {
-    const t = initial?.lureType ?? ''
-    if (initial?.jigSubgroup) return initial.jigSubgroup
+function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormProps) {
+  const [lureCategory, setLureCategory] = useState<string>(() => {
+    if (initial) {
+      const t = initial.lureType ?? ''
+      if (initial.category === 'spoon' || t === 'Spoon') return 'Spoon'
+      if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return 'Jig'
+      if (LURE_CATEGORIES.includes(t as LureCategoryOption)) return t
+      return t || ''
+    }
+    return lureTypeHint ?? ''
+  })
+  const [jigSubgroup, setJigSubgroup] = useState<string>(() => {
+    if (!initial) return ''
+    if (initial.jigSubgroup) return initial.jigSubgroup
+    const t = initial.lureType ?? ''
     if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return t
     return ''
-  })()
-  const initialOtherType = (() => {
-    const t = initial?.lureType ?? ''
-    if (LURE_CATEGORIES.includes(t as typeof LURE_CATEGORIES[number])) return ''
+  })
+  const [otherTypeText, setOtherTypeText] = useState<string>(() => {
+    if (!initial) return ''
+    const t = initial.lureType ?? ''
+    if (LURE_CATEGORIES.includes(t as LureCategoryOption)) return ''
     if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return ''
     return t
-  })()
-
-  const [lureCategory,    setLureCategory]    = useState(initialCategory)
-  const [jigSubgroup,     setJigSubgroup]     = useState(initialSubgroup)
-  const [otherTypeText,   setOtherTypeText]   = useState(initialOtherType)
-  const [weight,          setWeight]          = useState(initial?.weight ?? '')
-  const [weightNA,        setWeightNA]        = useState(initial?.weightNA ?? false)
-  const [color,           setColor]           = useState(initial?.color ?? '')
-  const [secondaryColor,  setSecondaryColor]  = useState(initial?.secondaryColor ?? '')
-  const [bladeConfig,     setBladeConfig]     = useState(initial?.bladeConfig ?? '')
-  const [brand,           setBrand]           = useState(initial?.brand ?? '')
-  const [origin,          setOrigin]          = useState<TackleOrigin | ''>(initial?.origin ?? '')
-  const [condition,       setCondition]       = useState<TackleCondition | ''>(initial?.condition ?? '')
-  const [notes,           setNotes]           = useState(initial?.notes ?? '')
-  const [photo,           setPhoto]           = useState(initial?.photoDataUrl ?? '')
-  const [saving,          setSaving]          = useState(false)
+  })
+  const [weight,         setWeight]         = useState(initial?.weight ?? '')
+  const [weightNA,       setWeightNA]       = useState(initial?.weightNA ?? false)
+  const [color,          setColor]          = useState(initial?.color ?? '')
+  const [secondaryColor, setSecondaryColor] = useState(initial?.secondaryColor ?? '')
+  const [bladeConfig,    setBladeConfig]    = useState(initial?.bladeConfig ?? '')
+  const [brand,          setBrand]          = useState(initial?.brand ?? '')
+  const [origin,         setOrigin]         = useState<TackleOrigin | ''>(initial?.origin ?? '')
+  const [condition,      setCondition]      = useState<TackleCondition | ''>(initial?.condition ?? '')
+  const [notes,          setNotes]          = useState(initial?.notes ?? '')
+  const [photo,          setPhoto]          = useState(initial?.photoDataUrl ?? '')
+  const [saving,         setSaving]         = useState(false)
 
   const showBladeConfig = BLADE_CONFIG_TYPES.includes(lureCategory)
   const showJigSubgroup = lureCategory === 'Jig'
@@ -1483,21 +920,15 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
   return (
     <div className="p-4 pb-28 max-w-lg mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">
-          ← Cancel
-        </button>
-        <h2 className="th-text font-bold text-lg flex-1">
-          {initial ? 'Edit Lure' : 'Add Lure'}
-        </h2>
+        <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">← Cancel</button>
+        <h2 className="th-text font-bold text-lg flex-1">{initial ? 'Edit Lure' : 'Add Lure'}</h2>
       </div>
 
-      {/* Photo */}
       <div className="th-surface rounded-2xl border th-border p-4 space-y-3">
         <p className="section-label">Photo</p>
         <PhotoSection photo={photo} setPhoto={setPhoto} apiKey={apiKey} onAiSuggestion={applyAi} />
       </div>
 
-      {/* Lure Details */}
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
         <p className="section-label">Lure Details</p>
 
@@ -1509,9 +940,7 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
                 key={cat}
                 onClick={() => { setLureCategory(cat); setJigSubgroup('') }}
                 className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
-                  lureCategory === cat
-                    ? 'th-btn-selected border-transparent'
-                    : 'th-surface th-text border-[color:var(--th-border)]'
+                  lureCategory === cat ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
                 }`}
               >{cat}</button>
             ))}
@@ -1521,11 +950,7 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
         {showOtherText && (
           <div>
             <FieldLabel>Type Name *</FieldLabel>
-            <TextInput
-              value={otherTypeText}
-              onChange={setOtherTypeText}
-              placeholder="e.g. Jerkbait, Drop Shot…"
-            />
+            <TextInput value={otherTypeText} onChange={setOtherTypeText} placeholder="e.g. Glide Bait, Bladed Jig…" />
           </div>
         )}
 
@@ -1538,9 +963,7 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
                   key={sub}
                   onClick={() => setJigSubgroup(sub)}
                   className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
-                    jigSubgroup === sub
-                      ? 'th-btn-selected border-transparent'
-                      : 'th-surface th-text border-[color:var(--th-border)]'
+                    jigSubgroup === sub ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
                   }`}
                 >{sub}</button>
               ))}
@@ -1551,11 +974,7 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
         {showBladeConfig && (
           <div>
             <FieldLabel>Blade Config</FieldLabel>
-            <TextInput
-              value={bladeConfig}
-              onChange={setBladeConfig}
-              placeholder='e.g. "Colorado + Willow", "double willow"'
-            />
+            <TextInput value={bladeConfig} onChange={setBladeConfig} placeholder='e.g. "Colorado + Willow", "double willow"' />
           </div>
         )}
 
@@ -1565,13 +984,9 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
             <button
               onClick={() => setWeightNA(v => !v)}
               className={`text-xs px-2 py-1 rounded-lg border min-h-[36px] ${
-                weightNA
-                  ? 'th-btn-selected border-transparent'
-                  : 'th-surface th-text border-[color:var(--th-border)]'
+                weightNA ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
               }`}
-            >
-              N/A
-            </button>
+            >N/A</button>
           </div>
           {!weightNA && (
             <div className="flex flex-wrap gap-2">
@@ -1580,41 +995,27 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
                   key={w}
                   onClick={() => setWeight(w)}
                   className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
-                    weight === w
-                      ? 'th-btn-selected border-transparent'
-                      : 'th-surface th-text border-[color:var(--th-border)]'
+                    weight === w ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
                   }`}
-                >
-                  {w}
-                </button>
+                >{w}</button>
               ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Color */}
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
         <p className="section-label">Color</p>
         <div>
           <FieldLabel>Primary Color *</FieldLabel>
-          <TextInput
-            value={color}
-            onChange={setColor}
-            placeholder="e.g. White/Chartreuse, Green Pumpkin"
-          />
+          <TextInput value={color} onChange={setColor} placeholder="e.g. White/Chartreuse, Green Pumpkin" />
         </div>
         <div>
           <FieldLabel>Secondary Color / Accent</FieldLabel>
-          <TextInput
-            value={secondaryColor}
-            onChange={setSecondaryColor}
-            placeholder="e.g. Red Trailer, Silver Flake"
-          />
+          <TextInput value={secondaryColor} onChange={setSecondaryColor} placeholder="e.g. Red Trailer, Silver Flake" />
         </div>
       </div>
 
-      {/* Origin & Condition */}
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
         <p className="section-label">Origin & Condition</p>
         <div>
@@ -1629,9 +1030,7 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
                 key={o}
                 onClick={() => setOrigin(o)}
                 className={`px-4 py-3 rounded-xl text-sm border text-left min-h-[48px] font-medium ${
-                  origin === o
-                    ? 'th-btn-selected border-transparent'
-                    : 'th-surface th-text border-[color:var(--th-border)]'
+                  origin === o ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
                 }`}
               >
                 {o === 'Hand Poured by Me' ? '🫗 Hand Poured by Me' : o}
@@ -1645,14 +1044,9 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
         </div>
       </div>
 
-      {/* Notes */}
       <div className="th-surface rounded-2xl border th-border p-4">
         <FieldLabel>Notes</FieldLabel>
-        <TextInput
-          value={notes}
-          onChange={setNotes}
-          placeholder="e.g. works best slow-rolled with trailer"
-        />
+        <TextInput value={notes} onChange={setNotes} placeholder="e.g. works best slow-rolled with trailer" />
       </div>
 
       <button
@@ -1666,17 +1060,19 @@ function LureForm({ initial, apiKey, onSave, onCancel }: LureFormProps) {
   )
 }
 
-// ─── Hook Form ────────────────────────────────────────────────────────────────
+// ─── HookForm ─────────────────────────────────────────────────────────────────
 
 interface HookFormProps {
   initial?: OwnedLure
+  hookStyleHint?: HookStyle
+  hookTypeHint?: 'standard' | 'weighted'
   onSave: (item: OwnedLure) => void
   onCancel: () => void
 }
 
-function HookForm({ initial, onSave, onCancel }: HookFormProps) {
-  const [hookType,  setHookType]  = useState<'standard' | 'weighted' | ''>(initial?.hookType ?? '')
-  const [hookStyle, setHookStyle] = useState<HookStyle | ''>(initial?.hookStyle ?? '')
+function HookForm({ initial, hookStyleHint, hookTypeHint, onSave, onCancel }: HookFormProps) {
+  const [hookType,  setHookType]  = useState<'standard' | 'weighted' | ''>(initial?.hookType ?? hookTypeHint ?? '')
+  const [hookStyle, setHookStyle] = useState<HookStyle | ''>(initial?.hookStyle ?? hookStyleHint ?? '')
   const [hookSize,  setHookSize]  = useState(initial?.hookSize ?? '')
   const [weight,    setWeight]    = useState(initial?.weight ?? '')
   const [brand,     setBrand]     = useState(initial?.brand ?? '')
@@ -1712,12 +1108,8 @@ function HookForm({ initial, onSave, onCancel }: HookFormProps) {
   return (
     <div className="p-4 pb-28 max-w-lg mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">
-          ← Cancel
-        </button>
-        <h2 className="th-text font-bold text-lg flex-1">
-          {initial ? 'Edit Hook' : 'Add Hook'}
-        </h2>
+        <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">← Cancel</button>
+        <h2 className="th-text font-bold text-lg flex-1">{initial ? 'Edit Hook' : 'Add Hook'}</h2>
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
@@ -1731,9 +1123,7 @@ function HookForm({ initial, onSave, onCancel }: HookFormProps) {
                 key={ht}
                 onClick={() => setHookType(ht)}
                 className={`flex-1 py-2.5 rounded-xl text-sm border min-h-[44px] capitalize ${
-                  hookType === ht
-                    ? 'th-btn-selected border-transparent'
-                    : 'th-surface th-text border-[color:var(--th-border)]'
+                  hookType === ht ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
                 }`}
               >{ht}</button>
             ))}
@@ -1749,9 +1139,7 @@ function HookForm({ initial, onSave, onCancel }: HookFormProps) {
                   key={w}
                   onClick={() => setWeight(w)}
                   className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
-                    weight === w
-                      ? 'th-btn-selected border-transparent'
-                      : 'th-surface th-text border-[color:var(--th-border)]'
+                    weight === w ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
                   }`}
                 >{w}</button>
               ))}
@@ -1803,162 +1191,973 @@ function HookForm({ initial, onSave, onCancel }: HookFormProps) {
   )
 }
 
-// ─── Spoon Form ───────────────────────────────────────────────────────────────
+// ─── SoftPlasticScanFlow ──────────────────────────────────────────────────────
 
-interface SpoonFormProps {
-  initial?: OwnedLure
+interface SoftPlasticScanFlowProps {
   apiKey?: string
-  onSave: (item: OwnedLure) => void
+  onComplete: (prefilled?: Partial<SoftPlastic>, aiFields?: Set<string>, note?: string) => void
+  onSkip: () => void
   onCancel: () => void
 }
 
-function SpoonForm({ initial, apiKey, onSave, onCancel }: SpoonFormProps) {
-  const [spoonStyle, setSpoonStyle] = useState<SpoonStyle | ''>(initial?.spoonStyle ?? '')
-  const [weight,     setWeight]     = useState(initial?.weight ?? '')
-  const [color,      setColor]      = useState(initial?.color ?? '')
-  const [brand,      setBrand]      = useState(initial?.brand ?? '')
-  const [origin,     setOrigin]     = useState<TackleOrigin | ''>(initial?.origin ?? '')
-  const [condition,  setCondition]  = useState<TackleCondition | ''>(initial?.condition ?? '')
-  const [notes,      setNotes]      = useState(initial?.notes ?? '')
-  const [photo,      setPhoto]      = useState(initial?.photoDataUrl ?? '')
-  const [saving,     setSaving]     = useState(false)
+function SoftPlasticScanFlow({ apiKey, onComplete, onSkip, onCancel }: SoftPlasticScanFlowProps) {
+  const [scanning, setScanning] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  const applyAi = (s: LureIdentification) => {
-    if (s.color) setColor(s.color)
-    if (s.brand) setBrand(s.brand)
-    if (s.notes) setNotes(s.notes ?? '')
+  useEffect(() => {
+    if (apiKey) {
+      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [apiKey])
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    if (!apiKey) {
+      onSkip()
+      return
+    }
+
+    setScanning(true)
+    try {
+      const dataUrl = await resizePhoto(file)
+      const result = await identifySoftPlastic(apiKey, dataUrl)
+      const prefilled: Partial<SoftPlastic> = {}
+      const aiFields = new Set<string>()
+      const fields = ['brand', 'productName', 'bodyStyle', 'sizeInches', 'colorName', 'colorFamily', 'quantity', 'hookSizeRecommendation', 'handPoured', 'riggingStyles'] as const
+      for (const key of fields) {
+        const field = result[key as keyof typeof result]
+        if (field && (field.confidence === 'high' || field.confidence === 'medium')) {
+          ;(prefilled as Record<string, unknown>)[key] = field.value
+          aiFields.add(key)
+        }
+      }
+      onComplete(prefilled, aiFields)
+    } catch {
+      onComplete(undefined, undefined, 'Scan failed — enter details manually.')
+    }
+  }
+
+  if (scanning) {
+    return (
+      <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-4">
+        <div className="text-4xl animate-pulse">🔍</div>
+        <p className="th-text text-lg font-semibold">Analyzing image…</p>
+        <p className="th-text-muted text-sm">Claude is reading the packaging</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-6 px-6 text-center">
+      <button
+        onClick={onCancel}
+        className="absolute top-4 left-4 th-accent-text text-sm min-h-[44px] px-2"
+      >
+        ← Cancel
+      </button>
+
+      <div className="text-5xl">📦</div>
+      <div>
+        <h2 className="th-text text-xl font-bold mb-2">Point at the packaging or the bait</h2>
+        <p className="th-text-muted text-sm">Claude will auto-fill the details from your photo</p>
+      </div>
+
+      <button
+        onClick={() => fileRef.current?.click()}
+        className="w-full max-w-xs py-4 th-btn-primary rounded-2xl font-semibold text-base min-h-[56px]"
+      >
+        📷 Take Photo
+      </button>
+
+      <button
+        onClick={onSkip}
+        className="th-text-muted text-sm min-h-[44px]"
+      >
+        Skip — enter manually
+      </button>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFile}
+      />
+    </div>
+  )
+}
+
+// ─── SoftPlasticForm ──────────────────────────────────────────────────────────
+
+interface RescanField {
+  key: string
+  label: string
+  currentVal: string
+  newVal: string
+  accepted: boolean
+}
+
+interface SoftPlasticFormProps {
+  initial?: SoftPlastic
+  prefilled?: Partial<SoftPlastic>
+  aiFields?: Set<string>
+  apiKey?: string
+  onSave: (sp: SoftPlastic) => void
+  onCancel: () => void
+  scanNote?: string
+}
+
+function SoftPlasticForm({ initial, prefilled, aiFields, apiKey, onSave, onCancel, scanNote }: SoftPlasticFormProps) {
+  const src = initial ?? prefilled ?? {}
+  const [brand,                setBrand]                = useState<string>(src.brand ?? '')
+  const [productName,          setProductName]          = useState<string>(src.productName ?? '')
+  const [bodyStyle,            setBodyStyle]            = useState<SoftPlasticBodyStyle | ''>(src.bodyStyle ?? '')
+  const [sizeInches,           setSizeInches]           = useState<string>(src.sizeInches != null ? String(src.sizeInches) : '')
+  const [colorName,            setColorName]            = useState<string>(src.colorName ?? '')
+  const [colorFamily,          setColorFamily]          = useState<SoftPlasticColorFamily | ''>(src.colorFamily ?? '')
+  const [quantity,             setQuantity]             = useState<string>(src.quantity != null ? String(src.quantity) : '')
+  const [riggingStyles,        setRiggingStyles]        = useState<SoftPlasticRiggingStyle[]>(src.riggingStyles ?? [])
+  const [hookSizeRec,          setHookSizeRec]          = useState<string>(src.hookSizeRecommendation ?? '')
+  const [handPoured,           setHandPoured]           = useState<boolean>(src.handPoured ?? false)
+  const [condition,            setCondition]            = useState<SoftPlasticCondition | ''>(src.condition ?? '')
+  const [notes,                setNotes]                = useState<string>(src.notes ?? '')
+  const [saving,               setSaving]               = useState(false)
+  const [rescanResult,         setRescanResult]         = useState<Partial<SoftPlastic> | null>(null)
+  const [rescanFields,         setRescanFields]         = useState<RescanField[]>([])
+  const [rescanScanning,       setRescanScanning]       = useState(false)
+  const rescanFileRef = useRef<HTMLInputElement>(null)
+
+  const aiLabel = (key: string) =>
+    aiFields?.has(key) ? <span className="text-[10px] th-accent-text ml-1">✦ AI</span> : null
+
+  const toggleRigging = (style: SoftPlasticRiggingStyle) => {
+    setRiggingStyles(prev =>
+      prev.includes(style) ? prev.filter(s => s !== style) : [...prev, style]
+    )
+  }
+
+  const getFormVal = (key: string): string => {
+    switch (key) {
+      case 'brand': return brand
+      case 'productName': return productName
+      case 'bodyStyle': return bodyStyle
+      case 'sizeInches': return sizeInches
+      case 'colorName': return colorName
+      case 'colorFamily': return colorFamily
+      case 'quantity': return quantity
+      case 'hookSizeRecommendation': return hookSizeRec
+      case 'handPoured': return handPoured ? 'Yes' : 'No'
+      case 'riggingStyles': return riggingStyles.join(', ')
+      default: return ''
+    }
+  }
+
+  const handleRescanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !apiKey) return
+    e.target.value = ''
+    setRescanScanning(true)
+    try {
+      const dataUrl = await resizePhoto(file)
+      const result = await identifySoftPlastic(apiKey, dataUrl)
+      const newPrefilled: Partial<SoftPlastic> = {}
+      const keys = ['brand', 'productName', 'bodyStyle', 'sizeInches', 'colorName', 'colorFamily', 'quantity', 'hookSizeRecommendation', 'handPoured', 'riggingStyles'] as const
+      for (const key of keys) {
+        const field = result[key as keyof typeof result]
+        if (field && (field.confidence === 'high' || field.confidence === 'medium')) {
+          ;(newPrefilled as Record<string, unknown>)[key] = field.value
+        }
+      }
+      setRescanResult(newPrefilled)
+      // Build diff fields
+      const diffFields: RescanField[] = []
+      const fieldLabels: Record<string, string> = {
+        brand: 'Brand', productName: 'Product Name', bodyStyle: 'Body Style',
+        sizeInches: 'Size (in)', colorName: 'Color Name', colorFamily: 'Color Family',
+        quantity: 'Quantity', hookSizeRecommendation: 'Hook Size Rec.', handPoured: 'Hand Poured',
+        riggingStyles: 'Rigging Styles',
+      }
+      for (const key of keys) {
+        const newRaw = (newPrefilled as Record<string, unknown>)[key]
+        if (newRaw === undefined) continue
+        const newStr = Array.isArray(newRaw) ? (newRaw as string[]).join(', ') : typeof newRaw === 'boolean' ? (newRaw ? 'Yes' : 'No') : String(newRaw)
+        const curStr = getFormVal(key)
+        if (newStr !== curStr) {
+          diffFields.push({ key, label: fieldLabels[key] ?? key, currentVal: curStr, newVal: newStr, accepted: true })
+        }
+      }
+      setRescanFields(diffFields)
+    } catch {
+      // ignore scan failure
+    }
+    setRescanScanning(false)
+  }
+
+  const applyRescan = () => {
+    for (const f of rescanFields) {
+      if (!f.accepted) continue
+      const v = (rescanResult as Record<string, unknown>)?.[f.key]
+      if (v === undefined) continue
+      switch (f.key) {
+        case 'brand': setBrand(String(v)); break
+        case 'productName': setProductName(String(v)); break
+        case 'bodyStyle': setBodyStyle(v as SoftPlasticBodyStyle); break
+        case 'sizeInches': setSizeInches(String(v)); break
+        case 'colorName': setColorName(String(v)); break
+        case 'colorFamily': setColorFamily(v as SoftPlasticColorFamily); break
+        case 'quantity': setQuantity(String(v)); break
+        case 'hookSizeRecommendation': setHookSizeRec(String(v)); break
+        case 'handPoured': setHandPoured(v as boolean); break
+        case 'riggingStyles': setRiggingStyles(v as SoftPlasticRiggingStyle[]); break
+      }
+    }
+    setRescanResult(null)
+    setRescanFields([])
   }
 
   const submit = async () => {
-    if (!color.trim()) return
     setSaving(true)
-    const item: OwnedLure = {
-      id:           initial?.id ?? nanoid(),
-      category:     'spoon',
-      color:        color.trim(),
-      spoonStyle:   spoonStyle || undefined,
-      weight:       weight.trim() || undefined,
-      brand:        brand.trim() || undefined,
-      origin:       origin || undefined,
-      condition:    condition || undefined,
-      notes:        notes.trim() || undefined,
-      photoDataUrl: photo || undefined,
-      addedAt:      initial?.addedAt ?? Date.now(),
+    const sp: SoftPlastic = {
+      id:                     initial?.id ?? nanoid(),
+      brand:                  brand.trim() || undefined,
+      productName:            productName.trim() || undefined,
+      bodyStyle:              bodyStyle || undefined,
+      sizeInches:             sizeInches ? parseFloat(sizeInches) || undefined : undefined,
+      colorName:              colorName.trim() || undefined,
+      colorFamily:            colorFamily || undefined,
+      quantity:               quantity ? parseInt(quantity, 10) || undefined : undefined,
+      riggingStyles:          riggingStyles.length > 0 ? riggingStyles : undefined,
+      hookSizeRecommendation: hookSizeRec.trim() || undefined,
+      handPoured:             handPoured || undefined,
+      condition:              condition || undefined,
+      notes:                  notes.trim() || undefined,
+      addedAt:                initial?.addedAt ?? Date.now(),
     }
-    await saveOwnedLure(item)
-    onSave(item)
+    await saveSoftPlastic(sp)
+    onSave(sp)
   }
-
-  const canSave = color.trim() && !saving
 
   return (
     <div className="p-4 pb-28 max-w-lg mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">
-          ← Cancel
-        </button>
-        <h2 className="th-text font-bold text-lg flex-1">
-          {initial ? 'Edit Spoon' : 'Add Spoon'}
-        </h2>
+        <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">← Cancel</button>
+        <h2 className="th-text font-bold text-lg flex-1">{initial ? 'Edit Soft Plastic' : 'Add Soft Plastic'}</h2>
+        {apiKey && (
+          <button
+            onClick={() => rescanFileRef.current?.click()}
+            className="text-xs th-text-muted border th-border px-3 py-2 rounded-xl min-h-[36px]"
+          >
+            Re-scan
+          </button>
+        )}
       </div>
 
-      <div className="th-surface rounded-2xl border th-border p-4 space-y-3">
-        <p className="section-label">Photo</p>
-        <PhotoSection photo={photo} setPhoto={setPhoto} apiKey={apiKey} onAiSuggestion={applyAi} />
+      <input
+        ref={rescanFileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleRescanFile}
+      />
+
+      {rescanScanning && (
+        <div className="th-surface-deep border th-border rounded-2xl p-4 text-center">
+          <div className="text-2xl animate-pulse mb-2">🔍</div>
+          <p className="th-text-muted text-sm">Analyzing image…</p>
+        </div>
+      )}
+
+      {rescanResult && rescanFields.length > 0 && (
+        <div className="th-surface-deep border th-border rounded-2xl p-4 space-y-3">
+          <p className="th-text font-semibold text-sm">Review scan results</p>
+          <div className="space-y-2">
+            {rescanFields.map((f, i) => (
+              <div key={f.key} className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setRescanFields(prev => prev.map((rf, ri) => ri === i ? { ...rf, accepted: !rf.accepted } : rf))
+                  }}
+                  className={`shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center text-xs ${
+                    f.accepted ? 'border-[color:var(--th-accent)] bg-[color:var(--th-accent)]' : 'border-[color:var(--th-border)]'
+                  }`}
+                >
+                  {f.accepted && <span className="text-white text-[10px]">✓</span>}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <span className="th-text-muted text-xs">{f.label}: </span>
+                  <span className="th-text-muted text-xs line-through">{f.currentVal || '—'}</span>
+                  <span className="th-text text-xs"> → {f.newVal}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={applyRescan} className="flex-1 py-2 th-btn-primary rounded-xl text-xs font-semibold min-h-[40px]">
+              Apply Selected
+            </button>
+            <button onClick={() => { setRescanResult(null); setRescanFields([]) }} className="flex-1 py-2 th-surface border th-border rounded-xl text-xs th-text min-h-[40px]">
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {scanNote && (
+        <div className="th-surface-deep border th-border rounded-xl px-4 py-3">
+          <p className="th-text-muted text-sm">{scanNote}</p>
+        </div>
+      )}
+
+      <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
+        <p className="section-label">Product Info</p>
+
+        <div>
+          <FieldLabel><>Brand {aiLabel('brand')}</></FieldLabel>
+          <TextInput value={brand} onChange={setBrand} placeholder="e.g. Zoom, Strike King, Berkley" />
+        </div>
+
+        <div>
+          <FieldLabel><>Product Name {aiLabel('productName')}</></FieldLabel>
+          <TextInput value={productName} onChange={setProductName} placeholder='e.g. "Trick Worm", "Rage Craw"' />
+        </div>
+
+        <div>
+          <FieldLabel><>Body Style {aiLabel('bodyStyle')}</></FieldLabel>
+          <ButtonGrid options={SP_BODY_STYLES} value={bodyStyle} onChange={setBodyStyle} />
+        </div>
+
+        <div>
+          <FieldLabel><>Size (inches) {aiLabel('sizeInches')}</></FieldLabel>
+          <input
+            type="number"
+            step="0.25"
+            min="0"
+            className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+            placeholder="e.g. 4, 5.5, 7"
+            value={sizeInches}
+            onChange={e => setSizeInches(e.target.value)}
+          />
+        </div>
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
-        <p className="section-label">Spoon Details</p>
+        <p className="section-label">Color</p>
 
         <div>
-          <FieldLabel>Style</FieldLabel>
-          <ButtonGrid options={SPOON_STYLES} value={spoonStyle} onChange={setSpoonStyle} />
+          <FieldLabel><>Color Name {aiLabel('colorName')}</></FieldLabel>
+          <TextInput value={colorName} onChange={setColorName} placeholder='e.g. "Green Pumpkin Red Flake"' />
         </div>
 
         <div>
-          <FieldLabel>Weight</FieldLabel>
-          <TextInput value={weight} onChange={setWeight} placeholder="e.g. 1/2 oz, 3/4 oz" />
-        </div>
-
-        <div>
-          <FieldLabel>Color / Finish *</FieldLabel>
-          <TextInput value={color} onChange={setColor} placeholder="e.g. Gold, Silver, Chartreuse" />
-        </div>
-
-        <div>
-          <FieldLabel>Brand</FieldLabel>
-          <TextInput value={brand} onChange={setBrand} placeholder="e.g. Kastmaster, Johnson" />
+          <FieldLabel><>Color Family {aiLabel('colorFamily')}</></FieldLabel>
+          <ButtonGrid options={SP_COLOR_FAMILIES} value={colorFamily} onChange={setColorFamily} />
         </div>
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
-        <p className="section-label">Origin & Condition</p>
+        <p className="section-label">Rigging & Use</p>
+
         <div>
-          <FieldLabel>Origin</FieldLabel>
-          <div className="flex flex-col gap-2">
-            {ORIGINS.map(o => (
+          <FieldLabel><>Rigging Styles {aiLabel('riggingStyles')}</></FieldLabel>
+          <div className="flex flex-wrap gap-2">
+            {SP_RIGGING_STYLES.map(style => (
               <button
-                key={o}
-                onClick={() => setOrigin(o)}
-                className={`px-4 py-3 rounded-xl text-sm border text-left min-h-[48px] font-medium ${
-                  origin === o
-                    ? 'th-btn-selected border-transparent'
-                    : 'th-surface th-text border-[color:var(--th-border)]'
+                key={style}
+                onClick={() => toggleRigging(style)}
+                className={`px-3 py-2 rounded-xl text-sm border min-h-[44px] ${
+                  riggingStyles.includes(style) ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
                 }`}
-              >
-                {o === 'Hand Poured by Me' ? '🫗 Hand Poured by Me' : o}
-              </button>
+              >{style}</button>
             ))}
           </div>
         </div>
+
+        <div>
+          <FieldLabel><>Hook Size Recommendation {aiLabel('hookSizeRecommendation')}</></FieldLabel>
+          <TextInput value={hookSizeRec} onChange={setHookSizeRec} placeholder="e.g. 3/0 EWG (optional)" />
+        </div>
+      </div>
+
+      <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
+        <p className="section-label">Inventory</p>
+
+        <div>
+          <FieldLabel><>Quantity {aiLabel('quantity')}</></FieldLabel>
+          <input
+            type="number"
+            min="0"
+            className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+            placeholder="e.g. 10"
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+          />
+        </div>
+
         <div>
           <FieldLabel>Condition</FieldLabel>
-          <ButtonGrid options={CONDITIONS} value={condition} onChange={setCondition} />
+          <ButtonGrid options={SP_CONDITIONS} value={condition} onChange={setCondition} />
+        </div>
+
+        <div>
+          <FieldLabel><>Hand Poured {aiLabel('handPoured')}</></FieldLabel>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setHandPoured(true)}
+              className={`flex-1 py-2.5 rounded-xl text-sm border min-h-[44px] ${
+                handPoured ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
+              }`}
+            >Yes</button>
+            <button
+              onClick={() => setHandPoured(false)}
+              className={`flex-1 py-2.5 rounded-xl text-sm border min-h-[44px] ${
+                !handPoured ? 'th-btn-selected border-transparent' : 'th-surface th-text border-[color:var(--th-border)]'
+              }`}
+            >No</button>
+          </div>
         </div>
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4">
-        <FieldLabel>Notes</FieldLabel>
+        <FieldLabel>Notes (optional)</FieldLabel>
         <TextInput value={notes} onChange={setNotes} placeholder="Any notes…" />
       </div>
 
       <button
         onClick={submit}
-        disabled={!canSave}
+        disabled={saving}
         className="w-full py-4 th-btn-primary rounded-xl font-semibold text-base disabled:opacity-40 min-h-[56px]"
       >
-        {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Spoon'}
+        {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Soft Plastic'}
       </button>
     </div>
   )
 }
 
-// ─── View state ───────────────────────────────────────────────────────────────
+// ─── GroupSection ─────────────────────────────────────────────────────────────
 
-type FormView =
-  | { mode: 'add'; category: TackleCategory }
-  | { mode: 'edit'; item: OwnedLure }
+function GroupSection({ title, count, children }: {
+  title: string
+  count: number
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border-b th-border">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 px-4 py-4 th-surface-deep"
+        style={{ borderLeft: '4px solid var(--th-accent)' }}
+      >
+        <span className="flex-1 text-base font-bold th-text tracking-wide text-left">{title}</span>
+        <span className="text-sm th-text-muted font-medium tabular-nums">{count}</span>
+        <span className="th-text-muted text-sm">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && <div className="accordion-enter">{children}</div>}
+    </div>
+  )
+}
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── CategorySection ──────────────────────────────────────────────────────────
+
+function CategorySection({ title, count, children }: {
+  title: string
+  count: number
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  if (count === 0) return null
+  return (
+    <div className="border-b th-border">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 pl-8 pr-4 py-2.5 th-surface-deep border-t th-border"
+      >
+        <span className="flex-1 text-sm font-semibold th-text text-left">{title}</span>
+        <span className="text-xs th-text-muted">({count})</span>
+        <span className="text-xs th-text-muted ml-1">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && <div className="accordion-enter">{children}</div>}
+    </div>
+  )
+}
+
+// ─── JigsCategory ─────────────────────────────────────────────────────────────
+
+function JigsCategory({ items, onEdit, onDelete }: {
+  items: OwnedLure[]
+  onEdit: (item: OwnedLure) => void
+  onDelete: (id: string) => void
+}) {
+  const [openSubs, setOpenSubs] = useState<Set<string>>(new Set())
+
+  const toggleSub = (sub: string) =>
+    setOpenSubs(prev => { const s = new Set(prev); s.has(sub) ? s.delete(sub) : s.add(sub); return s })
+
+  const bySubgroup = new Map<string, OwnedLure[]>()
+  for (const sub of JIG_SUBGROUPS) bySubgroup.set(sub, [])
+  for (const item of items) {
+    const sub = item.jigSubgroup
+      ?? (JIG_SUBGROUPS.includes(item.lureType as JigSubgroup) ? item.lureType as string : 'Other Jig')
+    if (bySubgroup.has(sub)) {
+      bySubgroup.set(sub, [...bySubgroup.get(sub)!, item])
+    } else {
+      bySubgroup.set('Other Jig', [...(bySubgroup.get('Other Jig') ?? []), item])
+    }
+  }
+
+  return (
+    <div>
+      {JIG_SUBGROUPS.map(sub => {
+        const subItems = sortItems(bySubgroup.get(sub) ?? [])
+        if (subItems.length === 0) return null
+        const isSubOpen = openSubs.has(sub)
+        return (
+          <div key={sub} className="border-b th-border last:border-b-0">
+            <button
+              onClick={() => toggleSub(sub)}
+              className="w-full flex items-center gap-2 pl-12 pr-4 py-2 th-surface border-t th-border"
+            >
+              <span className="flex-1 text-xs font-medium th-text-muted text-left">{sub}</span>
+              <span className="text-xs th-text-muted">({subItems.length})</span>
+              <span className="text-xs th-text-muted">{isSubOpen ? '▲' : '▼'}</span>
+            </button>
+            {isSubOpen && (
+              <div className="divide-y th-border">
+                {subItems.map(item => (
+                  <DenseRow key={item.id} item={item} onEdit={() => onEdit(item)} onDelete={() => onDelete(item.id)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── AddFab ───────────────────────────────────────────────────────────────────
+
+interface AddFabProps {
+  onAddLure: (lureType: string) => void
+  onAddHook: (hookStyleHint?: HookStyle, hookTypeHint?: 'standard' | 'weighted') => void
+  onAddSoftPlastic: () => void
+  onAddRod: () => void
+}
+
+function AddFab({ onAddLure, onAddHook, onAddSoftPlastic, onAddRod }: AddFabProps) {
+  const [open, setOpen] = useState(false)
+
+  const close = () => setOpen(false)
+
+  const LURE_BUTTONS = [
+    'Crankbait', 'Jerkbait', 'Jig', 'Spinnerbait', 'Chatterbait',
+    'Spoon', 'Swimbait', 'Topwater', 'Other',
+  ] as const
+
+  const HOOK_BUTTONS: Array<{ label: string; hookStyleHint?: HookStyle; hookTypeHint?: 'standard' | 'weighted' }> = [
+    { label: 'Ned Rig Heads', hookStyleHint: 'Ned' },
+    { label: 'Standard Hooks', hookTypeHint: 'standard' },
+    { label: 'Wacky Hooks', hookStyleHint: 'Wacky' },
+    { label: 'Weighted Hooks', hookTypeHint: 'weighted' },
+  ]
+
+  return (
+    <>
+      {open && (
+        <div className="fixed inset-0 z-30 bg-black/40" onClick={close} />
+      )}
+
+      {open && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 px-4">
+          <div className="th-surface border th-border rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b th-border">
+              <span className="th-text font-semibold text-sm">Add Tackle</span>
+              <button onClick={close} className="th-text-muted text-base w-8 h-8 flex items-center justify-center">✕</button>
+            </div>
+
+            <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto scrollbar-hide">
+              {/* Lures section */}
+              <div>
+                <p className="text-xs th-text-muted font-bold uppercase tracking-wide mb-2">Lures</p>
+                <div className="flex flex-wrap gap-2">
+                  {LURE_BUTTONS.map(lureType => (
+                    <button
+                      key={lureType}
+                      onClick={() => { close(); onAddLure(lureType) }}
+                      className="px-3 py-2 th-surface-deep border th-border rounded-xl text-sm th-text min-h-[40px]"
+                    >
+                      {lureType}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Hooks section */}
+              <div>
+                <p className="text-xs th-text-muted font-bold uppercase tracking-wide mb-2">Hooks and Rigs</p>
+                <div className="flex flex-wrap gap-2">
+                  {HOOK_BUTTONS.map(({ label, hookStyleHint, hookTypeHint }) => (
+                    <button
+                      key={label}
+                      onClick={() => { close(); onAddHook(hookStyleHint, hookTypeHint) }}
+                      className="px-3 py-2 th-surface-deep border th-border rounded-xl text-sm th-text min-h-[40px]"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Soft Plastics */}
+              <button
+                onClick={() => { close(); onAddSoftPlastic() }}
+                className="w-full py-3.5 th-btn-primary rounded-xl font-semibold text-sm min-h-[52px]"
+              >
+                📷 Soft Plastics — Scan or add manually
+              </button>
+
+              {/* Rod / Reel */}
+              <button
+                onClick={() => { close(); onAddRod() }}
+                className="w-full py-3.5 th-surface border th-border rounded-xl th-text font-medium text-sm min-h-[52px]"
+              >
+                🎣 Rod / Reel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="fixed bottom-20 right-4 z-40 w-14 h-14 rounded-full th-btn-primary flex items-center justify-center text-2xl shadow-lg"
+      >
+        {open ? '✕' : '+'}
+      </button>
+    </>
+  )
+}
+
+// ─── ListView ─────────────────────────────────────────────────────────────────
+
+type OriginFilter = 'all' | TackleOrigin
+type ConditionFilter = 'all' | TackleCondition
+
+interface ListViewProps {
+  items: OwnedLure[]
+  rods: Rod[]
+  softPlastics: SoftPlastic[]
+  onAddLure: (lureType: string) => void
+  onAddHook: (hookStyleHint?: HookStyle, hookTypeHint?: 'standard' | 'weighted') => void
+  onAddSoftPlastic: () => void
+  onAddRod: () => void
+  onEdit: (item: OwnedLure) => void
+  onDelete: (id: string) => void
+  onBulkDelete: (ids: string[]) => void
+  onExport: () => void
+  onEditRod: (rod: Rod) => void
+  onDeleteRod: (id: string) => void
+  onEditSp: (sp: SoftPlastic) => void
+  onDeleteSp: (id: string) => void
+}
+
+function ListView({
+  items, rods, softPlastics, onAddLure, onAddHook, onAddSoftPlastic, onAddRod,
+  onEdit, onDelete, onBulkDelete, onExport, onEditRod, onDeleteRod, onEditSp, onDeleteSp,
+}: ListViewProps) {
+  const [search, setSearch]           = useState('')
+  const [originFilter, setOriginFilter] = useState<OriginFilter>('all')
+  const [condFilter, setCondFilter]   = useState<ConditionFilter>('all')
+  const [multiSelect, setMultiSelect] = useState(false)
+  const [selected, setSelected]       = useState<Set<string>>(new Set())
+  const [bulkConfirm, setBulkConfirm] = useState(false)
+  const [confirmRodId, setConfirmRodId] = useState<string | null>(null)
+
+  const filterItem = (item: OwnedLure): boolean => {
+    if (originFilter !== 'all' && item.origin !== originFilter) return false
+    if (condFilter !== 'all' && (item.condition ?? 'Good') !== condFilter) return false
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      const fields = [item.lureType, item.hookStyle, item.color, item.secondaryColor, item.weight, item.brand]
+      if (!fields.some(f => f?.toLowerCase().includes(q))) return false
+    }
+    return true
+  }
+
+  const filterRod = (rod: Rod): boolean => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return [rod.nickname, rod.power, rod.action, rod.lineType].some(f => f?.toLowerCase().includes(q))
+  }
+
+  const filterSp = (sp: SoftPlastic): boolean => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return [sp.brand, sp.productName, sp.bodyStyle, sp.colorName, sp.colorFamily].some(f => f?.toLowerCase().includes(q))
+  }
+
+  const filtered = items.filter(filterItem)
+  const filteredRods = rods.filter(filterRod)
+  const filteredSPs = softPlastics.filter(filterSp)
+
+  // Split items by group
+  const lureItems = filtered.filter(i => effectiveCategory(i) === 'lure' || effectiveCategory(i) === 'spoon')
+  const hookItems = filtered.filter(i => effectiveCategory(i) === 'hook')
+
+  // Build lure display cat maps
+  const lureByCat = new Map<LureDisplayCat, OwnedLure[]>()
+  for (const cat of LURE_DISPLAY_CATS) lureByCat.set(cat, [])
+  for (const item of lureItems) {
+    const cat = getLureCat(item)
+    lureByCat.get(cat)!.push(item)
+  }
+
+  // Build hook display cat maps
+  const hookByCat = new Map<HookDisplayCat, OwnedLure[]>()
+  for (const cat of HOOK_DISPLAY_CATS) hookByCat.set(cat, [])
+  for (const item of hookItems) {
+    const cat = getHookCat(item)
+    hookByCat.get(cat)!.push(item)
+  }
+
+  // @ts-expect-error -- kept for multi-select future use
+  const toggleSelect = (_id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      _id && (next.has(_id) ? next.delete(_id) : next.add(_id))
+      return next
+    })
+  }
+
+  const exitMultiSelect = () => {
+    setMultiSelect(false)
+    setSelected(new Set())
+    setBulkConfirm(false)
+  }
+
+  const handleBulkDelete = () => {
+    onBulkDelete(Array.from(selected))
+    exitMultiSelect()
+  }
+
+  const isEmpty = filtered.length === 0 && filteredRods.length === 0 && filteredSPs.length === 0
+
+  return (
+    <div className="pb-32">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+        <h1 className="th-text font-bold text-xl flex-1">Tackle</h1>
+        <button
+          onClick={onExport}
+          className="text-xs th-text-muted border th-border px-3 py-2 rounded-xl min-h-[36px]"
+        >
+          Export
+        </button>
+      </div>
+
+      {/* Search bar */}
+      <div className="px-4 pb-2">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 th-text-muted text-sm pointer-events-none">🔍</span>
+          <input
+            type="search"
+            className="w-full th-surface border th-border rounded-xl pl-8 pr-8 py-2.5 th-text text-sm"
+            placeholder="Search by type, color, weight…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 th-text-muted text-sm">✕</button>
+          )}
+        </div>
+      </div>
+
+      {/* Filter chips */}
+      <div className="overflow-x-auto scrollbar-hide px-4 pb-2">
+        <div className="flex gap-2 w-max">
+          <Chip label="Any Origin"     active={originFilter === 'all'}               onClick={() => setOriginFilter('all')} />
+          <Chip label="🫗 Hand Poured" active={originFilter === 'Hand Poured by Me'} onClick={() => setOriginFilter('Hand Poured by Me')} />
+          <Chip label="Store Bought"   active={originFilter === 'Store Bought'}       onClick={() => setOriginFilter('Store Bought')} />
+          <div className="w-px opacity-20 mx-1 self-stretch" style={{ background: 'var(--th-border)' }} />
+          <Chip label="Any Condition" active={condFilter === 'all'}     onClick={() => setCondFilter('all')} />
+          <Chip label="New"           active={condFilter === 'New'}     onClick={() => setCondFilter('New')} />
+          <Chip label="Good"          active={condFilter === 'Good'}    onClick={() => setCondFilter('Good')} />
+          <Chip label="Retired"       active={condFilter === 'Retired'} onClick={() => setCondFilter('Retired')} />
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {isEmpty && (
+        <div className="text-center py-16 th-text-muted px-4">
+          <div className="text-4xl mb-3">🎣</div>
+          <p className="text-sm font-medium">{search ? 'No matches' : 'No tackle yet'}</p>
+          <p className="text-xs mt-1">
+            {search ? 'Try a different search term.' : 'Tap + to add your first lure, hook, or soft plastic.'}
+          </p>
+        </div>
+      )}
+
+      {/* Lures Group */}
+      <GroupSection title="Lures" count={lureItems.length}>
+        {LURE_DISPLAY_CATS.map(cat => {
+          const catItems = sortItems(lureByCat.get(cat) ?? [])
+          if (catItems.length === 0) return null
+          if (cat === 'Jigs') {
+            return (
+              <CategorySection key={cat} title={cat} count={catItems.length}>
+                <JigsCategory
+                  items={catItems}
+                  onEdit={onEdit}
+                  onDelete={id => onDelete(id)}
+                />
+              </CategorySection>
+            )
+          }
+          return (
+            <CategorySection key={cat} title={cat} count={catItems.length}>
+              <div className="divide-y th-border">
+                {catItems.map(item => (
+                  <DenseRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => onEdit(item)}
+                    onDelete={() => onDelete(item.id)}
+                  />
+                ))}
+              </div>
+            </CategorySection>
+          )
+        })}
+      </GroupSection>
+
+      {/* Hooks and Rigs Group */}
+      <GroupSection title="Hooks and Rigs" count={hookItems.length}>
+        {HOOK_DISPLAY_CATS.map(cat => {
+          const catItems = sortItems(hookByCat.get(cat) ?? [])
+          return (
+            <CategorySection key={cat} title={cat} count={catItems.length}>
+              <div className="divide-y th-border">
+                {catItems.map(item => (
+                  <DenseRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => onEdit(item)}
+                    onDelete={() => onDelete(item.id)}
+                  />
+                ))}
+              </div>
+            </CategorySection>
+          )
+        })}
+      </GroupSection>
+
+      {/* Soft Plastics Group */}
+      <GroupSection title="Soft Plastics" count={filteredSPs.length}>
+        {filteredSPs.length === 0 && (
+          <div className="px-4 py-4 text-center th-text-muted text-sm">
+            No soft plastics yet — tap + to scan or add.
+          </div>
+        )}
+        <div className="divide-y th-border">
+          {filteredSPs.map(sp => (
+            <SpRow
+              key={sp.id}
+              sp={sp}
+              onEdit={() => onEditSp(sp)}
+              onDelete={() => onDeleteSp(sp.id)}
+            />
+          ))}
+        </div>
+      </GroupSection>
+
+      {/* Rods and Reels Group */}
+      <GroupSection title="Rods and Reels" count={filteredRods.length}>
+        <div className="px-4 py-2 flex justify-end border-b th-border">
+          <button onClick={onAddRod} className="text-xs th-accent-text px-2 py-1 min-h-[32px]">+ Add</button>
+        </div>
+        {filteredRods.length === 0 && (
+          <div className="px-4 py-4 text-center th-text-muted text-sm">
+            No rods yet — tap + Add above.
+          </div>
+        )}
+        <div className="divide-y th-border">
+          {filteredRods.map(rod => (
+            <RodRow
+              key={rod.id}
+              rod={rod}
+              confirming={confirmRodId === rod.id}
+              onEdit={() => onEditRod(rod)}
+              onDeleteRequest={() => setConfirmRodId(confirmRodId === rod.id ? null : rod.id)}
+              onDeleteConfirm={() => { onDeleteRod(rod.id); setConfirmRodId(null) }}
+            />
+          ))}
+        </div>
+      </GroupSection>
+
+      {/* Multi-select bar */}
+      {multiSelect && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 px-4">
+          <div className="th-surface border th-border rounded-2xl p-3 flex items-center gap-3 shadow-xl">
+            <button onClick={exitMultiSelect} className="th-text-muted text-sm min-h-[44px] px-1">Cancel</button>
+            <span className="flex-1 th-text text-sm font-medium text-center">{selected.size} selected</span>
+            {bulkConfirm ? (
+              <div className="flex gap-2">
+                <button onClick={handleBulkDelete} className="text-sm text-white bg-red-700 px-3 py-2 rounded-xl min-h-[44px]">Confirm Delete</button>
+                <button onClick={() => setBulkConfirm(false)} className="text-sm th-text-muted border th-border px-3 py-2 rounded-xl min-h-[44px]">No</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setBulkConfirm(true)}
+                disabled={selected.size === 0}
+                className="text-sm th-danger-text border border-red-900/50 px-3 py-2 rounded-xl min-h-[44px] disabled:opacity-40"
+              >
+                Delete ({selected.size})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* FAB */}
+      {!multiSelect && (
+        <AddFab
+          onAddLure={onAddLure}
+          onAddHook={onAddHook}
+          onAddSoftPlastic={onAddSoftPlastic}
+          onAddRod={onAddRod}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Main Tackle component ────────────────────────────────────────────────────
 
 interface Props {
   settings: AppSettings
   onSettingsUpdate: (s: AppSettings) => void
 }
 
-type RodFormView = { mode: 'add' } | { mode: 'edit'; rod: Rod }
-
 export default function Tackle({ settings }: Props) {
-  const [items, setItems]           = useState<OwnedLure[]>([])
-  const [formView, setFormView]     = useState<FormView | null>(null)
-  const [rods, setRods]             = useState<Rod[]>([])
-  const [rodFormView, setRodFormView] = useState<RodFormView | null>(null)
+  const [items, setItems]             = useState<OwnedLure[]>([])
+  const [rods, setRods]               = useState<Rod[]>([])
+  const [softPlastics, setSoftPlastics] = useState<SoftPlastic[]>([])
+  const [formView, setFormView]       = useState<FormView | null>(null)
+  const [spView, setSpView]           = useState<SpView | null>(null)
+  const [editRod, setEditRod]         = useState<Rod | null>(null)
 
+  // Load data
   useEffect(() => { getAllRods().then(setRods) }, [])
-
+  useEffect(() => { getAllSoftPlastics().then(setSoftPlastics) }, [])
   useEffect(() => {
     getAllOwnedLures().then(lures => {
-      // Migrate: clear 'Homemade — Other' origin (removed category)
       const needsMigration = lures.filter(l => (l.origin as string) === 'Homemade — Other')
       if (needsMigration.length > 0) {
         const migrated = needsMigration.map(l => ({ ...l, origin: undefined }))
@@ -1970,10 +2169,11 @@ export default function Tackle({ settings }: Props) {
     })
   }, [])
 
+  // OwnedLure handlers
   const handleSave = (item: OwnedLure) => {
     setItems(prev => {
       const idx = prev.findIndex(i => i.id === item.id)
-      return idx >= 0 ? prev.map(i => (i.id === item.id ? item : i)) : [item, ...prev]
+      return idx >= 0 ? prev.map(i => i.id === item.id ? item : i) : [item, ...prev]
     })
     setFormView(null)
   }
@@ -2008,80 +2208,136 @@ export default function Tackle({ settings }: Props) {
       const idx = prev.findIndex(r => r.id === rod.id)
       return idx >= 0 ? prev.map(r => r.id === rod.id ? rod : r) : [rod, ...prev]
     })
-    setRodFormView(null)
+    setFormView(null)
+    setEditRod(null)
   }
+
   const handleRodDelete = async (id: string) => {
     await deleteRod(id)
     setRods(prev => prev.filter(r => r.id !== id))
   }
-  const handleBulkRodDelete = async (ids: string[]) => {
-    await bulkDeleteRods(ids)
-    const idSet = new Set(ids)
-    setRods(prev => prev.filter(r => !idSet.has(r.id)))
+
+  // Soft plastic handlers
+  const handleSpSave = (sp: SoftPlastic) => {
+    setSoftPlastics(prev => {
+      const idx = prev.findIndex(s => s.id === sp.id)
+      return idx >= 0 ? prev.map(s => s.id === sp.id ? sp : s) : [sp, ...prev]
+    })
+    setSpView(null)
   }
 
-  // Rod form view
-  if (rodFormView) {
+  const handleSpDelete = async (id: string) => {
+    await deleteSoftPlastic(id)
+    setSoftPlastics(prev => prev.filter(s => s.id !== id))
+  }
+
+  const apiKey = settings.anthropicApiKey || undefined
+
+  // ─── SpView routing ───────────────────────────────────────────────────────────
+
+  if (spView?.mode === 'scan') {
     return (
-      <RodForm
-        initial={rodFormView.mode === 'edit' ? rodFormView.rod : undefined}
-        onSave={handleRodSave}
-        onCancel={() => setRodFormView(null)}
+      <SoftPlasticScanFlow
+        apiKey={apiKey}
+        onComplete={(prefilled, aiFields, note) =>
+          setSpView({ mode: 'form', prefilled, aiFields, scanNote: note })
+        }
+        onSkip={() => setSpView({ mode: 'form' })}
+        onCancel={() => setSpView(null)}
       />
     )
   }
 
-  // Form views
-  if (formView) {
-    const category = formView.mode === 'edit' ? effectiveCategory(formView.item) : formView.category
-    const initial  = formView.mode === 'edit' ? formView.item : undefined
-    const apiKey   = settings.anthropicApiKey || undefined
+  if (spView?.mode === 'form') {
+    return (
+      <SoftPlasticForm
+        initial={spView.editSp}
+        prefilled={spView.prefilled}
+        aiFields={spView.aiFields}
+        apiKey={apiKey}
+        scanNote={spView.scanNote}
+        onSave={handleSpSave}
+        onCancel={() => setSpView(null)}
+      />
+    )
+  }
 
-    if (category === 'lure') {
-      return (
-        <LureForm
-          initial={initial}
-          apiKey={apiKey}
-          onSave={handleSave}
-          onCancel={() => setFormView(null)}
-        />
-      )
-    }
-    if (category === 'hook') {
+  // ─── FormView routing ─────────────────────────────────────────────────────────
+
+  if (formView?.mode === 'add-rod' || editRod !== null) {
+    return (
+      <RodForm
+        initial={editRod ?? undefined}
+        onSave={handleRodSave}
+        onCancel={() => { setFormView(null); setEditRod(null) }}
+      />
+    )
+  }
+
+  if (formView?.mode === 'add-lure') {
+    return (
+      <LureForm
+        lureTypeHint={formView.lureTypeHint}
+        apiKey={apiKey}
+        onSave={handleSave}
+        onCancel={() => setFormView(null)}
+      />
+    )
+  }
+
+  if (formView?.mode === 'add-hook') {
+    return (
+      <HookForm
+        hookStyleHint={formView.hookStyleHint}
+        hookTypeHint={formView.hookTypeHint}
+        onSave={handleSave}
+        onCancel={() => setFormView(null)}
+      />
+    )
+  }
+
+  if (formView?.mode === 'edit') {
+    const item = formView.item
+    const cat = effectiveCategory(item)
+    if (cat === 'hook') {
       return (
         <HookForm
-          initial={initial}
+          initial={item}
           onSave={handleSave}
           onCancel={() => setFormView(null)}
         />
       )
     }
-    if (category === 'spoon') {
-      return (
-        <SpoonForm
-          initial={initial}
-          apiKey={apiKey}
-          onSave={handleSave}
-          onCancel={() => setFormView(null)}
-        />
-      )
-    }
+    // lure or spoon — both use LureForm
+    return (
+      <LureForm
+        initial={item}
+        apiKey={apiKey}
+        onSave={handleSave}
+        onCancel={() => setFormView(null)}
+      />
+    )
   }
+
+  // ─── ListView ─────────────────────────────────────────────────────────────────
 
   return (
     <ListView
       items={items}
-      settings={settings}
       rods={rods}
-      onAdd={cat => setFormView({ mode: 'add', category: cat })}
+      softPlastics={softPlastics}
+      onAddLure={lureType => setFormView({ mode: 'add-lure', lureTypeHint: lureType })}
+      onAddHook={(hookStyleHint, hookTypeHint) => setFormView({ mode: 'add-hook', hookStyleHint, hookTypeHint })}
+      onAddSoftPlastic={() => setSpView({ mode: 'scan' })}
+      onAddRod={() => setFormView({ mode: 'add-rod' })}
       onEdit={item => setFormView({ mode: 'edit', item })}
       onDelete={handleDelete}
       onBulkDelete={handleBulkDelete}
       onExport={handleExport}
-      onAddRod={() => setRodFormView({ mode: 'add' })}
-      onEditRod={rod => setRodFormView({ mode: 'edit', rod })}
+      onEditRod={rod => setEditRod(rod)}
       onDeleteRod={handleRodDelete}
-      onBulkDeleteRods={handleBulkRodDelete}
+      onEditSp={sp => setSpView({ mode: 'form', editSp: sp })}
+      onDeleteSp={handleSpDelete}
     />
   )
 }
