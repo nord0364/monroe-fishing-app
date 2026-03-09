@@ -309,9 +309,9 @@ function ItemCard({ item, multiSelect, selected, onToggleSelect, onEdit, onDelet
           <>
             <div className="th-text font-semibold text-sm leading-tight">{item.hookStyle ?? 'Hook'}</div>
             <div className="th-text-muted text-xs mt-0.5">
-              {item.hookSize ? `Size ${item.hookSize}` : ''}
-              {item.brand ? (item.hookSize ? ` · ${item.brand}` : item.brand) : ''}
+              {[item.hookSize ? `Size ${item.hookSize}` : '', item.weight || ''].filter(Boolean).join(' · ')}
             </div>
+            {item.brand && <div className="th-text-muted text-xs">{item.brand}</div>}
             {item.quantity !== undefined && item.quantity > 0 && (
               <div className="flex gap-1 mt-1">
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400">
