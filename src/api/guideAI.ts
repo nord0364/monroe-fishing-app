@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { Session, CatchEvent, LandedFish, Rod } from '../types'
+import type { Session, CatchEvent, LandedFish, Rod, SoftPlastic } from '../types'
 import { getLaunchPointContext, fmtStructures, fmtDepths, fmtSeasonalNotes } from '../data/launchPointContext'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -40,6 +40,7 @@ export function buildGuideSystemPrompt(
   recentAnalysisSummaries?: string[],
   selectedRods?: Rod[],
   rodInventory?: Rod[],
+  softPlastics?: SoftPlastic[],
 ): string {
   const parts: string[] = [GUIDE_PERSONA]
 
@@ -88,6 +89,27 @@ export function buildGuideSystemPrompt(
         return `- "${r.nickname}": ${specs || 'no specs'}`
       }).join('\n')
       parts.push(`\nROD INVENTORY:\n${rodLines}`)
+    }
+
+    // Soft plastic inventory (exclude Out condition from AI context)
+    if (softPlastics && softPlastics.length > 0) {
+      const available = softPlastics.filter(s => s.condition !== 'Out')
+      if (available.length > 0) {
+        const spLines = available.map(s => {
+          const parts2 = [
+            s.productName ? `"${s.productName}"` : null,
+            s.brand ?? null,
+            s.bodyStyle ?? null,
+            s.sizeInches != null ? `${s.sizeInches}"` : null,
+            s.colorName ?? null,
+            s.colorFamily ?? null,
+            s.riggingStyles && s.riggingStyles.length > 0 ? `rigs: ${s.riggingStyles.join('/')}` : null,
+            s.condition === 'Low Stock' ? '(low stock)' : null,
+          ].filter(Boolean).join(', ')
+          return `- ${parts2}`
+        }).join('\n')
+        parts.push(`\nSOFT PLASTIC INVENTORY:\n${spLines}`)
+      }
     }
 
     // Selected rods for this session

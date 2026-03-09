@@ -4,7 +4,7 @@ import { fetchWeather, fetchForecastWeather } from '../../api/weather'
 import { fetchMoonData } from '../../api/moon'
 import { fetchWaterData } from '../../api/water'
 import { generatePreSessionBriefing, askPreSessionQuestion } from '../../api/claude'
-import { saveSession, getLandedFish, getAllOwnedLures, getAllRodSetups, getAllSessions, getAllRods } from '../../db/database'
+import { saveSession, getLandedFish, getAllOwnedLures, getAllRodSetups, getAllSessions, getAllRods, getAllSoftPlastics } from '../../db/database'
 import { generatePatternSummary, needsRefresh, loadPatternCache, savePatternCache } from '../../ai/patternMemory'
 import { LAUNCH_SITES } from '../../constants'
 import QuickSelect from '../layout/QuickSelect'
@@ -290,10 +290,11 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
     }
 
     try {
-      const [allHistory, ownedLures, rodSetups] = await Promise.all([
+      const [allHistory, ownedLures, rodSetups, softPlastics] = await Promise.all([
         getLandedFish(),
         getAllOwnedLures(),
         getAllRodSetups(),
+        getAllSoftPlastics(),
       ])
 
       // Build or load pattern summary
@@ -323,6 +324,7 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
         undefined,
         sessionContextStr + '\n\n' + patternSummary,
         selectedRods.length > 0 ? selectedRods : undefined,
+        softPlastics.length > 0 ? softPlastics : undefined,
       )
 
       session.aiBriefing = briefing.narrative

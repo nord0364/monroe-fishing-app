@@ -1286,8 +1286,23 @@ function ListView({ items, rods, onAdd, onEdit, onDelete, onBulkDelete, onExport
         </div>
       )}
 
-      {/* Accordion sections — all except 'Jigs' and 'Other' */}
-      {SECTION_ORDER.filter(sec => sec !== 'Jigs' && sec !== 'Other').map(sec => {
+      {/* All sections in SECTION_ORDER — Jigs uses nested accordion, others use AccordionSection */}
+      {SECTION_ORDER.map(sec => {
+        if (sec === 'Jigs') {
+          return (
+            <JigsAccordion
+              key="Jigs"
+              items={sortItems(sectionMap.get('Jigs') ?? [])}
+              gridView={gridView}
+              multiSelect={multiSelect}
+              selected={selected}
+              onToggleSelect={toggleSelect}
+              onEdit={onEdit}
+              onDelete={id => onDelete(id)}
+              onLongPress={id => { setMultiSelect(true); setSelected(new Set([id])) }}
+            />
+          )
+        }
         const secItems = sortItems(sectionMap.get(sec) ?? [])
         return (
           <AccordionSection key={sec} title={sec} count={secItems.length}>
@@ -1322,19 +1337,7 @@ function ListView({ items, rods, onAdd, onEdit, onDelete, onBulkDelete, onExport
         )
       })}
 
-      {/* Jigs — nested subgroup accordion */}
-      <JigsAccordion
-        items={sortItems(sectionMap.get('Jigs') ?? [])}
-        gridView={gridView}
-        multiSelect={multiSelect}
-        selected={selected}
-        onToggleSelect={toggleSelect}
-        onEdit={onEdit}
-        onDelete={id => onDelete(id)}
-        onLongPress={id => { setMultiSelect(true); setSelected(new Set([id])) }}
-      />
-
-      {/* Rods & Reels — above Other */}
+      {/* Rods & Reels — always last */}
       <RodsAccordion
         rods={filteredRods}
         onAdd={onAddRod}
@@ -1342,42 +1345,6 @@ function ListView({ items, rods, onAdd, onEdit, onDelete, onBulkDelete, onExport
         onDelete={onDeleteRod}
         onBulkDelete={onBulkDeleteRods}
       />
-
-      {/* Other — always last */}
-      {(() => {
-        const secItems = sortItems(sectionMap.get('Other') ?? [])
-        return (
-          <AccordionSection title="Other" count={secItems.length}>
-            {gridView ? (
-              <div className="grid grid-cols-2 gap-2 px-3 pt-2 pb-1">
-                {secItems.map(item => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    multiSelect={multiSelect}
-                    selected={selected.has(item.id)}
-                    onToggleSelect={() => toggleSelect(item.id)}
-                    onEdit={() => onEdit(item)}
-                    onDelete={() => onDelete(item.id)}
-                    onLongPress={() => { setMultiSelect(true); setSelected(new Set([item.id])) }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="divide-y th-border">
-                {secItems.map(item => (
-                  <DenseRow
-                    key={item.id}
-                    item={item}
-                    onEdit={() => onEdit(item)}
-                    onDelete={() => onDelete(item.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </AccordionSection>
-        )
-      })()}
 
       {/* Multi-select bottom bar */}
       {multiSelect && (

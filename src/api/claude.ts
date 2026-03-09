@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { LandedFish, Session, EnvironmentalConditions, AIBriefing, CatchEvent, OwnedLure, RodSetup, Rod } from '../types'
+import type { LandedFish, Session, EnvironmentalConditions, AIBriefing, CatchEvent, OwnedLure, RodSetup, Rod, SoftPlastic, SoftPlasticScanResult, SoftPlasticRiggingStyle } from '../types'
 import { getLaunchPointContext, fmtStructures, fmtDepths, fmtSeasonalNotes } from '../data/launchPointContext'
 
 function buildClientWithKey(apiKey: string) {
@@ -18,6 +18,7 @@ export async function generatePreSessionBriefing(
   onChunk?: (text: string) => void,
   sessionContext?: string,
   selectedRods?: Rod[],
+  softPlastics?: SoftPlastic[],
 ): Promise<AIBriefing> {
   const client = buildClientWithKey(apiKey)
 
@@ -65,9 +66,23 @@ CATCH HISTORY (${historyNote}):
 ${catchSummary || 'No catch history yet.'}
 ${ownedLures && ownedLures.length > 0 ? `
 ANGLER'S LURE INVENTORY — PRIORITIZE these in all recommendations:
-${ownedLures.map(l => `- ${l.lureType}, ${l.weight}, ${l.color}${l.brand ? ` (${l.brand})` : ''}${l.notes ? ` — ${l.notes}` : ''}`).join('\n')}
+${ownedLures.filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired').map(l => `- ${l.lureType ?? 'Lure'}, ${l.weight ?? 'N/A'}, ${l.color}${l.brand ? ` (${l.brand})` : ''}${l.notes ? ` — ${l.notes}` : ''}`).join('\n')}
 
-IMPORTANT: Rank lures the angler OWNS first. If no owned lure perfectly matches conditions, recommend the closest owned option and note the adjustment needed. Only recommend non-owned lures as a last resort, and flag them clearly.` : ''}
+IMPORTANT: Rank lures the angler OWNS first. If no owned lure perfectly matches conditions, recommend the closest owned option and note the adjustment needed. Only recommend non-owned lures as a last resort, and flag them clearly.` : ''}${softPlastics && softPlastics.filter(s => s.condition !== 'Out').length > 0 ? `
+ANGLER'S SOFT PLASTIC INVENTORY:
+${softPlastics.filter(s => s.condition !== 'Out').map(s => {
+  const parts = [
+    s.productName ? `"${s.productName}"` : null,
+    s.brand ?? null,
+    s.bodyStyle ?? null,
+    s.sizeInches != null ? `${s.sizeInches}"` : null,
+    s.colorName ?? null,
+    s.colorFamily ?? null,
+    s.riggingStyles && s.riggingStyles.length > 0 ? `rigs: ${s.riggingStyles.join('/')}` : null,
+    s.condition === 'Low Stock' ? '(low stock)' : null,
+  ].filter(Boolean).join(', ')
+  return `- ${parts}`
+}).join('\n')}` : ''}
 ${rodSetups && rodSetups.length > 0 ? `
 AVAILABLE ROD/LINE SETUPS:
 ${rodSetups.map(r => `- "${r.name}": ${[r.rodPower, r.rodAction, r.rodLength].filter(Boolean).join('/')} rod, ${r.lineType ?? '?'}${r.lineWeightLbs ? ` ${r.lineWeightLbs}lb` : ''}${r.notes ? ` — ${r.notes}` : ''}`).join('\n')}
@@ -458,3 +473,68 @@ export async function identifyRodFromImage(
   } catch {}
   return {}
 }
+
+// ─── Soft Plastic Identification ───────────────────────────────────────────────
+
+export async function identifySoftPlastic(
+  apiKey: string,
+  imageDataUrl: string,
+): Promise<SoftPlasticScanResult> {
+  const client = buildClientWithKey(apiKey)
+  const { base64Data, mediaType } = extractImage(imageDataUrl)
+
+  const SP_BODY_STYLES = ['Creature', 'Craw', 'Finesse Worm', 'Ned/TRD', 'Paddle Tail', 'Ribbon Tail Worm', 'Stick Bait', 'Swimbait Body', 'Tube', 'Other']
+  const SP_COLOR_FAMILIES = ['Black and Blue', 'Brown', 'Chartreuse', 'Green Pumpkin', 'Natural', 'Smoke', 'Watermelon', 'White', 'Other']
+  const SP_RIGGING_STYLES = ['Drop Shot', 'Freeform', 'Ned', 'Shaky Head', 'Swimhead', 'Texas', 'Wacky', 'Other']
+
+  const systemPrompt = `You are identifying a fishing soft plastic bait from an image. The image may show original packaging, a loose bait, or both. Extract as many of the following fields as you can determine with reasonable confidence: brand name, product name, body style (choose from: ${SP_BODY_STYLES.join(', ')}), size in inches, color name as printed or described, color family (choose from: ${SP_COLOR_FAMILIES.join(', ')}), quantity if shown on packaging, hook size recommendation if printed, whether it appears to be hand poured (yes/no/unknown), and any rigging style indicators (choose from: ${SP_RIGGING_STYLES.join(', ')}). Return only a JSON object with these fields and a confidence value of "high", "medium", or "low" for each. Do not include any explanation or preamble.`
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 400,
+    system: systemPrompt,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+        { type: 'text', text: 'Identify this soft plastic bait. Return only valid JSON.' },
+      ],
+    }],
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  try {
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) {
+      const raw = JSON.parse(m[0])
+      // Normalize the raw response into the typed SoftPlasticScanResult shape
+      const result: SoftPlasticScanResult = {}
+      const conf = (v: unknown): 'high' | 'medium' | 'low' => {
+        const s = String(v ?? '').toLowerCase()
+        if (s === 'high') return 'high'
+        if (s === 'low') return 'low'
+        return 'medium'
+      }
+      type RawField = { value?: unknown; confidence?: unknown } | undefined
+      const f = (key: string): RawField => raw[key]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sv = (key: string) => f(key)?.value as any
+      const sc = (key: string) => conf(f(key)?.confidence)
+      if (sv('brand'))                                              result.brand                  = { value: String(sv('brand')), confidence: sc('brand') }
+      if (sv('productName'))                                        result.productName            = { value: String(sv('productName')), confidence: sc('productName') }
+      if (sv('bodyStyle'))                                          result.bodyStyle              = { value: sv('bodyStyle'), confidence: sc('bodyStyle') }
+      if (sv('sizeInches') != null)                                 result.sizeInches             = { value: Number(sv('sizeInches')), confidence: sc('sizeInches') }
+      if (sv('colorName'))                                          result.colorName              = { value: String(sv('colorName')), confidence: sc('colorName') }
+      if (sv('colorFamily'))                                        result.colorFamily            = { value: sv('colorFamily'), confidence: sc('colorFamily') }
+      if (sv('quantity') != null)                                   result.quantity               = { value: Number(sv('quantity')), confidence: sc('quantity') }
+      if (sv('hookSizeRecommendation'))                             result.hookSizeRecommendation = { value: String(sv('hookSizeRecommendation')), confidence: sc('hookSizeRecommendation') }
+      if (sv('handPoured') != null)                                 result.handPoured             = { value: sv('handPoured') === true || String(sv('handPoured')).toLowerCase() === 'yes', confidence: sc('handPoured') }
+      if (Array.isArray(sv('riggingStyles')))                       result.riggingStyles          = { value: sv('riggingStyles') as SoftPlasticRiggingStyle[], confidence: sc('riggingStyles') }
+      return result
+    }
+  } catch {}
+  return {}
+}
+
+// Re-export type so callers don't need a separate types import
+export type { SoftPlasticScanResult }

@@ -306,6 +306,74 @@ export interface Rod {
   addedAt: number
 }
 
+// ─── Soft Plastics ────────────────────────────────────────────────────────────
+
+export type SoftPlasticBodyStyle =
+  | 'Creature'
+  | 'Craw'
+  | 'Finesse Worm'
+  | 'Ned/TRD'
+  | 'Paddle Tail'
+  | 'Ribbon Tail Worm'
+  | 'Stick Bait'
+  | 'Swimbait Body'
+  | 'Tube'
+  | 'Other'
+
+export type SoftPlasticColorFamily =
+  | 'Black and Blue'
+  | 'Brown'
+  | 'Chartreuse'
+  | 'Green Pumpkin'
+  | 'Natural'
+  | 'Smoke'
+  | 'Watermelon'
+  | 'White'
+  | 'Other'
+
+export type SoftPlasticRiggingStyle =
+  | 'Drop Shot'
+  | 'Freeform'
+  | 'Ned'
+  | 'Shaky Head'
+  | 'Swimhead'
+  | 'Texas'
+  | 'Wacky'
+  | 'Other'
+
+export type SoftPlasticCondition = 'Excellent' | 'Good' | 'Low Stock' | 'Out'
+
+export interface SoftPlastic {
+  id: string
+  brand?: string
+  productName?: string
+  bodyStyle?: SoftPlasticBodyStyle
+  sizeInches?: number
+  colorName?: string
+  colorFamily?: SoftPlasticColorFamily
+  quantity?: number
+  riggingStyles?: SoftPlasticRiggingStyle[]
+  hookSizeRecommendation?: string
+  handPoured?: boolean
+  condition?: SoftPlasticCondition
+  notes?: string
+  addedAt: number
+}
+
+// Returned by identifySoftPlastic() — each field carries its own confidence
+export interface SoftPlasticScanResult {
+  brand?:                  { value: string;                      confidence: 'high' | 'medium' | 'low' }
+  productName?:            { value: string;                      confidence: 'high' | 'medium' | 'low' }
+  bodyStyle?:              { value: SoftPlasticBodyStyle;        confidence: 'high' | 'medium' | 'low' }
+  sizeInches?:             { value: number;                      confidence: 'high' | 'medium' | 'low' }
+  colorName?:              { value: string;                      confidence: 'high' | 'medium' | 'low' }
+  colorFamily?:            { value: SoftPlasticColorFamily;      confidence: 'high' | 'medium' | 'low' }
+  quantity?:               { value: number;                      confidence: 'high' | 'medium' | 'low' }
+  hookSizeRecommendation?: { value: string;                      confidence: 'high' | 'medium' | 'low' }
+  handPoured?:             { value: boolean;                     confidence: 'high' | 'medium' | 'low' }
+  riggingStyles?:          { value: SoftPlasticRiggingStyle[];   confidence: 'high' | 'medium' | 'low' }
+}
+
 // ─── Gear Catalog ─────────────────────────────────────────────────────────────
 
 export interface OwnedLure {

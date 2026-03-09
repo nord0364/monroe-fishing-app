@@ -2,7 +2,7 @@ import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 import type {
   Session, CatchEvent, AppSettings, OwnedLure, RodSetup, Rod,
-  DebriefConversation, PersonalBestPin, StandaloneGuideEntry,
+  DebriefConversation, PersonalBestPin, StandaloneGuideEntry, SoftPlastic,
 } from '../types'
 
 interface FishingDB extends DBSchema {
@@ -54,14 +54,19 @@ interface FishingDB extends DBSchema {
     value: Rod
     indexes: { 'by-added': number }
   }
+  softPlastics: {
+    key: string
+    value: SoftPlastic
+    indexes: { 'by-added': number }
+  }
 }
 
 let _db: IDBPDatabase<FishingDB> | null = null
 
 async function getDB(): Promise<IDBPDatabase<FishingDB>> {
   if (_db) return _db
-  _db = await openDB<FishingDB>('fishing-tracker', 5, {
-    upgrade(db, oldVersion) {
+  _db = await openDB<FishingDB>('fishing-tracker', 6, {
+    async upgrade(db, oldVersion, _newVersion, transaction) {
       if (oldVersion < 1) {
         const sessionsStore = db.createObjectStore('sessions', { keyPath: 'id' })
         sessionsStore.createIndex('by-date', 'date')
@@ -91,6 +96,47 @@ async function getDB(): Promise<IDBPDatabase<FishingDB>> {
       if (oldVersion < 5) {
         const rodStore = db.createObjectStore('rods', { keyPath: 'id' })
         rodStore.createIndex('by-added', 'addedAt')
+      }
+      if (oldVersion < 6) {
+        // Create softPlastics store
+        const spStore = db.createObjectStore('softPlastics', { keyPath: 'id' })
+        spStore.createIndex('by-added', 'addedAt')
+
+        // Migrate existing ownedLures data
+        const lureStore = transaction.objectStore('ownedLures')
+        const allLures: OwnedLure[] = await lureStore.getAll()
+        for (const lure of allLures) {
+          const cat = lure.category ?? 'lure'
+          if (cat === 'spoon') {
+            // Spoons → lure with lureType='Spoon'
+            const migrated: OwnedLure = { ...lure, category: 'lure', lureType: 'Spoon' }
+            delete (migrated as Record<string, unknown>).spoonStyle
+            await lureStore.put(migrated)
+          } else if (lure.lureType === 'Wacky Rig') {
+            // Wacky Rig lures → hook with hookStyle='Wacky'
+            const migrated: OwnedLure = {
+              ...lure,
+              category: 'hook',
+              hookStyle: 'Wacky',
+              hookType: 'standard',
+              lureType: undefined,
+            }
+            await lureStore.put(migrated)
+          } else if (lure.lureType === 'Ned Rig') {
+            // Ned Rig lures → hook with hookStyle='Ned'
+            const migrated: OwnedLure = {
+              ...lure,
+              category: 'hook',
+              hookStyle: 'Ned',
+              hookType: 'standard',
+              lureType: undefined,
+            }
+            await lureStore.put(migrated)
+          } else if (lure.lureType === 'Texas Rig') {
+            // Texas Rig lures → delete
+            await lureStore.delete(lure.id)
+          }
+        }
       }
     },
   })
@@ -316,6 +362,29 @@ export async function getAllRodSetups(): Promise<RodSetup[]> {
 export async function deleteRodSetup(id: string): Promise<void> {
   const db = await getDB()
   await db.delete('rodSetups', id)
+}
+
+// ─── Soft Plastics ────────────────────────────────────────────────────────────
+
+export async function saveSoftPlastic(sp: SoftPlastic): Promise<void> {
+  const db = await getDB()
+  await db.put('softPlastics', sp)
+}
+
+export async function getAllSoftPlastics(): Promise<SoftPlastic[]> {
+  const db = await getDB()
+  const all = await db.getAllFromIndex('softPlastics', 'by-added')
+  return all.reverse()
+}
+
+export async function deleteSoftPlastic(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('softPlastics', id)
+}
+
+export async function bulkDeleteSoftPlastics(ids: string[]): Promise<void> {
+  const db = await getDB()
+  for (const id of ids) await db.delete('softPlastics', id)
 }
 
 // ─── Rod Catalog ──────────────────────────────────────────────────────────────

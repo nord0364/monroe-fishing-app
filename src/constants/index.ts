@@ -1,4 +1,4 @@
-import type { LaunchSite, LureType, Species, WaterColumn, WaterDepth, LureWeight, RetrieveStyle, StructureCover } from '../types'
+import type { LaunchSite, LureType, Species, WaterColumn, WaterDepth, LureWeight, RetrieveStyle, StructureCover, SoftPlasticBodyStyle, SoftPlasticColorFamily, SoftPlasticRiggingStyle, SoftPlasticCondition } from '../types'
 
 export const LAKE_MONROE_COORDS = { lat: 39.0117, lng: -86.5083 }
 
@@ -98,4 +98,31 @@ export const STRUCTURE_TYPES: StructureCover[] = [
   'Creek channel',
   'Flat',
   'Other',
+]
+
+// ─── Inventory lure types (for tackle catalog — excludes rigging styles) ──────
+// Note: Jig is a single entry that expands to subgroup selection in the form
+export const INVENTORY_LURE_TYPES = [
+  'Crankbait', 'Jerkbait', 'Jig', 'Spinnerbait', 'Chatterbait',
+  'Spoon', 'Swimbait', 'Topwater', 'Buzzbait', 'Other',
+] as const
+
+// ─── Soft Plastics ─────────────────────────────────────────────────────────────
+
+export const SP_BODY_STYLES: SoftPlasticBodyStyle[] = [
+  'Creature', 'Craw', 'Finesse Worm', 'Ned/TRD', 'Paddle Tail',
+  'Ribbon Tail Worm', 'Stick Bait', 'Swimbait Body', 'Tube', 'Other',
+]
+
+export const SP_COLOR_FAMILIES: SoftPlasticColorFamily[] = [
+  'Black and Blue', 'Brown', 'Chartreuse', 'Green Pumpkin',
+  'Natural', 'Smoke', 'Watermelon', 'White', 'Other',
+]
+
+export const SP_RIGGING_STYLES: SoftPlasticRiggingStyle[] = [
+  'Drop Shot', 'Freeform', 'Ned', 'Shaky Head', 'Swimhead', 'Texas', 'Wacky', 'Other',
+]
+
+export const SP_CONDITIONS: SoftPlasticCondition[] = [
+  'Excellent', 'Good', 'Low Stock', 'Out',
 ]
