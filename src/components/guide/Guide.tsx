@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Session, AppSettings, CatchEvent, StandaloneGuideEntry, Rod, SoftPlastic } from '../../types'
+import type { Session, AppSettings, CatchEvent, StandaloneGuideEntry, Rod, SoftPlastic, OwnedLure } from '../../types'
 import {
   getEventsForSession, saveEvent, saveStandaloneGuideEntry,
   getAllStandaloneGuideEntries, deleteStandaloneGuideEntry,
-  bulkDeleteStandaloneGuideEntries, getAllSessions, saveSession, getAllRods, getAllSoftPlastics,
+  bulkDeleteStandaloneGuideEntries, getAllSessions, saveSession,
+  getAllRods, getAllSoftPlastics, getAllOwnedLures,
 } from '../../db/database'
 import {
   buildGuideSystemPrompt, streamGuideResponse, generateCheckpointSummary,
@@ -229,6 +230,8 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
   const [openingDone, setOpeningDone]         = useState(false)
   const [rodInventory, setRodInventory]       = useState<Rod[]>([])
   const [spInventory, setSpInventory]         = useState<SoftPlastic[]>([])
+  const [lureInventory, setLureInventory]     = useState<OwnedLure[]>([])
+  const [inventoryLoaded, setInventoryLoaded] = useState(false)
 
   const chatEndRef             = useRef<HTMLDivElement>(null)
   const imgInputRef            = useRef<HTMLInputElement>(null)
@@ -249,8 +252,11 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
 
   // ── Fetch session events + recent analyses on open ───────────────────────────
   useEffect(() => {
-    getAllRods().then(setRodInventory).catch(() => {})
-    getAllSoftPlastics().then(setSpInventory).catch(() => {})
+    Promise.allSettled([
+      getAllRods().then(setRodInventory),
+      getAllSoftPlastics().then(setSpInventory),
+      getAllOwnedLures().then(setLureInventory),
+    ]).then(() => setInventoryLoaded(true))
     if (session) {
       getEventsForSession(session.id).then(setSessionEvents).catch(() => {})
       // Load recent session analyses for context
@@ -360,8 +366,9 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
       session?.selectedRods ?? undefined,
       rodInventory.length > 0 ? rodInventory : undefined,
       spInventory.length > 0 ? spInventory : undefined,
+      lureInventory.length > 0 ? lureInventory : undefined,
     )
-  }, [session, sessionEvents, patternInjected, recentAnalyses, rodInventory, spInventory])
+  }, [session, sessionEvents, patternInjected, recentAnalyses, rodInventory, spInventory, lureInventory])
 
   // ── Core send ─────────────────────────────────────────────────────────────────
   const doSend = useCallback(async (
@@ -403,7 +410,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
         arr[arr.length - 1] = { ...arr[arr.length - 1], id: replyId }
         return arr
       })
-      if (hasSpeech) {
+      if (hasSpeech && (settings.readResponsesAloud ?? false)) {
         setSpeakingId(replyId)
         speakText(reply, { onEnd: () => setSpeakingId(null) })
       }
@@ -442,12 +449,12 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
 
   // ── Auto-generate opening analysis in post-session mode ───────────────────────
   useEffect(() => {
-    if (!postSessionMode || !apiKey || !online || openingDone || sessionEvents.length === 0) return
+    if (!postSessionMode || !apiKey || !online || openingDone || !inventoryLoaded || sessionEvents.length === 0) return
     if (!session) return
     setOpeningDone(true)
     const prompt = 'Please give me a concise post-session analysis. Cover what worked, what the data suggests about current patterns, and 1–2 actionable takeaways for next time.'
     void doSend(prompt, prompt, prompt, false, [])
-  }, [postSessionMode, apiKey, online, openingDone, sessionEvents, session]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [postSessionMode, apiKey, online, openingDone, inventoryLoaded, sessionEvents, session]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Send message ─────────────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
