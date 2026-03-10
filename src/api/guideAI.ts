@@ -45,6 +45,60 @@ export function buildGuideSystemPrompt(
 ): string {
   const parts: string[] = [GUIDE_PERSONA]
 
+  // ── Inventory blocks — rendered regardless of session mode ────────────────────
+
+  // Lure inventory (stable context — hardbaits, jigs, spinnerbaits, etc.)
+  if (ownedLures && ownedLures.length > 0) {
+    const lureLines = ownedLures
+      .filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired')
+      .map(l => `- ${l.lureType ?? 'Lure'}, ${l.weight ?? 'N/A'}, ${l.color}${l.brand ? ` (${l.brand})` : ''}${l.notes ? ` — ${l.notes}` : ''}`)
+      .join('\n')
+    if (lureLines) {
+      parts.push(`\nANGLER'S LURE INVENTORY — PRIORITIZE owned lures in all recommendations:\n${lureLines}\nOnly suggest lures the angler does not own as a last resort, and flag them clearly.`)
+    }
+  }
+
+  // Full rod inventory (stable context)
+  if (rodInventory && rodInventory.length > 0) {
+    const rodLines = rodInventory.map(r => {
+      const specs = [
+        r.rodType,
+        r.power,
+        r.action,
+        r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
+        r.lineType,
+        r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
+        r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
+        r.reelName ? `reel: ${r.reelName}` : null,
+      ].filter(Boolean).join(', ')
+      return `- "${r.nickname}": ${specs || 'no specs'}`
+    }).join('\n')
+    parts.push(`\nROD INVENTORY:\n${rodLines}`)
+  }
+
+  // Soft plastic inventory (exclude Out condition from AI context)
+  if (softPlastics && softPlastics.length > 0) {
+    const available = softPlastics.filter(s => s.condition !== 'Out')
+    if (available.length > 0) {
+      const spLines = available.map(s => {
+        const parts2 = [
+          s.productName ? `"${s.productName}"` : null,
+          s.brand ?? null,
+          s.bodyStyle ?? null,
+          s.sizeInches != null ? `${s.sizeInches}"` : null,
+          s.colorName ?? null,
+          s.colorFamily ?? null,
+          s.riggingStyles && s.riggingStyles.length > 0 ? `rigs: ${s.riggingStyles.join('/')}` : null,
+          s.condition === 'Low Stock' ? '(low stock)' : null,
+        ].filter(Boolean).join(', ')
+        return `- ${parts2}`
+      }).join('\n')
+      parts.push(`\nSOFT PLASTIC INVENTORY:\n${spLines}`)
+    }
+  }
+
+  // ── Session-specific blocks ────────────────────────────────────────────────────
+
   if (session) {
     const c = session.conditions
     const condParts = [
@@ -67,61 +121,11 @@ export function buildGuideSystemPrompt(
     parts.push(`\nSESSION CONDITIONS:\n${condParts || 'Not available'}`)
     parts.push(`Launch site: ${session.launchSite}`)
 
-    // Launch point context (Layer 1 stable context)
+    // Launch point context
     const launchCtx = getLaunchPointContext(String(session.launchSite))
     if (launchCtx) {
       const detail = launchCtx.detailedSummary.startsWith('TODO') ? '' : `\nDetailed: ${launchCtx.detailedSummary}`
       parts.push(`\nLAUNCH POINT CONTEXT — ${launchCtx.name}:\nReachable range (kayak): ~${launchCtx.maxRecommendedRange} nmi. All location recs must be within this range.\nStructures: ${fmtStructures(launchCtx)}\nDepths: ${fmtDepths(launchCtx)}\nSeasonal: ${fmtSeasonalNotes(launchCtx)}${detail}`)
-    }
-
-    // Lure inventory (stable context — hardbaits, jigs, spinnerbaits, etc.)
-    if (ownedLures && ownedLures.length > 0) {
-      const lureLines = ownedLures
-        .filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired')
-        .map(l => `- ${l.lureType ?? 'Lure'}, ${l.weight ?? 'N/A'}, ${l.color}${l.brand ? ` (${l.brand})` : ''}${l.notes ? ` — ${l.notes}` : ''}`)
-        .join('\n')
-      if (lureLines) {
-        parts.push(`\nANGLER'S LURE INVENTORY — PRIORITIZE owned lures in all recommendations:\n${lureLines}\nOnly suggest lures the angler does not own as a last resort, and flag them clearly.`)
-      }
-    }
-
-    // Full rod inventory (stable context)
-    if (rodInventory && rodInventory.length > 0) {
-      const rodLines = rodInventory.map(r => {
-        const specs = [
-          r.rodType,
-          r.power,
-          r.action,
-          r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
-          r.lineType,
-          r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
-          r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
-          r.reelName ? `reel: ${r.reelName}` : null,
-        ].filter(Boolean).join(', ')
-        return `- "${r.nickname}": ${specs || 'no specs'}`
-      }).join('\n')
-      parts.push(`\nROD INVENTORY:\n${rodLines}`)
-    }
-
-    // Soft plastic inventory (exclude Out condition from AI context)
-    if (softPlastics && softPlastics.length > 0) {
-      const available = softPlastics.filter(s => s.condition !== 'Out')
-      if (available.length > 0) {
-        const spLines = available.map(s => {
-          const parts2 = [
-            s.productName ? `"${s.productName}"` : null,
-            s.brand ?? null,
-            s.bodyStyle ?? null,
-            s.sizeInches != null ? `${s.sizeInches}"` : null,
-            s.colorName ?? null,
-            s.colorFamily ?? null,
-            s.riggingStyles && s.riggingStyles.length > 0 ? `rigs: ${s.riggingStyles.join('/')}` : null,
-            s.condition === 'Low Stock' ? '(low stock)' : null,
-          ].filter(Boolean).join(', ')
-          return `- ${parts2}`
-        }).join('\n')
-        parts.push(`\nSOFT PLASTIC INVENTORY:\n${spLines}`)
-      }
     }
 
     // Selected rods for this session

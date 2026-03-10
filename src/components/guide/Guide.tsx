@@ -231,6 +231,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
   const [rodInventory, setRodInventory]       = useState<Rod[]>([])
   const [spInventory, setSpInventory]         = useState<SoftPlastic[]>([])
   const [lureInventory, setLureInventory]     = useState<OwnedLure[]>([])
+  const [inventoryLoaded, setInventoryLoaded] = useState(false)
 
   const chatEndRef             = useRef<HTMLDivElement>(null)
   const imgInputRef            = useRef<HTMLInputElement>(null)
@@ -251,9 +252,11 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
 
   // ── Fetch session events + recent analyses on open ───────────────────────────
   useEffect(() => {
-    getAllRods().then(setRodInventory).catch(() => {})
-    getAllSoftPlastics().then(setSpInventory).catch(() => {})
-    getAllOwnedLures().then(setLureInventory).catch(() => {})
+    Promise.allSettled([
+      getAllRods().then(setRodInventory),
+      getAllSoftPlastics().then(setSpInventory),
+      getAllOwnedLures().then(setLureInventory),
+    ]).then(() => setInventoryLoaded(true))
     if (session) {
       getEventsForSession(session.id).then(setSessionEvents).catch(() => {})
       // Load recent session analyses for context
@@ -446,12 +449,12 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
 
   // ── Auto-generate opening analysis in post-session mode ───────────────────────
   useEffect(() => {
-    if (!postSessionMode || !apiKey || !online || openingDone || sessionEvents.length === 0) return
+    if (!postSessionMode || !apiKey || !online || openingDone || !inventoryLoaded || sessionEvents.length === 0) return
     if (!session) return
     setOpeningDone(true)
     const prompt = 'Please give me a concise post-session analysis. Cover what worked, what the data suggests about current patterns, and 1–2 actionable takeaways for next time.'
     void doSend(prompt, prompt, prompt, false, [])
-  }, [postSessionMode, apiKey, online, openingDone, sessionEvents, session]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [postSessionMode, apiKey, online, openingDone, inventoryLoaded, sessionEvents, session]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Send message ─────────────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
