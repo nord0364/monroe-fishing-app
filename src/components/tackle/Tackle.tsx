@@ -1370,13 +1370,6 @@ function SoftPlasticScanFlow({ apiKey, onComplete, onSkip, onCancel }: SoftPlast
   const [scanning, setScanning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (apiKey) {
-      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
-      return () => clearTimeout(timer)
-    }
-  }, [apiKey])
-
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1472,13 +1465,6 @@ function LureScanFlow({ lureTypeHint, apiKey, onComplete, onSkip, onCancel }: Lu
   const [scanning, setScanning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (apiKey) {
-      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
-      return () => clearTimeout(timer)
-    }
-  }, [apiKey])
-
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1548,13 +1534,6 @@ function HookScanFlow({ hookStyleHint: _hookStyleHint, hookTypeHint: _hookTypeHi
   const [scanning, setScanning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (apiKey) {
-      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
-      return () => clearTimeout(timer)
-    }
-  }, [apiKey])
-
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1618,13 +1597,6 @@ interface RodScanFlowProps {
 function RodScanFlow({ apiKey, onComplete, onSkip, onCancel }: RodScanFlowProps) {
   const [scanning, setScanning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (apiKey) {
-      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
-      return () => clearTimeout(timer)
-    }
-  }, [apiKey])
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
