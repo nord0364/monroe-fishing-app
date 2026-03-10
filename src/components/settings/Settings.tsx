@@ -599,8 +599,8 @@ export default function Settings({ settings, onUpdate }: Props) {
         <div className="th-surface rounded-xl p-4 border th-border">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold th-text text-sm">Read Responses Aloud</h2>
-              <p className="th-text-muted text-xs mt-0.5 leading-snug">AI guide responses will be read using your device's text-to-speech</p>
+              <h2 className="font-semibold th-text text-sm">Auto-Read Responses Aloud</h2>
+              <p className="th-text-muted text-xs mt-0.5 leading-snug">Automatically reads AI guide responses aloud using your device's text-to-speech</p>
             </div>
             <button
               onClick={() => {
@@ -611,12 +611,12 @@ export default function Settings({ settings, onUpdate }: Props) {
               className={`relative shrink-0 inline-flex h-6 w-11 items-center rounded-full border-2 transition-colors ${
                 (settings.readResponsesAloud ?? false)
                   ? 'bg-[color:var(--th-accent-text)] border-[color:var(--th-accent-text)]'
-                  : 'bg-transparent border-[color:var(--th-border)]'
+                  : 'bg-[color:var(--th-text-muted)]/40 border-[color:var(--th-text-muted)]'
               }`}
               aria-label="Toggle read responses aloud"
             >
-              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                (settings.readResponsesAloud ?? false) ? 'translate-x-5' : 'translate-x-0.5'
+              <span className={`inline-block h-4 w-4 rounded-full shadow transition-transform ${
+                (settings.readResponsesAloud ?? false) ? 'translate-x-5 bg-white' : 'translate-x-0.5 bg-[color:var(--th-text-muted)]'
               }`} />
             </button>
           </div>
