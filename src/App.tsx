@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import type { Session, AppSettings, SunriseSunsetCache } from './types'
 import { FONT_SIZE_STEPS, DEFAULT_FONT_STEP } from './constants'
-import { getSettings, saveSettings, exportAllDataFull, runTackleStoreMigration } from './db/database'
+import { getSettings, saveSettings, exportAllDataFull, runTackleStoreMigration, runOwnedLureDataMigration } from './db/database'
 import {
   loadGoogleIdentityServices, syncToGoogleDrive,
   setQueuedSyncProvider, DEFAULT_CLIENT_ID,
@@ -95,7 +95,7 @@ export default function App() {
   const [postSessionGuideSession, setPostSessionGuideSession] = useState<Session | null>(null)
 
   useEffect(() => {
-    Promise.all([getSettings(), runTackleStoreMigration()]).then(([s]) => {
+    Promise.all([getSettings(), runTackleStoreMigration(), runOwnedLureDataMigration()]).then(([s]) => {
       setSettings(s); applyTheme(s); setReady(true)
     })
   }, [])

@@ -236,6 +236,110 @@ export async function runTackleStoreMigration(): Promise<{ migrated: number }> {
   return { migrated }
 }
 
+// ─── One-time owned-lure data migration ───────────────────────────────────────
+// The v6 IndexedDB upgrade was supposed to transform legacy lure/hook data in
+// `ownedLures`, but it never ran for users who were already at v6 (from the
+// Soft Plastics feature deploy that bumped the version).  All lure and hook
+// data has always lived in `ownedLures` — there are no separate old stores.
+// This migration transforms entries IN PLACE.
+//
+// Conversions applied:
+//   lureType 'Wacky Rig'   → category 'hook', hookStyle 'Wacky', hookType 'standard'
+//   lureType 'Ned Rig'     → category 'hook', hookStyle 'Ned',   hookType 'standard'
+//   lureType 'Drop Shot'   → category 'hook', hookStyle 'Drop Shot'
+//   lureType 'Texas Rig'   → DELETE (was deprecated in restructure)
+//   category 'spoon'       → category 'lure', lureType 'Spoon' (normalise for form compat)
+//   lureType 'Swim Jig' etc. stored directly as lureType instead of jigSubgroup
+//                          → lureType 'Jig', jigSubgroup <value>
+
+const LURE_DATA_MIGRATION_FLAG = 'fishing-tracker:ownedLureMigration:v1'
+
+// Jig subtype names that were previously stored as direct lureType values.
+const LEGACY_JIG_SUBTYPES = new Set(['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'])
+
+// Normalise a single OwnedLure from legacy format.
+// Returns the updated item, the SAME item reference (no changes needed), or
+// null if the item should be deleted.  Exported for use in restore functions.
+export function normalizeLegacyOwnedLure(lure: OwnedLure): OwnedLure | null {
+  // Texas Rig → delete
+  if (lure.lureType === 'Texas Rig') return null
+
+  // Wacky Rig lure → hook
+  if (lure.lureType === 'Wacky Rig') {
+    return {
+      ...lure,
+      category: 'hook',
+      hookStyle: 'Wacky',
+      hookType: 'standard',
+      lureType: undefined,
+    }
+  }
+
+  // Ned Rig lure → hook
+  if (lure.lureType === 'Ned Rig') {
+    return {
+      ...lure,
+      category: 'hook',
+      hookStyle: 'Ned',
+      hookType: 'standard',
+      lureType: undefined,
+    }
+  }
+
+  // Drop Shot used as a lure type → hook
+  if (lure.lureType === 'Drop Shot' && lure.category !== 'hook') {
+    return {
+      ...lure,
+      category: 'hook',
+      hookStyle: 'Drop Shot',
+      lureType: undefined,
+    }
+  }
+
+  // Old 'spoon' category → normalize to lure+Spoon so the edit form works correctly
+  if (lure.category === 'spoon') {
+    return {
+      ...lure,
+      category: 'lure',
+      lureType: 'Spoon',
+      spoonStyle: undefined,    // field removed in restructure
+    }
+  }
+
+  // Legacy jig subtype stored directly as lureType → normalize to Jig+subgroup
+  if (lure.lureType && LEGACY_JIG_SUBTYPES.has(lure.lureType) && !lure.jigSubgroup) {
+    return {
+      ...lure,
+      lureType: 'Jig',
+      jigSubgroup: lure.lureType,
+    }
+  }
+
+  return lure  // no change needed; same reference
+}
+
+export async function runOwnedLureDataMigration(): Promise<{ migrated: number; deleted: number }> {
+  if (localStorage.getItem(LURE_DATA_MIGRATION_FLAG)) return { migrated: 0, deleted: 0 }
+
+  const db = await getDB()
+  const allLures = await db.getAll('ownedLures')
+
+  let migrated = 0, deleted = 0
+  for (const lure of allLures) {
+    const result = normalizeLegacyOwnedLure(lure)
+    if (result === null) {
+      await db.delete('ownedLures', lure.id)
+      deleted++
+    } else if (result !== lure) {
+      await db.put('ownedLures', result)
+      migrated++
+    }
+  }
+
+  localStorage.setItem(LURE_DATA_MIGRATION_FLAG, '1')
+  return { migrated, deleted }
+}
+
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
 export async function saveSession(session: Session): Promise<void> {
@@ -608,8 +712,10 @@ export async function replaceAllData(data: {
   for (const d of data.debriefs   ?? []) await db.put('debriefs', d)
   const now = Date.now()
   for (const l of data.ownedLures ?? []) {
-    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
-      await db.put('ownedLures', { ...l, addedAt: l.addedAt ?? now })
+    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
+      const normalized = normalizeLegacyOwnedLure({ ...l, addedAt: l.addedAt ?? now })
+      if (normalized !== null) await db.put('ownedLures', normalized)
+    }
   }
   for (const r of data.rodSetups  ?? []) {
     if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
@@ -638,8 +744,10 @@ export async function bulkImportData(data: {
   for (const e of data.events   ?? [])   { await db.put('events',   e); ec++ }
   const now = Date.now()
   for (const l of data.ownedLures ?? []) {
-    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
-      await db.put('ownedLures', { ...l, addedAt: l.addedAt ?? now })
+    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
+      const normalized = normalizeLegacyOwnedLure({ ...l, addedAt: l.addedAt ?? now })
+      if (normalized !== null) await db.put('ownedLures', normalized)
+    }
   }
   for (const r of data.rodSetups  ?? []) {
     if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
