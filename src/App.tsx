@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRegisterSW } from 'virtual:pwa-register/react'
 import type { Session, AppSettings, SunriseSunsetCache } from './types'
 import { FONT_SIZE_STEPS, DEFAULT_FONT_STEP } from './constants'
 import { getSettings, saveSettings, exportAllDataFull } from './db/database'
@@ -507,22 +508,19 @@ function ApiKeyOverlay({ onSave }: { onSave: (key: string) => void }) {
 // ── Offline / update banner ────────────────────────────────────────────────────
 function OfflineBanner() {
   const [online, setOnline] = useState(navigator.onLine)
-  const [updateReady, setUpdateReady] = useState(false)
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
 
   useEffect(() => {
     const on = () => setOnline(true)
     const off = () => setOnline(false)
     window.addEventListener('online', on)
     window.addEventListener('offline', off)
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('controllerchange', () => setUpdateReady(true))
-    }
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
-  if (updateReady) return (
+  if (needRefresh) return (
     <div className="fixed top-0 inset-x-0 z-50 py-1.5 px-4 bg-emerald-700 text-emerald-100 text-xs text-center font-medium">
-      ✨ App updated — <button className="underline font-bold" onClick={() => window.location.reload()}>tap to reload</button>
+      ✨ Update available — <button className="underline font-bold" onClick={() => updateServiceWorker(true)}>tap to update</button>
     </div>
   )
   if (!online) return (
