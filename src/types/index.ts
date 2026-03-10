@@ -280,6 +280,7 @@ export interface AppSettings {
   fontSizeStep?: number     // 0–8 index into [14,15,16,17,18,19,20,22,24], default 3 (17px)
   sunriseSunsetCache?: SunriseSunsetCache
   googleClientId?: string  // optional override; app ships with a working default
+  readResponsesAloud?: boolean  // if true, AI guide responses auto-play via TTS; default false
 }
 
 // ─── Rod Catalog ──────────────────────────────────────────────────────────────

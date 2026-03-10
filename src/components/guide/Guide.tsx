@@ -410,7 +410,7 @@ export default function Guide({ session, settings, onClose, isTab, postSessionMo
         arr[arr.length - 1] = { ...arr[arr.length - 1], id: replyId }
         return arr
       })
-      if (hasSpeech) {
+      if (hasSpeech && (settings.readResponsesAloud ?? false)) {
         setSpeakingId(replyId)
         speakText(reply, { onEnd: () => setSpeakingId(null) })
       }

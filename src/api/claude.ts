@@ -429,6 +429,132 @@ export interface LureIdentification {
   confidence: 'High' | 'Medium' | 'Low'
 }
 
+// ─── Lure Scan (scan-first, category already known) ────────────────────────────
+
+export interface LureScanResult {
+  color?: string
+  secondaryColor?: string
+  weight?: string
+  brand?: string
+  jigSubgroup?: string
+  bladeConfig?: string
+  notes?: string
+  confidence: 'High' | 'Medium' | 'Low'
+}
+
+const JIG_SUBGROUPS = ['Casting Jig', 'Finesse Jig', 'Flipping Jig', 'Football Jig', 'Swim Jig', 'Other Jig']
+
+export async function identifyLureForScan(
+  apiKey: string,
+  imageDataUrl: string,
+  lureTypeHint?: string,
+): Promise<LureScanResult> {
+  const client = buildClientWithKey(apiKey)
+  const { base64Data, mediaType } = extractImage(imageDataUrl)
+
+  const categoryNote = lureTypeHint ? `\nThis lure has been pre-identified as a ${lureTypeHint}. Focus on extracting its visual properties.` : ''
+  const jigNote = lureTypeHint === 'Jig'
+    ? `\nFor jigSubgroup, pick from: ${JIG_SUBGROUPS.join(', ')}.`
+    : ''
+  const bladeNote = (lureTypeHint === 'Spinnerbait' || lureTypeHint === 'Chatterbait')
+    ? `\nFor bladeConfig, describe the blade arrangement (e.g. "Colorado/Willow", "Single Colorado", "Double Willow").`
+    : ''
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+        { type: 'text', text: `You are identifying a fishing lure for a colorblind angler who needs accurate color descriptions. Respond with ONLY valid JSON — no markdown, no explanation.${categoryNote}${jigNote}${bladeNote}
+
+{
+  "color": "primary color as an angler would describe it, e.g. 'White', 'Green Pumpkin', 'Black/Blue' — be specific",
+  "secondaryColor": "secondary accent color if distinct, otherwise omit",
+  "weight": "lure weight if visible on package or lure body, e.g. '3/8 oz', '1/2 oz', otherwise omit",
+  "brand": "brand name if clearly visible, otherwise omit",
+  "jigSubgroup": "jig style if applicable, otherwise omit",
+  "bladeConfig": "blade configuration if applicable, otherwise omit",
+  "notes": "one brief note about a distinctive feature if useful, otherwise omit",
+  "confidence": "High if lure is clearly identifiable, Medium if uncertain, Low if image is unclear"
+}` },
+      ],
+    }],
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  try {
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0]) as LureScanResult
+  } catch {}
+  return { confidence: 'Low' }
+}
+
+// ─── Hook Identification ───────────────────────────────────────────────────────
+
+export interface HookIdentification {
+  hookStyle?: 'Worm Hook' | 'EWG' | 'Wacky' | 'Ned' | 'Drop Shot' | 'Treble' | 'Other'
+  hookType?: 'standard' | 'weighted'
+  hookSize?: string
+  brand?: string
+  quantity?: number
+  notes?: string
+}
+
+export async function identifyHookFromImage(
+  apiKey: string,
+  imageDataUrl: string,
+): Promise<HookIdentification> {
+  const client = buildClientWithKey(apiKey)
+  const { base64Data, mediaType } = extractImage(imageDataUrl)
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 200,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+        { type: 'text', text: `Identify this fishing hook from the image. Respond ONLY with valid JSON — no markdown, no explanation.
+
+Hook style options: Worm Hook, EWG, Wacky, Ned, Drop Shot, Treble, Other
+
+{
+  "hookStyle": "pick the best matching style from the list above",
+  "hookType": "standard or weighted — omit if unclear",
+  "hookSize": "size if visible on package, e.g. '3/0', '5/0', '#4' — otherwise omit",
+  "brand": "brand name if clearly visible, otherwise omit",
+  "quantity": "count if shown on packaging as a number, otherwise omit",
+  "notes": "one brief note if useful, otherwise omit"
+}` },
+      ],
+    }],
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  try {
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0]) as HookIdentification
+  } catch {}
+  return {}
+}
+
+// ─── Rod Full Scan ─────────────────────────────────────────────────────────────
+
+export interface RodScanResult {
+  brand?: string
+  rodType?: 'Baitcasting' | 'Spinning'
+  power?: string
+  action?: string
+  lengthFt?: number
+  lengthIn?: number
+  lineWeightLbs?: number
+  lureWeightMinOz?: number
+  lureWeightMaxOz?: number
+  reelName?: string
+}
+
 const CATALOG_LURE_TYPES = [
   'Spinnerbait','Swim Jig','Chatterbait','Football Jig','Flipping Jig',
   'Wacky Rig','Texas Rig','Buzzbait','Swimbait','Crankbait',
@@ -513,6 +639,49 @@ export async function identifyRodFromImage(
   try {
     const m = text.match(/\{[\s\S]*\}/)
     if (m) return JSON.parse(m[0]) as RodIdentification
+  } catch {}
+  return {}
+}
+
+export async function identifyRodFull(
+  apiKey: string,
+  imageDataUrl: string,
+): Promise<RodScanResult> {
+  const client = buildClientWithKey(apiKey)
+  const { base64Data, mediaType } = extractImage(imageDataUrl)
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+        { type: 'text', text: `Analyze this fishing rod/reel photo. Extract as many rod and reel details as you can read from labels, blanks, or packaging. Respond ONLY with valid JSON — no markdown, no explanation.
+
+Power options: Ultra Light, Light, Medium Light, Medium, Medium Heavy, Heavy, Extra Heavy
+Action options: Slow, Moderate, Fast, Extra Fast
+
+{
+  "brand": "rod brand if visible on blank or label, otherwise omit",
+  "rodType": "Baitcasting or Spinning — Baitcasting has a spool on top, Spinning has a fixed spool hanging below. Omit if unclear",
+  "power": "rod power if printed on blank, otherwise omit",
+  "action": "rod action if printed on blank, otherwise omit",
+  "lengthFt": "rod length feet portion as a number if printed, otherwise omit",
+  "lengthIn": "rod length inches portion as a number if printed (e.g. for 7'3\" use 3), otherwise omit",
+  "lineWeightLbs": "line weight in lbs as a number if printed, otherwise omit",
+  "lureWeightMinOz": "minimum lure weight in oz as a decimal if printed, otherwise omit",
+  "lureWeightMaxOz": "maximum lure weight in oz as a decimal if printed, otherwise omit",
+  "reelName": "reel brand and model if visible on the reel, otherwise omit"
+}` },
+      ],
+    }],
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  try {
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0]) as RodScanResult
   } catch {}
   return {}
 }

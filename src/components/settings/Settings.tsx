@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { AppSettings, ColorTheme } from '../../types'
+import { hasSpeech } from '../../utils/speech'
 import { FONT_SIZE_STEPS, DEFAULT_FONT_STEP } from '../../constants'
 import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, getEntryCount, replaceAllData, getLandedFish, getAllSessions } from '../../db/database'
 import { loadPatternCache, generatePatternSummary, savePatternCache } from '../../ai/patternMemory'
@@ -12,8 +13,6 @@ import {
 } from '../../api/googleDrive'
 import HistoricalImport from './HistoricalImport'
 import SpreadsheetImport from './SpreadsheetImport'
-import LureCatalog from '../gear/LureCatalog'
-import RodCatalog from '../gear/RodCatalog'
 import CatchManager from './CatchManager'
 
 interface Props {
@@ -29,7 +28,7 @@ const THEME_OPTIONS: { value: ColorTheme; label: string; desc: string }[] = [
 ]
 
 
-type View = 'main' | 'import' | 'csv-import' | 'lures' | 'rods' | 'catches' | 'drive-restore' | 'drive-manage'
+type View = 'main' | 'import' | 'csv-import' | 'catches' | 'drive-restore' | 'drive-manage'
 
 function fmtBytes(bytes?: string): string {
   if (!bytes) return ''
@@ -518,8 +517,6 @@ export default function Settings({ settings, onUpdate }: Props) {
   if (view === 'catches')       return <CatchManager onClose={() => setView('main')} />
   if (view === 'import')        return <HistoricalImport settings={settings} onClose={() => setView('main')} />
   if (view === 'csv-import')    return <SpreadsheetImport onClose={() => setView('main')} />
-  if (view === 'lures')         return <LureCatalog apiKey={apiKey} onClose={() => setView('main')} />
-  if (view === 'rods')          return <RodCatalog  apiKey={apiKey} onClose={() => setView('main')} />
   if (view === 'drive-restore') return <DriveRestoreView onClose={() => setView('main')} />
   if (view === 'drive-manage')  return <DriveManageView  onClose={() => setView('main')} />
 
@@ -532,28 +529,6 @@ export default function Settings({ settings, onUpdate }: Props) {
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto space-y-5">
       <h1 className="text-xl font-bold th-text">Settings</h1>
-
-      {/* ── Gear Catalog ─────────────────────────────────────────────────── */}
-      <div className="th-surface rounded-xl p-4 border th-border space-y-3">
-        <div>
-          <h2 className="font-semibold th-text text-sm">My Gear Catalog</h2>
-          <p className="th-text-muted text-xs mt-1">
-            Catalog your lures and rod setups. The AI will prioritize your owned lures in briefing recommendations and suggest which rod to use.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => setView('lures')} className="flex flex-col items-center gap-1.5 py-4 th-surface-deep border th-border rounded-xl">
-            <span className="text-2xl">🎣</span>
-            <span className="th-text text-sm font-medium">Lure Catalog</span>
-            <span className="th-text-muted text-xs">Photo + details</span>
-          </button>
-          <button onClick={() => setView('rods')} className="flex flex-col items-center gap-1.5 py-4 th-surface-deep border th-border rounded-xl">
-            <span className="text-2xl">🎯</span>
-            <span className="th-text text-sm font-medium">Rod Setups</span>
-            <span className="th-text-muted text-xs">Rod + line + reel</span>
-          </button>
-        </div>
-      </div>
 
       {/* ── App Theme ────────────────────────────────────────────────────── */}
       <div className="th-surface rounded-xl p-4 border th-border space-y-3">
@@ -618,6 +593,35 @@ export default function Settings({ settings, onUpdate }: Props) {
         />
         {apiKey && <p className="th-accent-text text-xs">✓ Key stored locally on device only.</p>}
       </div>
+
+      {/* ── Audio ────────────────────────────────────────────────────────── */}
+      {hasSpeech && (
+        <div className="th-surface rounded-xl p-4 border th-border">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold th-text text-sm">Read Responses Aloud</h2>
+              <p className="th-text-muted text-xs mt-0.5 leading-snug">AI guide responses will be read using your device's text-to-speech</p>
+            </div>
+            <button
+              onClick={() => {
+                const s = { ...settings, readResponsesAloud: !(settings.readResponsesAloud ?? false) }
+                onUpdate(s)
+                saveSettings(s)
+              }}
+              className={`relative shrink-0 inline-flex h-6 w-11 items-center rounded-full border-2 transition-colors ${
+                (settings.readResponsesAloud ?? false)
+                  ? 'bg-[color:var(--th-accent-text)] border-[color:var(--th-accent-text)]'
+                  : 'bg-transparent border-[color:var(--th-border)]'
+              }`}
+              aria-label="Toggle read responses aloud"
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                (settings.readResponsesAloud ?? false) ? 'translate-x-5' : 'translate-x-0.5'
+              }`} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Quality threshold ────────────────────────────────────────────── */}
       <div className="th-surface rounded-xl p-4 border th-border space-y-3">

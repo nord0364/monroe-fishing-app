@@ -11,7 +11,11 @@ import {
   getAllSoftPlastics, saveSoftPlastic, deleteSoftPlastic,
 } from '../../db/database'
 import { nanoid } from '../logger/nanoid'
-import { identifyLureForCatalog, identifySoftPlastic, type LureIdentification } from '../../api/claude'
+import {
+  identifyLureForCatalog, identifyLureForScan, identifyHookFromImage, identifyRodFull,
+  identifySoftPlastic,
+  type LureIdentification, type LureScanResult, type HookIdentification, type RodScanResult,
+} from '../../api/claude'
 import { SP_BODY_STYLES, SP_COLOR_FAMILIES, SP_RIGGING_STYLES, SP_CONDITIONS } from '../../constants'
 
 // ─── Rod constants ─────────────────────────────────────────────────────────────
@@ -31,7 +35,7 @@ type LureCategoryOption = typeof LURE_CATEGORIES[number]
 const JIG_SUBGROUPS = ['Casting Jig', 'Finesse Jig', 'Flipping Jig', 'Football Jig', 'Swim Jig', 'Other Jig'] as const
 type JigSubgroup = typeof JIG_SUBGROUPS[number]
 
-const LURE_DISPLAY_CATS = ['Crankbaits', 'Jerkbaits', 'Jigs', 'Spinnerbaits & Chatterbaits', 'Spoons', 'Swimbaits', 'Topwater', 'Other'] as const
+const LURE_DISPLAY_CATS = ['Crankbaits', 'Jerkbaits', 'Jigs', 'Spinnerbaits', 'Chatterbaits', 'Spoons', 'Swimbaits', 'Topwater', 'Other'] as const
 type LureDisplayCat = typeof LURE_DISPLAY_CATS[number]
 
 const HOOK_DISPLAY_CATS = ['Ned Rig Heads', 'Standard Hooks', 'Wacky Hooks', 'Weighted Hooks'] as const
@@ -46,9 +50,12 @@ const BLADE_CONFIG_TYPES = ['Spinnerbait', 'Chatterbait']
 // ─── View types ────────────────────────────────────────────────────────────────
 
 type FormView =
-  | { mode: 'add-lure'; lureTypeHint?: string }
-  | { mode: 'add-hook'; hookStyleHint?: HookStyle; hookTypeHint?: 'standard' | 'weighted' }
-  | { mode: 'add-rod' }
+  | { mode: 'scan-lure'; lureTypeHint?: string }
+  | { mode: 'scan-hook'; hookStyleHint?: HookStyle; hookTypeHint?: 'standard' | 'weighted' }
+  | { mode: 'scan-rod' }
+  | { mode: 'add-lure'; lureTypeHint?: string; prefilled?: Partial<OwnedLure>; aiFields?: Set<string> }
+  | { mode: 'add-hook'; hookStyleHint?: HookStyle; hookTypeHint?: 'standard' | 'weighted'; prefilled?: Partial<OwnedLure>; aiFields?: Set<string> }
+  | { mode: 'add-rod'; prefilled?: Partial<Rod>; aiFields?: Set<string> }
   | { mode: 'edit'; item: OwnedLure }
 
 type SpView =
@@ -63,7 +70,8 @@ function getLureCat(item: OwnedLure): LureDisplayCat {
   if (t === 'Crankbait') return 'Crankbaits'
   if (t === 'Jerkbait') return 'Jerkbaits'
   if (t === 'Jig' || item.jigSubgroup || JIG_SUBGROUPS.includes(t as JigSubgroup)) return 'Jigs'
-  if (t === 'Spinnerbait' || t === 'Chatterbait') return 'Spinnerbaits & Chatterbaits'
+  if (t === 'Spinnerbait') return 'Spinnerbaits'
+  if (t === 'Chatterbait') return 'Chatterbaits'
   if (t === 'Spoon') return 'Spoons'
   if (t === 'Swimbait') return 'Swimbaits'
   if (['Topwater', 'Buzzbait', 'Frog'].includes(t)) return 'Topwater'
@@ -92,6 +100,33 @@ function sortItems(items: OwnedLure[]): OwnedLure[] {
 
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+// ─── Reassignment helper ───────────────────────────────────────────────────────
+
+function reassignItem(item: OwnedLure, targetCategory: string): OwnedLure {
+  const base = { ...item }
+  if (targetCategory === 'hook') {
+    // Lure → Hook: clear all lure-specific fields
+    base.category = 'hook'
+    base.lureType = undefined
+    base.jigSubgroup = undefined
+    base.bladeConfig = undefined
+    base.secondaryColor = undefined
+    base.weightNA = undefined
+    base.spoonStyle = undefined
+  } else {
+    // Any → Lure category: clear hook-specific fields
+    base.category = targetCategory === 'Spoon' ? 'spoon' : 'lure'
+    base.lureType = targetCategory
+    base.hookStyle = undefined
+    base.hookSize = undefined
+    base.hookType = undefined
+    if (targetCategory !== 'Jig') base.jigSubgroup = undefined
+    if (!['Spinnerbait', 'Chatterbait'].includes(targetCategory)) base.bladeConfig = undefined
+    if (targetCategory !== 'Spoon') base.spoonStyle = undefined
+  }
+  return base
 }
 
 // ─── Color helpers ─────────────────────────────────────────────────────────────
@@ -527,12 +562,17 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
 
 // ─── DenseRow ─────────────────────────────────────────────────────────────────
 
-function DenseRow({ item, onEdit, onDelete }: {
+function DenseRow({ item, onEdit, onDelete, multiSelect, selected, onToggleSelect, onLongPress }: {
   item: OwnedLure
   onEdit: () => void
   onDelete: () => void
+  multiSelect?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
+  onLongPress?: () => void
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cat = effectiveCategory(item)
 
   const primaryLabel = cat === 'hook'
@@ -548,10 +588,30 @@ function DenseRow({ item, onEdit, onDelete }: {
   const weightLabel = item.weightNA ? 'N/A' : (item.weight ?? '')
   const sub = [weightLabel, item.brand].filter(Boolean).join(' · ')
 
+  const handlePointerDown = () => {
+    if (multiSelect) return
+    longPressTimer.current = setTimeout(() => { onLongPress?.() }, 500)
+  }
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null }
+  }
+
   return (
-    <div className={`flex items-center gap-2 pl-9 pr-3 py-2 min-h-[44px] ${item.condition === 'Retired' ? 'opacity-50' : ''}`}>
-      <span style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: hex, border: '1px solid rgba(128,128,128,0.4)' }} />
-      {item.photoDataUrl && (
+    <div
+      className={`flex items-center gap-2 pl-9 pr-3 py-2 min-h-[44px] ${item.condition === 'Retired' ? 'opacity-50' : ''} ${selected ? 'bg-[color:var(--th-accent)]/10' : ''}`}
+      onPointerDown={handlePointerDown}
+      onPointerUp={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onClick={multiSelect ? onToggleSelect : undefined}
+    >
+      {multiSelect ? (
+        <span className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${selected ? 'bg-[color:var(--th-accent-text)] border-[color:var(--th-accent-text)]' : 'border-[color:var(--th-border)]'}`}>
+          {selected && <span className="text-white text-xs leading-none">✓</span>}
+        </span>
+      ) : (
+        <span style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: hex, border: '1px solid rgba(128,128,128,0.4)' }} />
+      )}
+      {item.photoDataUrl && !multiSelect && (
         <img src={item.photoDataUrl} className="w-8 h-8 rounded-md object-cover shrink-0" alt="" />
       )}
       <div className="flex-1 min-w-0">
@@ -569,14 +629,18 @@ function DenseRow({ item, onEdit, onDelete }: {
       {item.condition === 'Retired' && (
         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-900/30 text-red-400 shrink-0 leading-tight">Ret</span>
       )}
-      <button onClick={onEdit} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted text-xs opacity-50 active:opacity-100">✎</button>
-      {confirmDelete ? (
-        <div className="flex gap-1 shrink-0">
-          <button onClick={() => { onDelete(); setConfirmDelete(false) }} className="text-white bg-red-700 text-xs px-2 py-1 rounded-lg min-h-[32px]">Del</button>
-          <button onClick={() => setConfirmDelete(false)} className="th-text-muted text-xs px-1 py-1 border th-border rounded-lg min-h-[32px]">✕</button>
-        </div>
-      ) : (
-        <button onClick={() => setConfirmDelete(true)} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm">✕</button>
+      {!multiSelect && (
+        <>
+          <button onClick={e => { e.stopPropagation(); onEdit() }} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted text-xs opacity-50 active:opacity-100">✎</button>
+          {confirmDelete ? (
+            <div className="flex gap-1 shrink-0">
+              <button onClick={e => { e.stopPropagation(); onDelete(); setConfirmDelete(false) }} className="text-white bg-red-700 text-xs px-2 py-1 rounded-lg min-h-[32px]">Del</button>
+              <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }} className="th-text-muted text-xs px-1 py-1 border th-border rounded-lg min-h-[32px]">✕</button>
+            </div>
+          ) : (
+            <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }} className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg th-text-muted opacity-30 active:opacity-100 text-sm">✕</button>
+          )}
+        </>
       )}
     </div>
   )
@@ -660,24 +724,30 @@ function RodRow({ rod, confirming, onEdit, onDeleteRequest, onDeleteConfirm }: {
 
 // ─── RodForm ──────────────────────────────────────────────────────────────────
 
-function RodForm({ initial, onSave, onCancel }: {
+function RodForm({ initial, prefilled, aiFields, onSave, onCancel }: {
   initial?: Rod
+  prefilled?: Partial<Rod>
+  aiFields?: Set<string>
   onSave: (rod: Rod) => void
   onCancel: () => void
 }) {
-  const [nickname,      setNickname]      = useState(initial?.nickname ?? '')
-  const [rodType,       setRodType]       = useState<RodType | undefined>(initial?.rodType)
-  const [lengthFt,      setLengthFt]      = useState(initial?.lengthFt != null ? String(initial.lengthFt) : '')
-  const [lengthIn,      setLengthIn]      = useState(initial?.lengthIn != null ? String(initial.lengthIn) : '')
-  const [power,         setPower]         = useState<RodPower | undefined>(initial?.power)
-  const [action,        setAction]        = useState<RodAction | undefined>(initial?.action)
+  const [nickname,      setNickname]      = useState(initial?.nickname ?? prefilled?.nickname ?? '')
+  const [rodType,       setRodType]       = useState<RodType | undefined>(initial?.rodType ?? prefilled?.rodType)
+  const [lengthFt,      setLengthFt]      = useState(initial?.lengthFt != null ? String(initial.lengthFt) : prefilled?.lengthFt != null ? String(prefilled.lengthFt) : '')
+  const [lengthIn,      setLengthIn]      = useState(initial?.lengthIn != null ? String(initial.lengthIn) : prefilled?.lengthIn != null ? String(prefilled.lengthIn) : '')
+  const [power,         setPower]         = useState<RodPower | undefined>(initial?.power ?? prefilled?.power as RodPower | undefined)
+  const [action,        setAction]        = useState<RodAction | undefined>(initial?.action ?? prefilled?.action as RodAction | undefined)
   const [lineType,      setLineType]      = useState<RodLineType | undefined>(initial?.lineType)
-  const [lineWeightLbs, setLineWeightLbs] = useState(initial?.lineWeightLbs != null ? String(initial.lineWeightLbs) : '')
-  const [lureMinOz,     setLureMinOz]     = useState(initial?.lureWeightMinOz != null ? String(initial.lureWeightMinOz) : '')
-  const [lureMaxOz,     setLureMaxOz]     = useState(initial?.lureWeightMaxOz != null ? String(initial.lureWeightMaxOz) : '')
-  const [reelName,      setReelName]      = useState(initial?.reelName ?? '')
+  const [lineWeightLbs, setLineWeightLbs] = useState(initial?.lineWeightLbs != null ? String(initial.lineWeightLbs) : prefilled?.lineWeightLbs != null ? String(prefilled.lineWeightLbs) : '')
+  const [lureMinOz,     setLureMinOz]     = useState(initial?.lureWeightMinOz != null ? String(initial.lureWeightMinOz) : prefilled?.lureWeightMinOz != null ? String(prefilled.lureWeightMinOz) : '')
+  const [lureMaxOz,     setLureMaxOz]     = useState(initial?.lureWeightMaxOz != null ? String(initial.lureWeightMaxOz) : prefilled?.lureWeightMaxOz != null ? String(prefilled.lureWeightMaxOz) : '')
+  const [reelName,      setReelName]      = useState(initial?.reelName ?? prefilled?.reelName ?? '')
   const [notes,         setNotes]         = useState(initial?.notes ?? '')
   const [saving,        setSaving]        = useState(false)
+
+  const aiLabel = (key: string) => aiFields?.has(key)
+    ? <span className="text-[10px] th-accent-text font-semibold ml-1">✦ AI</span>
+    : null
 
   const submit = async () => {
     if (!nickname.trim()) return
@@ -719,14 +789,14 @@ function RodForm({ initial, onSave, onCancel }: {
 
       <div className="space-y-4">
         <div>
-          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Nickname *</label>
+          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Nickname *{aiLabel('nickname')}</label>
           <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
             placeholder='e.g. "Heavy Baitcaster", "Finesse Spinning"'
             value={nickname} onChange={e => setNickname(e.target.value)} />
         </div>
 
         <div>
-          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Rod Type</label>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Rod Type{aiLabel('rodType')}</label>
           <div className="flex gap-2">
             {ROD_TYPES.map(t => (
               <button key={t} onClick={() => setRodType(rodType === t ? undefined : t)}
@@ -739,7 +809,7 @@ function RodForm({ initial, onSave, onCancel }: {
         </div>
 
         <div>
-          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Length</label>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Length{aiLabel('lengthFt')}</label>
           <div className="flex gap-2">
             <div className="flex-1">
               <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
@@ -753,7 +823,7 @@ function RodForm({ initial, onSave, onCancel }: {
         </div>
 
         <div>
-          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Power</label>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Power{aiLabel('power')}</label>
           <div className="flex flex-wrap gap-2">
             {ROD_POWERS.map(p => (
               <button key={p} onClick={() => setPower(power === p ? undefined : p)}
@@ -766,7 +836,7 @@ function RodForm({ initial, onSave, onCancel }: {
         </div>
 
         <div>
-          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Action</label>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Action{aiLabel('action')}</label>
           <div className="flex flex-wrap gap-2">
             {ROD_ACTIONS.map(a => (
               <button key={a} onClick={() => setAction(action === a ? undefined : a)}
@@ -791,10 +861,14 @@ function RodForm({ initial, onSave, onCancel }: {
           </div>
         </div>
 
-        {numInput('Line Weight (lb)', lineWeightLbs, setLineWeightLbs, 'e.g. 15')}
+        <div>
+          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Line Weight (lb){aiLabel('lineWeightLbs')}</label>
+          <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
+            placeholder="e.g. 15" value={lineWeightLbs} onChange={e => setLineWeightLbs(e.target.value)} />
+        </div>
 
         <div>
-          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Lure Weight Range (oz)</label>
+          <label className="block text-xs th-text-muted mb-1.5 font-medium uppercase tracking-wide">Lure Weight Range (oz){aiLabel('lureWeightMinOz')}</label>
           <div className="flex gap-2 items-center">
             <input type="number" step="0.0625" className="flex-1 th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
               placeholder="Min" value={lureMinOz} onChange={e => setLureMinOz(e.target.value)} />
@@ -805,7 +879,7 @@ function RodForm({ initial, onSave, onCancel }: {
         </div>
 
         <div>
-          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Reel Name / Model (optional)</label>
+          <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">Reel Name / Model (optional){aiLabel('reelName')}</label>
           <input className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
             placeholder="e.g. Shimano Curado 200K" value={reelName} onChange={e => setReelName(e.target.value)} />
         </div>
@@ -825,17 +899,69 @@ function RodForm({ initial, onSave, onCancel }: {
   )
 }
 
+// ─── ReassignModal ────────────────────────────────────────────────────────────
+
+const REASSIGN_LURE_CATS = [...LURE_CATEGORIES] as string[]
+const REASSIGN_HOOK_LABEL = 'Hooks'
+
+function ReassignModal({ currentCategory, onSelect, onClose }: {
+  currentCategory: string
+  onSelect: (cat: string) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="w-full max-w-lg th-surface rounded-t-2xl border th-border p-4 pb-10 space-y-3"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="th-text font-semibold text-base">Move to Category</h3>
+          <button onClick={onClose} className="th-text-muted text-base w-8 h-8 flex items-center justify-center">✕</button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {REASSIGN_LURE_CATS.map(cat => (
+            <button
+              key={cat}
+              onClick={() => onSelect(cat)}
+              disabled={cat === currentCategory}
+              className={`px-3 py-2 rounded-xl text-sm border min-h-[40px] ${
+                cat === currentCategory
+                  ? 'opacity-40 th-surface th-text border-[color:var(--th-border)]'
+                  : 'th-surface-deep th-text border-[color:var(--th-border)] active:opacity-70'
+              }`}
+            >{cat}</button>
+          ))}
+          <button
+            key="hook"
+            onClick={() => onSelect('hook')}
+            disabled={currentCategory === 'hook'}
+            className={`px-3 py-2 rounded-xl text-sm border min-h-[40px] ${
+              currentCategory === 'hook'
+                ? 'opacity-40 th-surface th-text border-[color:var(--th-border)]'
+                : 'th-surface-deep th-text border-[color:var(--th-border)] active:opacity-70'
+            }`}
+          >{REASSIGN_HOOK_LABEL}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── LureForm ─────────────────────────────────────────────────────────────────
 
 interface LureFormProps {
   initial?: OwnedLure
   apiKey?: string
   lureTypeHint?: string
+  prefilled?: Partial<OwnedLure>
+  aiFields?: Set<string>
   onSave: (item: OwnedLure) => void
   onCancel: () => void
+  onReassign?: (item: OwnedLure) => void
 }
 
-function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormProps) {
+function LureForm({ initial, apiKey, lureTypeHint, prefilled, aiFields, onSave, onCancel, onReassign }: LureFormProps) {
   const [lureCategory, setLureCategory] = useState<string>(() => {
     if (initial) {
       const t = initial.lureType ?? ''
@@ -847,7 +973,7 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
     return lureTypeHint ?? ''
   })
   const [jigSubgroup, setJigSubgroup] = useState<string>(() => {
-    if (!initial) return ''
+    if (!initial) return prefilled?.jigSubgroup ?? ''
     if (initial.jigSubgroup) return initial.jigSubgroup
     const t = initial.lureType ?? ''
     if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return t
@@ -860,17 +986,22 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
     if (['Swim Jig', 'Football Jig', 'Flipping Jig', 'Casting Jig', 'Finesse Jig'].includes(t)) return ''
     return t
   })
-  const [weight,         setWeight]         = useState(initial?.weight ?? '')
+  const [weight,         setWeight]         = useState(initial?.weight ?? prefilled?.weight ?? '')
   const [weightNA,       setWeightNA]       = useState(initial?.weightNA ?? false)
-  const [color,          setColor]          = useState(initial?.color ?? '')
-  const [secondaryColor, setSecondaryColor] = useState(initial?.secondaryColor ?? '')
-  const [bladeConfig,    setBladeConfig]    = useState(initial?.bladeConfig ?? '')
-  const [brand,          setBrand]          = useState(initial?.brand ?? '')
+  const [color,          setColor]          = useState(initial?.color ?? prefilled?.color ?? '')
+  const [secondaryColor, setSecondaryColor] = useState(initial?.secondaryColor ?? prefilled?.secondaryColor ?? '')
+  const [bladeConfig,    setBladeConfig]    = useState(initial?.bladeConfig ?? prefilled?.bladeConfig ?? '')
+  const [brand,          setBrand]          = useState(initial?.brand ?? prefilled?.brand ?? '')
   const [origin,         setOrigin]         = useState<TackleOrigin | ''>(initial?.origin ?? '')
   const [condition,      setCondition]      = useState<TackleCondition | ''>(initial?.condition ?? '')
-  const [notes,          setNotes]          = useState(initial?.notes ?? '')
+  const [notes,          setNotes]          = useState(initial?.notes ?? prefilled?.notes ?? '')
   const [photo,          setPhoto]          = useState(initial?.photoDataUrl ?? '')
   const [saving,         setSaving]         = useState(false)
+  const [showReassign,   setShowReassign]   = useState(false)
+
+  const aiLabel = (key: string) => aiFields?.has(key)
+    ? <span className="text-[10px] th-accent-text font-semibold ml-1">✦ AI</span>
+    : null
 
   const showBladeConfig = BLADE_CONFIG_TYPES.includes(lureCategory)
   const showJigSubgroup = lureCategory === 'Jig'
@@ -919,9 +1050,26 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
 
   return (
     <div className="p-4 pb-28 max-w-lg mx-auto space-y-5">
+      {showReassign && initial && (
+        <ReassignModal
+          currentCategory={initial.lureType ?? (effectiveCategory(initial) === 'hook' ? 'hook' : '')}
+          onSelect={cat => {
+            const reassigned = reassignItem(initial, cat)
+            setShowReassign(false)
+            onReassign?.(reassigned)
+          }}
+          onClose={() => setShowReassign(false)}
+        />
+      )}
+
       <div className="flex items-center gap-3">
         <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">← Cancel</button>
         <h2 className="th-text font-bold text-lg flex-1">{initial ? 'Edit Lure' : 'Add Lure'}</h2>
+        {initial && onReassign && (
+          <button onClick={() => setShowReassign(true)} className="text-xs th-text-muted border th-border px-2 py-1 rounded-xl min-h-[36px]">
+            Move to…
+          </button>
+        )}
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-3">
@@ -956,7 +1104,7 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
 
         {showJigSubgroup && (
           <div>
-            <FieldLabel>Jig Type *</FieldLabel>
+            <FieldLabel>Jig Type *{aiLabel('jigSubgroup')}</FieldLabel>
             <div className="flex flex-wrap gap-2">
               {JIG_SUBGROUPS.map(sub => (
                 <button
@@ -973,14 +1121,14 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
 
         {showBladeConfig && (
           <div>
-            <FieldLabel>Blade Config</FieldLabel>
+            <FieldLabel>Blade Config{aiLabel('bladeConfig')}</FieldLabel>
             <TextInput value={bladeConfig} onChange={setBladeConfig} placeholder='e.g. "Colorado + Willow", "double willow"' />
           </div>
         )}
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <FieldLabel>Weight{weightNA ? '' : ' *'}</FieldLabel>
+            <FieldLabel>Weight{weightNA ? '' : ' *'}{aiLabel('weight')}</FieldLabel>
             <button
               onClick={() => setWeightNA(v => !v)}
               className={`text-xs px-2 py-1 rounded-lg border min-h-[36px] ${
@@ -1007,11 +1155,11 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
         <p className="section-label">Color</p>
         <div>
-          <FieldLabel>Primary Color *</FieldLabel>
+          <FieldLabel>Primary Color *{aiLabel('color')}</FieldLabel>
           <TextInput value={color} onChange={setColor} placeholder="e.g. White/Chartreuse, Green Pumpkin" />
         </div>
         <div>
-          <FieldLabel>Secondary Color / Accent</FieldLabel>
+          <FieldLabel>Secondary Color / Accent{aiLabel('secondaryColor')}</FieldLabel>
           <TextInput value={secondaryColor} onChange={setSecondaryColor} placeholder="e.g. Red Trailer, Silver Flake" />
         </div>
       </div>
@@ -1019,7 +1167,7 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
         <p className="section-label">Origin & Condition</p>
         <div>
-          <FieldLabel>Brand</FieldLabel>
+          <FieldLabel>Brand{aiLabel('brand')}</FieldLabel>
           <TextInput value={brand} onChange={setBrand} placeholder="e.g. Strike King, Z-Man" />
         </div>
         <div>
@@ -1045,7 +1193,7 @@ function LureForm({ initial, apiKey, lureTypeHint, onSave, onCancel }: LureFormP
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4">
-        <FieldLabel>Notes</FieldLabel>
+        <FieldLabel>Notes{aiLabel('notes')}</FieldLabel>
         <TextInput value={notes} onChange={setNotes} placeholder="e.g. works best slow-rolled with trailer" />
       </div>
 
@@ -1066,21 +1214,29 @@ interface HookFormProps {
   initial?: OwnedLure
   hookStyleHint?: HookStyle
   hookTypeHint?: 'standard' | 'weighted'
+  prefilled?: Partial<OwnedLure>
+  aiFields?: Set<string>
   onSave: (item: OwnedLure) => void
   onCancel: () => void
+  onReassign?: (item: OwnedLure) => void
 }
 
-function HookForm({ initial, hookStyleHint, hookTypeHint, onSave, onCancel }: HookFormProps) {
-  const [hookType,  setHookType]  = useState<'standard' | 'weighted' | ''>(initial?.hookType ?? hookTypeHint ?? '')
-  const [hookStyle, setHookStyle] = useState<HookStyle | ''>(initial?.hookStyle ?? hookStyleHint ?? '')
-  const [hookSize,  setHookSize]  = useState(initial?.hookSize ?? '')
+function HookForm({ initial, hookStyleHint, hookTypeHint, prefilled, aiFields, onSave, onCancel, onReassign }: HookFormProps) {
+  const [hookType,  setHookType]  = useState<'standard' | 'weighted' | ''>(initial?.hookType ?? prefilled?.hookType ?? hookTypeHint ?? '')
+  const [hookStyle, setHookStyle] = useState<HookStyle | ''>(initial?.hookStyle ?? prefilled?.hookStyle ?? hookStyleHint ?? '')
+  const [hookSize,  setHookSize]  = useState(initial?.hookSize ?? prefilled?.hookSize ?? '')
   const [weight,    setWeight]    = useState(initial?.weight ?? '')
-  const [brand,     setBrand]     = useState(initial?.brand ?? '')
+  const [brand,     setBrand]     = useState(initial?.brand ?? prefilled?.brand ?? '')
   const [quantity,  setQuantity]  = useState<string>(
-    initial?.quantity !== undefined ? String(initial.quantity) : ''
+    initial?.quantity !== undefined ? String(initial.quantity) : prefilled?.quantity !== undefined ? String(prefilled.quantity) : ''
   )
-  const [notes,  setNotes]  = useState(initial?.notes ?? '')
-  const [saving, setSaving] = useState(false)
+  const [notes,        setNotes]        = useState(initial?.notes ?? prefilled?.notes ?? '')
+  const [saving,       setSaving]       = useState(false)
+  const [showReassign, setShowReassign] = useState(false)
+
+  const aiLabel = (key: string) => aiFields?.has(key)
+    ? <span className="text-[10px] th-accent-text font-semibold ml-1">✦ AI</span>
+    : null
 
   const submit = async () => {
     if (!hookStyle) return
@@ -1107,16 +1263,33 @@ function HookForm({ initial, hookStyleHint, hookTypeHint, onSave, onCancel }: Ho
 
   return (
     <div className="p-4 pb-28 max-w-lg mx-auto space-y-5">
+      {showReassign && initial && (
+        <ReassignModal
+          currentCategory="hook"
+          onSelect={cat => {
+            const reassigned = reassignItem(initial, cat)
+            setShowReassign(false)
+            onReassign?.(reassigned)
+          }}
+          onClose={() => setShowReassign(false)}
+        />
+      )}
+
       <div className="flex items-center gap-3">
         <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">← Cancel</button>
         <h2 className="th-text font-bold text-lg flex-1">{initial ? 'Edit Hook' : 'Add Hook'}</h2>
+        {initial && onReassign && (
+          <button onClick={() => setShowReassign(true)} className="text-xs th-text-muted border th-border px-2 py-1 rounded-xl min-h-[36px]">
+            Move to…
+          </button>
+        )}
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
         <p className="section-label">Hook Details</p>
 
         <div>
-          <FieldLabel>Hook Type</FieldLabel>
+          <FieldLabel>Hook Type{aiLabel('hookType')}</FieldLabel>
           <div className="flex gap-2">
             {(['standard', 'weighted'] as const).map(ht => (
               <button
@@ -1148,22 +1321,22 @@ function HookForm({ initial, hookStyleHint, hookTypeHint, onSave, onCancel }: Ho
         )}
 
         <div>
-          <FieldLabel>Hook Style *</FieldLabel>
+          <FieldLabel>Hook Style *{aiLabel('hookStyle')}</FieldLabel>
           <ButtonGrid options={HOOK_STYLES} value={hookStyle} onChange={setHookStyle} />
         </div>
 
         <div>
-          <FieldLabel>Hook Size</FieldLabel>
+          <FieldLabel>Hook Size{aiLabel('hookSize')}</FieldLabel>
           <TextInput value={hookSize} onChange={setHookSize} placeholder='e.g. 3/0, 5/0, #4' />
         </div>
 
         <div>
-          <FieldLabel>Brand</FieldLabel>
+          <FieldLabel>Brand{aiLabel('brand')}</FieldLabel>
           <TextInput value={brand} onChange={setBrand} placeholder="e.g. Gamakatsu, Owner" />
         </div>
 
         <div>
-          <FieldLabel>Quantity</FieldLabel>
+          <FieldLabel>Quantity{aiLabel('quantity')}</FieldLabel>
           <input
             type="number"
             min={0}
@@ -1176,7 +1349,7 @@ function HookForm({ initial, hookStyleHint, hookTypeHint, onSave, onCancel }: Ho
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4">
-        <FieldLabel>Notes</FieldLabel>
+        <FieldLabel>Notes{aiLabel('notes')}</FieldLabel>
         <TextInput value={notes} onChange={setNotes} placeholder="Any notes…" />
       </div>
 
@@ -1288,6 +1461,237 @@ function SoftPlasticScanFlow({ apiKey, onComplete, onSkip, onCancel }: SoftPlast
         className="hidden"
         onChange={handleFile}
       />
+    </div>
+  )
+}
+
+// ─── LureScanFlow ─────────────────────────────────────────────────────────────
+
+interface LureScanFlowProps {
+  lureTypeHint?: string
+  apiKey?: string
+  onComplete: (prefilled?: Partial<OwnedLure>, aiFields?: Set<string>) => void
+  onSkip: () => void
+  onCancel: () => void
+}
+
+function LureScanFlow({ lureTypeHint, apiKey, onComplete, onSkip, onCancel }: LureScanFlowProps) {
+  const [scanning, setScanning] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (apiKey) {
+      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [apiKey])
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    if (!apiKey) { onSkip(); return }
+
+    setScanning(true)
+    try {
+      const dataUrl = await resizePhoto(file)
+      const result: LureScanResult = await identifyLureForScan(apiKey, dataUrl, lureTypeHint)
+      const prefilled: Partial<OwnedLure> = {}
+      const aiFields = new Set<string>()
+      if (result.color)         { prefilled.color = result.color; aiFields.add('color') }
+      if (result.secondaryColor){ prefilled.secondaryColor = result.secondaryColor; aiFields.add('secondaryColor') }
+      if (result.weight)        { prefilled.weight = result.weight; aiFields.add('weight') }
+      if (result.brand)         { prefilled.brand = result.brand; aiFields.add('brand') }
+      if (result.jigSubgroup)   { prefilled.jigSubgroup = result.jigSubgroup; aiFields.add('jigSubgroup') }
+      if (result.bladeConfig)   { prefilled.bladeConfig = result.bladeConfig; aiFields.add('bladeConfig') }
+      if (result.notes)         { prefilled.notes = result.notes; aiFields.add('notes') }
+      onComplete(prefilled, aiFields)
+    } catch {
+      onComplete()
+    }
+  }
+
+  const label = lureTypeHint ?? 'Lure'
+
+  if (scanning) {
+    return (
+      <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-4">
+        <div className="text-4xl animate-pulse">🔍</div>
+        <p className="th-text text-lg font-semibold">Analyzing image…</p>
+        <p className="th-text-muted text-sm">Claude is reading the lure</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-6 px-6 text-center">
+      <button onClick={onCancel} className="absolute top-4 left-4 th-accent-text text-sm min-h-[44px] px-2">← Cancel</button>
+      <div className="text-5xl">🎣</div>
+      <div>
+        <h2 className="th-text text-xl font-bold mb-2">Point at the {label}</h2>
+        <p className="th-text-muted text-sm">Claude will auto-fill color, weight, and brand from your photo</p>
+      </div>
+      <button onClick={() => fileRef.current?.click()} className="w-full max-w-xs py-4 th-btn-primary rounded-2xl font-semibold text-base min-h-[56px]">
+        Take Photo
+      </button>
+      <button onClick={onSkip} className="th-text-muted text-sm min-h-[44px]">Skip — enter manually</button>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+    </div>
+  )
+}
+
+// ─── HookScanFlow ─────────────────────────────────────────────────────────────
+
+interface HookScanFlowProps {
+  hookStyleHint?: HookStyle
+  hookTypeHint?: 'standard' | 'weighted'
+  apiKey?: string
+  onComplete: (prefilled?: Partial<OwnedLure>, aiFields?: Set<string>) => void
+  onSkip: () => void
+  onCancel: () => void
+}
+
+function HookScanFlow({ hookStyleHint, hookTypeHint, apiKey, onComplete, onSkip, onCancel }: HookScanFlowProps) {
+  const [scanning, setScanning] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (apiKey) {
+      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [apiKey])
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    if (!apiKey) { onSkip(); return }
+
+    setScanning(true)
+    try {
+      const dataUrl = await resizePhoto(file)
+      const result: HookIdentification = await identifyHookFromImage(apiKey, dataUrl)
+      const prefilled: Partial<OwnedLure> = { color: '', category: 'hook' }
+      const aiFields = new Set<string>()
+      if (result.hookStyle) { prefilled.hookStyle = result.hookStyle; aiFields.add('hookStyle') }
+      if (result.hookType)  { prefilled.hookType  = result.hookType;  aiFields.add('hookType') }
+      if (result.hookSize)  { prefilled.hookSize  = result.hookSize;  aiFields.add('hookSize') }
+      if (result.brand)     { prefilled.brand     = result.brand;     aiFields.add('brand') }
+      if (result.quantity != null) { prefilled.quantity = result.quantity; aiFields.add('quantity') }
+      if (result.notes)     { prefilled.notes     = result.notes;     aiFields.add('notes') }
+      onComplete(prefilled, aiFields)
+    } catch {
+      onComplete()
+    }
+  }
+
+  if (scanning) {
+    return (
+      <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-4">
+        <div className="text-4xl animate-pulse">🔍</div>
+        <p className="th-text text-lg font-semibold">Analyzing image…</p>
+        <p className="th-text-muted text-sm">Claude is reading the hook packaging</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-6 px-6 text-center">
+      <button onClick={onCancel} className="absolute top-4 left-4 th-accent-text text-sm min-h-[44px] px-2">← Cancel</button>
+      <div className="text-5xl">🪝</div>
+      <div>
+        <h2 className="th-text text-xl font-bold mb-2">Point at the hook or package</h2>
+        <p className="th-text-muted text-sm">Claude will auto-fill style, size, and brand from your photo</p>
+      </div>
+      <button onClick={() => fileRef.current?.click()} className="w-full max-w-xs py-4 th-btn-primary rounded-2xl font-semibold text-base min-h-[56px]">
+        Take Photo
+      </button>
+      <button onClick={onSkip} className="th-text-muted text-sm min-h-[44px]">Skip — enter manually</button>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+    </div>
+  )
+}
+
+// ─── RodScanFlow ──────────────────────────────────────────────────────────────
+
+interface RodScanFlowProps {
+  apiKey?: string
+  onComplete: (prefilled?: Partial<Rod>, aiFields?: Set<string>) => void
+  onSkip: () => void
+  onCancel: () => void
+}
+
+function RodScanFlow({ apiKey, onComplete, onSkip, onCancel }: RodScanFlowProps) {
+  const [scanning, setScanning] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (apiKey) {
+      const timer = setTimeout(() => { fileRef.current?.click() }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [apiKey])
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    if (!apiKey) { onSkip(); return }
+
+    setScanning(true)
+    try {
+      const dataUrl = await resizePhoto(file)
+      const result: RodScanResult = await identifyRodFull(apiKey, dataUrl)
+      const prefilled: Partial<Rod> = {}
+      const aiFields = new Set<string>()
+
+      // Compose nickname from brand + power + action + reel type
+      const nicknameParts = [result.brand, result.power, result.action, result.reelName].filter(Boolean)
+      if (nicknameParts.length > 0) {
+        prefilled.nickname = nicknameParts.join(' ')
+        aiFields.add('nickname')
+      }
+
+      if (result.rodType)          { prefilled.rodType          = result.rodType;          aiFields.add('rodType') }
+      if (result.power)            { prefilled.power            = result.power as Rod['power']; aiFields.add('power') }
+      if (result.action)           { prefilled.action           = result.action as Rod['action']; aiFields.add('action') }
+      if (result.lengthFt != null) { prefilled.lengthFt         = result.lengthFt;          aiFields.add('lengthFt') }
+      if (result.lengthIn != null) { prefilled.lengthIn         = result.lengthIn;          aiFields.add('lengthIn') }
+      if (result.lineWeightLbs != null) { prefilled.lineWeightLbs = result.lineWeightLbs;   aiFields.add('lineWeightLbs') }
+      if (result.lureWeightMinOz != null) { prefilled.lureWeightMinOz = result.lureWeightMinOz; aiFields.add('lureWeightMinOz') }
+      if (result.lureWeightMaxOz != null) { prefilled.lureWeightMaxOz = result.lureWeightMaxOz; aiFields.add('lureWeightMaxOz') }
+      if (result.reelName)         { prefilled.reelName         = result.reelName;          aiFields.add('reelName') }
+
+      onComplete(prefilled, aiFields)
+    } catch {
+      onComplete()
+    }
+  }
+
+  if (scanning) {
+    return (
+      <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-4">
+        <div className="text-4xl animate-pulse">🔍</div>
+        <p className="th-text text-lg font-semibold">Analyzing image…</p>
+        <p className="th-text-muted text-sm">Claude is reading the rod and reel</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 th-surface flex flex-col items-center justify-center gap-6 px-6 text-center">
+      <button onClick={onCancel} className="absolute top-4 left-4 th-accent-text text-sm min-h-[44px] px-2">← Cancel</button>
+      <div className="text-5xl">🎯</div>
+      <div>
+        <h2 className="th-text text-xl font-bold mb-2">Point at the rod blank or reel</h2>
+        <p className="th-text-muted text-sm">Claude will read brand, length, power, and action from the label</p>
+      </div>
+      <button onClick={() => fileRef.current?.click()} className="w-full max-w-xs py-4 th-btn-primary rounded-2xl font-semibold text-base min-h-[56px]">
+        Take Photo
+      </button>
+      <button onClick={onSkip} className="th-text-muted text-sm min-h-[44px]">Skip — enter manually</button>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
     </div>
   )
 }
@@ -1689,10 +2093,14 @@ function CategorySection({ title, count, children }: {
 
 // ─── JigsCategory ─────────────────────────────────────────────────────────────
 
-function JigsCategory({ items, onEdit, onDelete }: {
+function JigsCategory({ items, onEdit, onDelete, multiSelect, selected, onToggleSelect, onLongPress }: {
   items: OwnedLure[]
   onEdit: (item: OwnedLure) => void
   onDelete: (id: string) => void
+  multiSelect?: boolean
+  selected?: Set<string>
+  onToggleSelect?: (id: string) => void
+  onLongPress?: (id: string) => void
 }) {
   const [openSubs, setOpenSubs] = useState<Set<string>>(new Set())
 
@@ -1730,7 +2138,16 @@ function JigsCategory({ items, onEdit, onDelete }: {
             {isSubOpen && (
               <div className="divide-y th-border">
                 {subItems.map(item => (
-                  <DenseRow key={item.id} item={item} onEdit={() => onEdit(item)} onDelete={() => onDelete(item.id)} />
+                  <DenseRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => onEdit(item)}
+                    onDelete={() => onDelete(item.id)}
+                    multiSelect={multiSelect}
+                    selected={selected?.has(item.id)}
+                    onToggleSelect={() => onToggleSelect?.(item.id)}
+                    onLongPress={() => onLongPress?.(item.id)}
+                  />
                 ))}
               </div>
             )}
@@ -1820,7 +2237,7 @@ function AddFab({ onAddLure, onAddHook, onAddSoftPlastic, onAddRod }: AddFabProp
                 onClick={() => { close(); onAddSoftPlastic() }}
                 className="w-full py-3.5 th-btn-primary rounded-xl font-semibold text-sm min-h-[52px]"
               >
-                📷 Soft Plastics — Scan or add manually
+                Soft Plastics
               </button>
 
               {/* Rod / Reel */}
@@ -1861,6 +2278,7 @@ interface ListViewProps {
   onEdit: (item: OwnedLure) => void
   onDelete: (id: string) => void
   onBulkDelete: (ids: string[]) => void
+  onBulkReassign: (ids: string[], category: string) => void
   onExport: () => void
   onEditRod: (rod: Rod) => void
   onDeleteRod: (id: string) => void
@@ -1870,7 +2288,7 @@ interface ListViewProps {
 
 function ListView({
   items, rods, softPlastics, onAddLure, onAddHook, onAddSoftPlastic, onAddRod,
-  onEdit, onDelete, onBulkDelete, onExport, onEditRod, onDeleteRod, onEditSp, onDeleteSp,
+  onEdit, onDelete, onBulkDelete, onBulkReassign, onExport, onEditRod, onDeleteRod, onEditSp, onDeleteSp,
 }: ListViewProps) {
   const [search, setSearch]           = useState('')
   const [originFilter, setOriginFilter] = useState<OriginFilter>('all')
@@ -1878,6 +2296,7 @@ function ListView({
   const [multiSelect, setMultiSelect] = useState(false)
   const [selected, setSelected]       = useState<Set<string>>(new Set())
   const [bulkConfirm, setBulkConfirm] = useState(false)
+  const [showBulkReassign, setShowBulkReassign] = useState(false)
   const [confirmRodId, setConfirmRodId] = useState<string | null>(null)
 
   const filterItem = (item: OwnedLure): boolean => {
@@ -1927,19 +2346,24 @@ function ListView({
     hookByCat.get(cat)!.push(item)
   }
 
-  // @ts-expect-error -- kept for multi-select future use
-  const toggleSelect = (_id: string) => {
+  const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev)
-      _id && (next.has(_id) ? next.delete(_id) : next.add(_id))
+      next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
+  }
+
+  const enterMultiSelect = (id: string) => {
+    setMultiSelect(true)
+    setSelected(new Set([id]))
   }
 
   const exitMultiSelect = () => {
     setMultiSelect(false)
     setSelected(new Set())
     setBulkConfirm(false)
+    setShowBulkReassign(false)
   }
 
   const handleBulkDelete = () => {
@@ -2016,6 +2440,10 @@ function ListView({
                   items={catItems}
                   onEdit={onEdit}
                   onDelete={id => onDelete(id)}
+                  multiSelect={multiSelect}
+                  selected={selected}
+                  onToggleSelect={toggleSelect}
+                  onLongPress={enterMultiSelect}
                 />
               </CategorySection>
             )
@@ -2029,6 +2457,10 @@ function ListView({
                     item={item}
                     onEdit={() => onEdit(item)}
                     onDelete={() => onDelete(item.id)}
+                    multiSelect={multiSelect}
+                    selected={selected.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
+                    onLongPress={() => enterMultiSelect(item.id)}
                   />
                 ))}
               </div>
@@ -2050,6 +2482,10 @@ function ListView({
                     item={item}
                     onEdit={() => onEdit(item)}
                     onDelete={() => onDelete(item.id)}
+                    multiSelect={multiSelect}
+                    selected={selected.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
+                    onLongPress={() => enterMultiSelect(item.id)}
                   />
                 ))}
               </div>
@@ -2101,6 +2537,18 @@ function ListView({
         </div>
       </GroupSection>
 
+      {/* Bulk reassign modal */}
+      {showBulkReassign && (
+        <ReassignModal
+          currentCategory=""
+          onSelect={cat => {
+            onBulkReassign(Array.from(selected), cat)
+            exitMultiSelect()
+          }}
+          onClose={() => setShowBulkReassign(false)}
+        />
+      )}
+
       {/* Multi-select bar */}
       {multiSelect && (
         <div className="fixed bottom-20 left-0 right-0 z-40 px-4">
@@ -2113,13 +2561,22 @@ function ListView({
                 <button onClick={() => setBulkConfirm(false)} className="text-sm th-text-muted border th-border px-3 py-2 rounded-xl min-h-[44px]">No</button>
               </div>
             ) : (
-              <button
-                onClick={() => setBulkConfirm(true)}
-                disabled={selected.size === 0}
-                className="text-sm th-danger-text border border-red-900/50 px-3 py-2 rounded-xl min-h-[44px] disabled:opacity-40"
-              >
-                Delete ({selected.size})
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowBulkReassign(true)}
+                  disabled={selected.size === 0}
+                  className="text-sm th-accent-text border th-border px-3 py-2 rounded-xl min-h-[44px] disabled:opacity-40"
+                >
+                  Move
+                </button>
+                <button
+                  onClick={() => setBulkConfirm(true)}
+                  disabled={selected.size === 0}
+                  className="text-sm th-danger-text border border-red-900/50 px-3 py-2 rounded-xl min-h-[44px] disabled:opacity-40"
+                >
+                  Delete ({selected.size})
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -2264,10 +2721,52 @@ export default function Tackle({ settings }: Props) {
 
   // ─── FormView routing ─────────────────────────────────────────────────────────
 
+  if (formView?.mode === 'scan-lure') {
+    return (
+      <LureScanFlow
+        lureTypeHint={formView.lureTypeHint}
+        apiKey={apiKey}
+        onComplete={(prefilled, aiFields) =>
+          setFormView({ mode: 'add-lure', lureTypeHint: formView.lureTypeHint, prefilled, aiFields })
+        }
+        onSkip={() => setFormView({ mode: 'add-lure', lureTypeHint: formView.lureTypeHint })}
+        onCancel={() => setFormView(null)}
+      />
+    )
+  }
+
+  if (formView?.mode === 'scan-hook') {
+    return (
+      <HookScanFlow
+        hookStyleHint={formView.hookStyleHint}
+        hookTypeHint={formView.hookTypeHint}
+        apiKey={apiKey}
+        onComplete={(prefilled, aiFields) =>
+          setFormView({ mode: 'add-hook', hookStyleHint: formView.hookStyleHint, hookTypeHint: formView.hookTypeHint, prefilled, aiFields })
+        }
+        onSkip={() => setFormView({ mode: 'add-hook', hookStyleHint: formView.hookStyleHint, hookTypeHint: formView.hookTypeHint })}
+        onCancel={() => setFormView(null)}
+      />
+    )
+  }
+
+  if (formView?.mode === 'scan-rod') {
+    return (
+      <RodScanFlow
+        apiKey={apiKey}
+        onComplete={(prefilled, aiFields) => setFormView({ mode: 'add-rod', prefilled, aiFields })}
+        onSkip={() => setFormView({ mode: 'add-rod' })}
+        onCancel={() => setFormView(null)}
+      />
+    )
+  }
+
   if (formView?.mode === 'add-rod' || editRod !== null) {
     return (
       <RodForm
         initial={editRod ?? undefined}
+        prefilled={formView?.mode === 'add-rod' ? formView.prefilled : undefined}
+        aiFields={formView?.mode === 'add-rod' ? formView.aiFields : undefined}
         onSave={handleRodSave}
         onCancel={() => { setFormView(null); setEditRod(null) }}
       />
@@ -2278,6 +2777,8 @@ export default function Tackle({ settings }: Props) {
     return (
       <LureForm
         lureTypeHint={formView.lureTypeHint}
+        prefilled={formView.prefilled}
+        aiFields={formView.aiFields}
         apiKey={apiKey}
         onSave={handleSave}
         onCancel={() => setFormView(null)}
@@ -2290,6 +2791,8 @@ export default function Tackle({ settings }: Props) {
       <HookForm
         hookStyleHint={formView.hookStyleHint}
         hookTypeHint={formView.hookTypeHint}
+        prefilled={formView.prefilled}
+        aiFields={formView.aiFields}
         onSave={handleSave}
         onCancel={() => setFormView(null)}
       />
@@ -2305,6 +2808,7 @@ export default function Tackle({ settings }: Props) {
           initial={item}
           onSave={handleSave}
           onCancel={() => setFormView(null)}
+          onReassign={reassigned => { handleSave(reassigned) }}
         />
       )
     }
@@ -2315,6 +2819,7 @@ export default function Tackle({ settings }: Props) {
         apiKey={apiKey}
         onSave={handleSave}
         onCancel={() => setFormView(null)}
+        onReassign={reassigned => { handleSave(reassigned) }}
       />
     )
   }
@@ -2326,13 +2831,21 @@ export default function Tackle({ settings }: Props) {
       items={items}
       rods={rods}
       softPlastics={softPlastics}
-      onAddLure={lureType => setFormView({ mode: 'add-lure', lureTypeHint: lureType })}
-      onAddHook={(hookStyleHint, hookTypeHint) => setFormView({ mode: 'add-hook', hookStyleHint, hookTypeHint })}
+      onAddLure={lureType => setFormView({ mode: 'scan-lure', lureTypeHint: lureType })}
+      onAddHook={(hookStyleHint, hookTypeHint) => setFormView({ mode: 'scan-hook', hookStyleHint, hookTypeHint })}
       onAddSoftPlastic={() => setSpView({ mode: 'scan' })}
-      onAddRod={() => setFormView({ mode: 'add-rod' })}
+      onAddRod={() => setFormView({ mode: 'scan-rod' })}
       onEdit={item => setFormView({ mode: 'edit', item })}
       onDelete={handleDelete}
       onBulkDelete={handleBulkDelete}
+      onBulkReassign={async (ids, targetCategory) => {
+        const updated = items
+          .filter(i => ids.includes(i.id))
+          .map(i => reassignItem(i, targetCategory))
+        await Promise.all(updated.map(saveOwnedLure))
+        const idSet = new Set(ids)
+        setItems(prev => prev.map(i => idSet.has(i.id) ? (updated.find(u => u.id === i.id) ?? i) : i))
+      }}
       onExport={handleExport}
       onEditRod={rod => setEditRod(rod)}
       onDeleteRod={handleRodDelete}
