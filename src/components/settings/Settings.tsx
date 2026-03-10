@@ -608,16 +608,14 @@ export default function Settings({ settings, onUpdate }: Props) {
                 onUpdate(s)
                 saveSettings(s)
               }}
-              className={`relative shrink-0 inline-flex h-6 w-11 items-center rounded-full border-2 transition-colors ${
+              className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 (settings.readResponsesAloud ?? false)
-                  ? 'bg-[color:var(--th-accent-text)] border-[color:var(--th-accent-text)]'
-                  : 'bg-[color:var(--th-text-muted)]/40 border-[color:var(--th-text-muted)]'
+                  ? 'bg-[color:var(--th-accent-text)] text-white'
+                  : 'bg-[color:var(--th-surface-deep)] border th-border th-text-muted'
               }`}
               aria-label="Toggle read responses aloud"
             >
-              <span className={`inline-block h-4 w-4 rounded-full shadow transition-transform ${
-                (settings.readResponsesAloud ?? false) ? 'translate-x-5 bg-white' : 'translate-x-0.5 bg-[color:var(--th-text-muted)]'
-              }`} />
+              {(settings.readResponsesAloud ?? false) ? 'ON' : 'OFF'}
             </button>
           </div>
         </div>
