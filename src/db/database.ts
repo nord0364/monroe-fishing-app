@@ -690,45 +690,116 @@ export async function getEntryCount(): Promise<{ sessions: number; events: numbe
 
 // ─── Full replace (used by restore — clears everything then imports) ────────────
 
-export async function replaceAllData(data: {
-  sessions?: Session[]; events?: CatchEvent[]
-  ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]
-  rods?: Rod[]; softPlastics?: SoftPlastic[]
-  debriefs?: DebriefConversation[]
-}): Promise<{ sessions: number; events: number }> {
+export interface RestoreResult {
+  sessions: number; events: number
+  lures: number; hooks: number
+  rods: number; softPlastics: number
+  luresSkipped: number
+}
+
+export async function replaceAllData(
+  data: {
+    sessions?: Session[]; events?: CatchEvent[]
+    ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]
+    rods?: Rod[]; softPlastics?: SoftPlastic[]
+    debriefs?: DebriefConversation[]
+  },
+  onProgress?: (step: string) => void,
+): Promise<RestoreResult> {
+  // ── Diagnose backup shape up-front ──────────────────────────────────────────
+  const backupKeys = Object.keys(data)
+  console.log('[restore] backup top-level keys:', backupKeys)
+  console.log('[restore] backup array lengths:', {
+    sessions:     data.sessions?.length     ?? 0,
+    events:       data.events?.length       ?? 0,
+    ownedLures:   data.ownedLures?.length   ?? 0,
+    rodSetups:    data.rodSetups?.length    ?? 0,
+    rods:         data.rods?.length         ?? 0,
+    softPlastics: data.softPlastics?.length ?? 0,
+    debriefs:     data.debriefs?.length     ?? 0,
+  })
+  if (data.ownedLures?.length) {
+    const sample = data.ownedLures[0]
+    console.log('[restore] first ownedLure sample:', {
+      id: sample.id, category: sample.category, lureType: sample.lureType,
+      hasPhoto: !!(sample as OwnedLure & { photoDataUrl?: string }).photoDataUrl,
+    })
+  }
+
+  // ── Clear all stores ─────────────────────────────────────────────────────────
+  onProgress?.('Clearing existing data…')
   const db = await getDB()
   await Promise.all([
-    db.clear('sessions'),
-    db.clear('events'),
-    db.clear('debriefs'),
-    db.clear('ownedLures'),
-    db.clear('rodSetups'),
-    db.clear('rods'),
+    db.clear('sessions'), db.clear('events'), db.clear('debriefs'),
+    db.clear('ownedLures'), db.clear('rodSetups'), db.clear('rods'),
     db.clear('softPlastics'),
   ])
+  console.log('[restore] all stores cleared')
+
+  // ── Sessions & events ────────────────────────────────────────────────────────
+  onProgress?.('Restoring sessions and catches…')
   let sc = 0, ec = 0
-  for (const s of data.sessions   ?? []) { await db.put('sessions', s); sc++ }
-  for (const e of data.events     ?? []) { await db.put('events',   e); ec++ }
-  for (const d of data.debriefs   ?? []) await db.put('debriefs', d)
+  for (const s of data.sessions ?? []) { await db.put('sessions', s); sc++ }
+  for (const e of data.events   ?? []) { await db.put('events',   e); ec++ }
+  for (const d of data.debriefs ?? []) await db.put('debriefs', d)
+  console.log(`[restore] sessions=${sc} events=${ec}`)
+
+  // ── Lures & hooks (ownedLures) ───────────────────────────────────────────────
+  onProgress?.('Restoring lures and hooks…')
+  let lures = 0, hooks = 0, luresSkipped = 0
   const now = Date.now()
+  console.log(`[restore] processing ${data.ownedLures?.length ?? 0} ownedLures entries`)
   for (const l of data.ownedLures ?? []) {
-    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
-      const normalized = normalizeLegacyOwnedLure({ ...l, addedAt: l.addedAt ?? now })
-      if (normalized !== null) await db.put('ownedLures', normalized)
+    const hasPhotoPlaceholder = (l as OwnedLure & { photoDataUrl?: string }).photoDataUrl === '[photo]'
+    if (hasPhotoPlaceholder) {
+      console.log(`[restore] skipping lure id=${l.id} — photoDataUrl is '[photo]' placeholder`)
+      luresSkipped++
+      continue
+    }
+    const input = { ...l, addedAt: l.addedAt ?? now }
+    const normalized = normalizeLegacyOwnedLure(input)
+    if (normalized === null) {
+      console.log(`[restore] deleted lure id=${l.id} lureType=${l.lureType} (Texas Rig removal)`)
+      luresSkipped++
+    } else {
+      if (normalized !== (input as OwnedLure)) {
+        console.log(`[restore] normalized lure id=${l.id}: ${l.lureType ?? l.category} → category=${normalized.category} lureType=${normalized.lureType} hookStyle=${normalized.hookStyle}`)
+      }
+      await db.put('ownedLures', normalized)
+      if (normalized.category === 'hook') hooks++
+      else lures++
     }
   }
-  for (const r of data.rodSetups  ?? []) {
+  console.log(`[restore] ownedLures done — lures=${lures} hooks=${hooks} skipped=${luresSkipped}`)
+
+  // ── Rods ─────────────────────────────────────────────────────────────────────
+  onProgress?.('Restoring rods and reels…')
+  let rodCount = 0
+  for (const r of data.rodSetups ?? []) {
     if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
       const setup = { ...r, addedAt: r.addedAt ?? now }
       await db.put('rodSetups', setup)
       // Old backup (v ≤ 3): promote to the new rods store so the app can see it
-      if (!data.rods?.length) await db.put('rods', rodSetupToRod(setup))
+      if (!data.rods?.length) { await db.put('rods', rodSetupToRod(setup)); rodCount++ }
     }
   }
-  // New backup (v4+): rods and softPlastics stored directly
-  for (const r of data.rods ?? []) await db.put('rods', { ...r, addedAt: r.addedAt ?? now })
-  for (const sp of data.softPlastics ?? []) await db.put('softPlastics', { ...sp, addedAt: sp.addedAt ?? now })
-  return { sessions: sc, events: ec }
+  // New backup (v4+): rods stored directly
+  for (const r of data.rods ?? []) { await db.put('rods', { ...r, addedAt: r.addedAt ?? now }); rodCount++ }
+  console.log(`[restore] rods=${rodCount} (from rodSetups=${data.rodSetups?.length ?? 0} direct=${data.rods?.length ?? 0})`)
+
+  // ── Soft plastics ────────────────────────────────────────────────────────────
+  onProgress?.('Restoring soft plastics…')
+  let spCount = 0
+  for (const sp of data.softPlastics ?? []) {
+    await db.put('softPlastics', { ...sp, addedAt: sp.addedAt ?? now })
+    spCount++
+  }
+  console.log(`[restore] softPlastics=${spCount}`)
+
+  const result: RestoreResult = { sessions: sc, events: ec, lures, hooks, rods: rodCount, softPlastics: spCount, luresSkipped }
+  console.log('[restore] complete:', result)
+  onProgress?.('Complete')
+  return result
 }
 
 // ─── Merge-import from backup ──────────────────────────────────────────────────

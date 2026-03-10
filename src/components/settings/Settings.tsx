@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { AppSettings, ColorTheme } from '../../types'
 import { hasSpeech } from '../../utils/speech'
 import { FONT_SIZE_STEPS, DEFAULT_FONT_STEP } from '../../constants'
-import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, getEntryCount, replaceAllData, getLandedFish, getAllSessions } from '../../db/database'
+import { saveSettings, exportAllDataJSON, exportCatchesCSV, exportTackleJSON, getEntryCount, replaceAllData, getLandedFish, getAllSessions, type RestoreResult } from '../../db/database'
 import { loadPatternCache, generatePatternSummary, savePatternCache } from '../../ai/patternMemory'
 import {
   getDriveStatus, wasEverConnected, onDriveStatusChange, getLastSyncTime, hasSyncQueued,
@@ -58,12 +58,23 @@ interface RestorePreview {
   localTotal:   number
 }
 
+// Ordered list of progress steps emitted by replaceAllData
+const RESTORE_STEPS = [
+  'Clearing existing data…',
+  'Restoring sessions and catches…',
+  'Restoring lures and hooks…',
+  'Restoring rods and reels…',
+  'Restoring soft plastics…',
+  'Complete',
+] as const
+
 function DriveRestoreView({ onClose }: { onClose: () => void }) {
-  const [phase, setPhase]     = useState<RestorePhase>('listing')
-  const [files, setFiles]     = useState<BackupFile[]>([])
-  const [preview, setPreview] = useState<RestorePreview | null>(null)
-  const [result, setResult]   = useState<{ sessions: number; events: number } | null>(null)
-  const [error, setError]     = useState('')
+  const [phase, setPhase]           = useState<RestorePhase>('listing')
+  const [files, setFiles]           = useState<BackupFile[]>([])
+  const [preview, setPreview]       = useState<RestorePreview | null>(null)
+  const [result, setResult]         = useState<RestoreResult | null>(null)
+  const [error, setError]           = useState('')
+  const [restoreStep, setRestoreStep] = useState('')
 
   useEffect(() => {
     listBackupFiles()
@@ -74,19 +85,27 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
   const selectFile = async (file: BackupFile) => {
     setPhase('loading-file')
     try {
-      const json  = await downloadFileById(file.id)
-      const data  = JSON.parse(json)
+      const raw = await downloadFileById(file.id)
+      console.log('[restore] downloaded file length:', raw.length)
+      let data: Record<string, unknown>
+      try {
+        data = JSON.parse(raw)
+      } catch (parseErr) {
+        throw new Error(`Failed to parse backup JSON: ${String(parseErr)}`)
+      }
+      console.log('[restore] parsed preview — keys:', Object.keys(data), 'sessions:', (data.sessions as unknown[])?.length ?? 0, 'ownedLures:', (data.ownedLures as unknown[])?.length ?? 0)
       const local = await getEntryCount()
       setPreview({
         file,
-        json,
-        backupSessions: data.sessions?.length ?? 0,
-        backupEvents:   data.events?.length ?? 0,
+        json: raw,
+        backupSessions: (data.sessions as unknown[])?.length ?? 0,
+        backupEvents:   (data.events   as unknown[])?.length ?? 0,
         localTotal:     local.total,
       })
-      const backupTotal = (data.sessions?.length ?? 0) + (data.events?.length ?? 0)
+      const backupTotal = ((data.sessions as unknown[])?.length ?? 0) + ((data.events as unknown[])?.length ?? 0)
       setPhase(backupTotal < local.total ? 'conflict' : 'preview')
     } catch (e) {
+      console.error('[restore] selectFile error:', e)
       setError(String(e)); setPhase('error')
     }
   }
@@ -94,13 +113,35 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
   const doRestore = async () => {
     if (!preview) return
     setPhase('restoring')
+    setRestoreStep('Parsing backup…')
     try {
-      const data = JSON.parse(preview.json)
-      const r    = await replaceAllData(data)
+      let data: Record<string, unknown>
+      try {
+        data = JSON.parse(preview.json)
+      } catch (parseErr) {
+        throw new Error(`Failed to parse backup JSON: ${String(parseErr)}`)
+      }
+      console.log('[restore] doRestore — backup keys:', Object.keys(data))
+      console.log('[restore] doRestore — counts:', {
+        sessions:     (data.sessions     as unknown[])?.length ?? 0,
+        events:       (data.events       as unknown[])?.length ?? 0,
+        ownedLures:   (data.ownedLures   as unknown[])?.length ?? 0,
+        rodSetups:    (data.rodSetups    as unknown[])?.length ?? 0,
+        rods:         (data.rods         as unknown[])?.length ?? 0,
+        softPlastics: (data.softPlastics as unknown[])?.length ?? 0,
+        debriefs:     (data.debriefs     as unknown[])?.length ?? 0,
+      })
+      const r = await replaceAllData(
+        data as Parameters<typeof replaceAllData>[0],
+        step => { setRestoreStep(step); console.log('[restore] step:', step) },
+      )
+      console.log('[restore] result:', r)
       setResult(r)
       setPhase('done')
     } catch (e) {
-      setError(String(e)); setPhase('error')
+      console.error('[restore] doRestore error:', e)
+      setError(String(e))
+      setPhase('error')
     }
   }
 
@@ -231,9 +272,33 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* Restoring */}
+      {/* Restoring — step-by-step progress */}
       {phase === 'restoring' && (
-        <p className="th-text-muted text-sm text-center animate-pulse py-12">Restoring data…</p>
+        <div className="th-surface rounded-xl border th-border p-5 space-y-3">
+          <p className="th-text font-semibold text-sm">Restoring…</p>
+          <div className="space-y-2">
+            {RESTORE_STEPS.map(step => {
+              const currentIdx  = RESTORE_STEPS.indexOf(restoreStep as typeof RESTORE_STEPS[number])
+              const thisIdx     = RESTORE_STEPS.indexOf(step)
+              const isDone      = currentIdx > thisIdx
+              const isActive    = currentIdx === thisIdx
+              const isPending   = currentIdx < thisIdx
+              return (
+                <div key={step} className="flex items-center gap-2 text-sm">
+                  {isDone  && <span className="text-green-400 w-4 shrink-0">✓</span>}
+                  {isActive && <span className="w-4 shrink-0 animate-spin text-center th-accent-text">⏳</span>}
+                  {isPending && <span className="w-4 shrink-0 th-text-muted opacity-30">○</span>}
+                  <span className={isDone ? 'text-green-400' : isActive ? 'th-text' : 'th-text-muted opacity-40'}>
+                    {step.replace('…', '')}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {restoreStep === 'Parsing backup…' && (
+            <p className="th-text-muted text-xs">Parsing backup…</p>
+          )}
+        </div>
       )}
 
       {/* Done */}
@@ -241,9 +306,24 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
         <div className="th-surface rounded-xl border th-border p-6 space-y-3 text-center">
           <p className="text-4xl">✅</p>
           <p className="text-green-400 font-bold">Restore complete</p>
-          <p className="th-text-muted text-xs">
-            {result.sessions} sessions and {result.events} catch events restored.
-          </p>
+          <div className="grid grid-cols-2 gap-2 text-left">
+            {[
+              { label: 'Sessions',      val: result.sessions     },
+              { label: 'Catch events',  val: result.events       },
+              { label: 'Lures',         val: result.lures        },
+              { label: 'Hooks & rigs',  val: result.hooks        },
+              { label: 'Rods & reels',  val: result.rods         },
+              { label: 'Soft plastics', val: result.softPlastics },
+            ].map(({ label, val }) => (
+              <div key={label} className="th-surface-deep rounded-lg p-2.5">
+                <p className="th-text font-bold text-base">{val}</p>
+                <p className="th-text-muted text-xs">{label}</p>
+              </div>
+            ))}
+          </div>
+          {result.luresSkipped > 0 && (
+            <p className="th-text-muted text-xs">{result.luresSkipped} lure entr{result.luresSkipped === 1 ? 'y' : 'ies'} skipped (photo placeholders or deleted legacy types)</p>
+          )}
           <button onClick={() => window.location.reload()} className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold">
             Reload App
           </button>
@@ -253,11 +333,14 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
       {/* Error */}
       {phase === 'error' && (
         <div className="space-y-3">
-          <div className="th-surface rounded-xl border border-red-500/40 p-4 space-y-1">
-            <p className="text-red-400 font-semibold text-sm">Something went wrong</p>
-            {error && <p className="th-text-muted text-xs">{error}</p>}
+          <div className="th-surface rounded-xl border border-red-500/40 p-4 space-y-2">
+            <p className="text-red-400 font-semibold text-sm">Restore failed</p>
+            {error && (
+              <p className="th-text-muted text-xs break-words font-mono leading-relaxed">{error}</p>
+            )}
+            <p className="th-text-muted text-xs">Check the browser console (F12 → Console) for detailed logs starting with <span className="font-mono">[restore]</span>.</p>
           </div>
-          <button onClick={() => { setPhase('listing'); setError(''); listBackupFiles().then(f => { setFiles(f); setPhase('listed') }).catch(e => { setError(String(e)); setPhase('error') }) }}
+          <button onClick={() => { setPhase('listing'); setError(''); setRestoreStep(''); listBackupFiles().then(f => { setFiles(f); setPhase('listed') }).catch(e => { setError(String(e)); setPhase('error') }) }}
             className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold">
             Try again
           </button>
