@@ -2,6 +2,7 @@ import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 import type {
   Session, CatchEvent, AppSettings, OwnedLure, RodSetup, Rod,
+  RodPower, RodAction, RodLineType,
   DebriefConversation, PersonalBestPin, StandaloneGuideEntry, SoftPlastic,
 } from '../types'
 
@@ -141,6 +142,98 @@ async function getDB(): Promise<IDBPDatabase<FishingDB>> {
     },
   })
   return _db
+}
+
+// ─── One-time tackle store migration ──────────────────────────────────────────
+// The Tackle restructure added the `rods` store and moved rod data there,
+// but existing entries in the old `rodSetups` store were never copied over.
+// This runs once on app load, converts each RodSetup → Rod, and writes it
+// into `rods` only if no entry with that id already exists.
+// Old store is intentionally left intact until the user chooses to clear it.
+
+const TACKLE_MIGRATION_FLAG = 'fishing-tracker:rodStoreMigration:v1'
+
+// Convert a legacy RodSetup to the new Rod schema.
+// Exported so restore functions can reuse it for old backup payloads.
+export function rodSetupToRod(setup: RodSetup): Rod {
+  // Power: 'Medium-Heavy' → 'Medium Heavy', 'Medium-Light' → 'Medium Light'
+  const powerMap: Record<string, RodPower> = {
+    'Heavy':        'Heavy',
+    'Medium-Heavy': 'Medium Heavy',
+    'Medium':       'Medium',
+    'Medium-Light': 'Medium Light',
+    'Light':        'Light',
+  }
+  const power: RodPower | undefined = setup.rodPower ? powerMap[setup.rodPower] : undefined
+
+  // Action: old schema had 'Moderate-Fast' which doesn't exist in RodAction; map to 'Fast'
+  const actionMap: Record<string, RodAction> = {
+    'Fast':          'Fast',
+    'Moderate-Fast': 'Fast',
+    'Moderate':      'Moderate',
+    'Slow':          'Slow',
+  }
+  const action: RodAction | undefined = setup.rodAction ? actionMap[setup.rodAction] : undefined
+
+  // Line type: 'Braid + Fluoro Leader' → 'Braid with Fluorocarbon Leader'
+  const lineTypeMap: Record<string, RodLineType> = {
+    'Fluorocarbon':         'Fluorocarbon',
+    'Monofilament':         'Monofilament',
+    'Braid':                'Braid',
+    'Braid + Fluoro Leader':'Braid with Fluorocarbon Leader',
+  }
+  const lineType: RodLineType | undefined = setup.lineType ? lineTypeMap[setup.lineType] : undefined
+
+  // Rod length: parse '6\'6"', '7\'', '7\' 0"' → lengthFt / lengthIn
+  let lengthFt: number | undefined
+  let lengthIn: number | undefined
+  if (setup.rodLength) {
+    const m = setup.rodLength.match(/(\d+)'\s*(?:(\d+)"?)?/)
+    if (m) {
+      lengthFt = parseInt(m[1], 10)
+      lengthIn = m[2] !== undefined ? parseInt(m[2], 10) : 0
+    }
+  }
+
+  return {
+    id:           setup.id,
+    nickname:     setup.name,
+    power,
+    action,
+    lineType,
+    lineWeightLbs: setup.lineWeightLbs,
+    reelName:     setup.reelBrand,
+    notes:        setup.notes,
+    lengthFt,
+    lengthIn,
+    addedAt:      setup.addedAt,
+  }
+}
+
+export async function runTackleStoreMigration(): Promise<{ migrated: number }> {
+  // Fast-path: already ran
+  if (localStorage.getItem(TACKLE_MIGRATION_FLAG)) return { migrated: 0 }
+
+  const db = await getDB()
+  const setups = await db.getAll('rodSetups')
+
+  if (setups.length === 0) {
+    localStorage.setItem(TACKLE_MIGRATION_FLAG, '1')
+    return { migrated: 0 }
+  }
+
+  let migrated = 0
+  for (const setup of setups) {
+    // Never overwrite a rod the user may have added manually in the new UI
+    const existing = await db.get('rods', setup.id)
+    if (!existing) {
+      await db.put('rods', rodSetupToRod(setup))
+      migrated++
+    }
+  }
+
+  localStorage.setItem(TACKLE_MIGRATION_FLAG, '1')
+  return { migrated }
 }
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
@@ -413,28 +506,32 @@ export async function bulkDeleteRods(ids: string[]): Promise<void> {
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 export async function exportAllDataFull(): Promise<string> {
-  const [sessions, events, settings, ownedLures, rodSetups, debriefs] = await Promise.all([
-    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(), getAllDebriefs(),
+  const [sessions, events, settings, ownedLures, rodSetups, rods, softPlastics, debriefs] = await Promise.all([
+    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(),
+    getAllRods(), getAllSoftPlastics(), getAllDebriefs(),
   ])
   return JSON.stringify({
     exportedAt: new Date().toISOString(),
-    version: 3,
-    sessions, events, ownedLures, rodSetups, debriefs,
+    version: 4,
+    sessions, events, ownedLures, rodSetups, rods, softPlastics, debriefs,
     settings: { ...settings, anthropicApiKey: '[REDACTED]' },
   }, null, 2)
 }
 
 export async function exportAllDataJSON(): Promise<string> {
-  const [sessions, events, settings, ownedLures, rodSetups, debriefs] = await Promise.all([
-    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(), getAllDebriefs(),
+  const [sessions, events, settings, ownedLures, rodSetups, rods, softPlastics, debriefs] = await Promise.all([
+    getAllSessions(), getAllEvents(), getSettings(), getAllOwnedLures(), getAllRodSetups(),
+    getAllRods(), getAllSoftPlastics(), getAllDebriefs(),
   ])
   return JSON.stringify({
     exportedAt: new Date().toISOString(),
-    version: 3,
+    version: 4,
     sessions,
     events,
-    ownedLures: ownedLures.map(l => ({ ...l, photoDataUrl: l.photoDataUrl ? '[photo]' : undefined })),
-    rodSetups:  rodSetups.map(r => ({ ...r, photoDataUrl: r.photoDataUrl ? '[photo]' : undefined })),
+    ownedLures:   ownedLures.map(l => ({ ...l, photoDataUrl: l.photoDataUrl ? '[photo]' : undefined })),
+    rodSetups:    rodSetups.map(r => ({ ...r, photoDataUrl: r.photoDataUrl ? '[photo]' : undefined })),
+    rods,
+    softPlastics,
     debriefs,
     settings: { ...settings, anthropicApiKey: '[REDACTED]' },
   }, null, 2)
@@ -492,6 +589,7 @@ export async function getEntryCount(): Promise<{ sessions: number; events: numbe
 export async function replaceAllData(data: {
   sessions?: Session[]; events?: CatchEvent[]
   ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]
+  rods?: Rod[]; softPlastics?: SoftPlastic[]
   debriefs?: DebriefConversation[]
 }): Promise<{ sessions: number; events: number }> {
   const db = await getDB()
@@ -501,6 +599,8 @@ export async function replaceAllData(data: {
     db.clear('debriefs'),
     db.clear('ownedLures'),
     db.clear('rodSetups'),
+    db.clear('rods'),
+    db.clear('softPlastics'),
   ])
   let sc = 0, ec = 0
   for (const s of data.sessions   ?? []) { await db.put('sessions', s); sc++ }
@@ -512,9 +612,16 @@ export async function replaceAllData(data: {
       await db.put('ownedLures', { ...l, addedAt: l.addedAt ?? now })
   }
   for (const r of data.rodSetups  ?? []) {
-    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
-      await db.put('rodSetups', { ...r, addedAt: r.addedAt ?? now })
+    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
+      const setup = { ...r, addedAt: r.addedAt ?? now }
+      await db.put('rodSetups', setup)
+      // Old backup (v ≤ 3): promote to the new rods store so the app can see it
+      if (!data.rods?.length) await db.put('rods', rodSetupToRod(setup))
+    }
   }
+  // New backup (v4+): rods and softPlastics stored directly
+  for (const r of data.rods ?? []) await db.put('rods', { ...r, addedAt: r.addedAt ?? now })
+  for (const sp of data.softPlastics ?? []) await db.put('softPlastics', { ...sp, addedAt: sp.addedAt ?? now })
   return { sessions: sc, events: ec }
 }
 
@@ -522,6 +629,7 @@ export async function replaceAllData(data: {
 export async function bulkImportData(data: {
   sessions?: Session[]; events?: CatchEvent[]
   ownedLures?: OwnedLure[]; rodSetups?: RodSetup[]
+  rods?: Rod[]; softPlastics?: SoftPlastic[]
   debriefs?: DebriefConversation[]
 }): Promise<{ sessions: number; events: number }> {
   const db = await getDB()
@@ -534,11 +642,15 @@ export async function bulkImportData(data: {
       await db.put('ownedLures', { ...l, addedAt: l.addedAt ?? now })
   }
   for (const r of data.rodSetups  ?? []) {
-    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]')
-      await db.put('rodSetups', { ...r, addedAt: r.addedAt ?? now })
+    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
+      const setup = { ...r, addedAt: r.addedAt ?? now }
+      await db.put('rodSetups', setup)
+      // Old backup (v ≤ 3): merge into the new rods store as well
+      if (!data.rods?.length) await db.put('rods', rodSetupToRod(setup))
+    }
   }
-  for (const d of data.debriefs ?? []) {
-    await db.put('debriefs', d)
-  }
+  for (const r of data.rods ?? []) await db.put('rods', { ...r, addedAt: r.addedAt ?? now })
+  for (const sp of data.softPlastics ?? []) await db.put('softPlastics', { ...sp, addedAt: sp.addedAt ?? now })
+  for (const d of data.debriefs ?? []) await db.put('debriefs', d)
   return { sessions: sc, events: ec }
 }
