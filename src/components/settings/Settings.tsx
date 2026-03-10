@@ -322,7 +322,7 @@ function DriveRestoreView({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           {result.luresSkipped > 0 && (
-            <p className="th-text-muted text-xs">{result.luresSkipped} lure entr{result.luresSkipped === 1 ? 'y' : 'ies'} skipped (photo placeholders or deleted legacy types)</p>
+            <p className="th-text-muted text-xs">{result.luresSkipped} lure entr{result.luresSkipped === 1 ? 'y' : 'ies'} removed (deprecated Texas Rig type)</p>
           )}
           <button onClick={() => window.location.reload()} className="w-full py-3 th-btn-primary rounded-xl text-sm font-semibold">
             Reload App

@@ -750,13 +750,18 @@ export async function replaceAllData(
   const now = Date.now()
   console.log(`[restore] processing ${data.ownedLures?.length ?? 0} ownedLures entries`)
   for (const l of data.ownedLures ?? []) {
-    const hasPhotoPlaceholder = (l as OwnedLure & { photoDataUrl?: string }).photoDataUrl === '[photo]'
-    if (hasPhotoPlaceholder) {
-      console.log(`[restore] skipping lure id=${l.id} — photoDataUrl is '[photo]' placeholder`)
-      luresSkipped++
-      continue
+    const photoField = (l as OwnedLure & { photoDataUrl?: string }).photoDataUrl
+    // '[photo]' is a placeholder written by exportAllDataJSON.  If those items
+    // were ever imported back into IndexedDB (old code didn't filter them) the
+    // Drive backup will contain them with the placeholder intact.  Strip the
+    // placeholder and restore the inventory record without the photo rather
+    // than silently discarding the whole entry.
+    const input: OwnedLure = photoField === '[photo]'
+      ? { ...l, addedAt: l.addedAt ?? now, photoDataUrl: undefined }
+      : { ...l, addedAt: l.addedAt ?? now }
+    if (photoField === '[photo]') {
+      console.log(`[restore] photo placeholder stripped for id=${l.id} — entry will still be restored`)
     }
-    const input = { ...l, addedAt: l.addedAt ?? now }
     const normalized = normalizeLegacyOwnedLure(input)
     if (normalized === null) {
       console.log(`[restore] deleted lure id=${l.id} lureType=${l.lureType} (Texas Rig removal)`)
@@ -776,12 +781,14 @@ export async function replaceAllData(
   onProgress?.('Restoring rods and reels…')
   let rodCount = 0
   for (const r of data.rodSetups ?? []) {
-    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
-      const setup = { ...r, addedAt: r.addedAt ?? now }
-      await db.put('rodSetups', setup)
-      // Old backup (v ≤ 3): promote to the new rods store so the app can see it
-      if (!data.rods?.length) { await db.put('rods', rodSetupToRod(setup)); rodCount++ }
-    }
+    const rPhoto = (r as RodSetup & { photoDataUrl?: string }).photoDataUrl
+    const setup = rPhoto === '[photo]'
+      ? { ...r, addedAt: r.addedAt ?? now, photoDataUrl: undefined }
+      : { ...r, addedAt: r.addedAt ?? now }
+    if (rPhoto === '[photo]') console.log(`[restore] rod photo placeholder stripped for id=${r.id}`)
+    await db.put('rodSetups', setup)
+    // Old backup (v ≤ 3): promote to the new rods store so the app can see it
+    if (!data.rods?.length) { await db.put('rods', rodSetupToRod(setup)); rodCount++ }
   }
   // New backup (v4+): rods stored directly
   for (const r of data.rods ?? []) { await db.put('rods', { ...r, addedAt: r.addedAt ?? now }); rodCount++ }
@@ -815,18 +822,21 @@ export async function bulkImportData(data: {
   for (const e of data.events   ?? [])   { await db.put('events',   e); ec++ }
   const now = Date.now()
   for (const l of data.ownedLures ?? []) {
-    if ((l as OwnedLure & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
-      const normalized = normalizeLegacyOwnedLure({ ...l, addedAt: l.addedAt ?? now })
-      if (normalized !== null) await db.put('ownedLures', normalized)
-    }
+    const lPhoto = (l as OwnedLure & { photoDataUrl?: string }).photoDataUrl
+    const base: OwnedLure = lPhoto === '[photo]'
+      ? { ...l, addedAt: l.addedAt ?? now, photoDataUrl: undefined }
+      : { ...l, addedAt: l.addedAt ?? now }
+    const normalized = normalizeLegacyOwnedLure(base)
+    if (normalized !== null) await db.put('ownedLures', normalized)
   }
-  for (const r of data.rodSetups  ?? []) {
-    if ((r as RodSetup & { photoDataUrl?: string }).photoDataUrl !== '[photo]') {
-      const setup = { ...r, addedAt: r.addedAt ?? now }
-      await db.put('rodSetups', setup)
-      // Old backup (v ≤ 3): merge into the new rods store as well
-      if (!data.rods?.length) await db.put('rods', rodSetupToRod(setup))
-    }
+  for (const r of data.rodSetups ?? []) {
+    const rPhoto = (r as RodSetup & { photoDataUrl?: string }).photoDataUrl
+    const setup = rPhoto === '[photo]'
+      ? { ...r, addedAt: r.addedAt ?? now, photoDataUrl: undefined }
+      : { ...r, addedAt: r.addedAt ?? now }
+    await db.put('rodSetups', setup)
+    // Old backup (v ≤ 3): merge into the new rods store as well
+    if (!data.rods?.length) await db.put('rods', rodSetupToRod(setup))
   }
   for (const r of data.rods ?? []) await db.put('rods', { ...r, addedAt: r.addedAt ?? now })
   for (const sp of data.softPlastics ?? []) await db.put('softPlastics', { ...sp, addedAt: sp.addedAt ?? now })
