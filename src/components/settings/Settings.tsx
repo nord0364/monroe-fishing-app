@@ -466,7 +466,6 @@ export default function Settings({ settings, onUpdate }: Props) {
   const [threshold, setThreshold] = useState(String(settings.sizeThresholdLbs))
   const [googleClientId, setGoogleClientId] = useState(settings.googleClientId ?? '')
   const [showDriveInstructions, setShowDriveInstructions] = useState(false)
-  const [newLure, setNewLure]   = useState('')
   const [saved, setSaved]       = useState(false)
 
   // Pattern intelligence
@@ -546,26 +545,6 @@ export default function Settings({ settings, onUpdate }: Props) {
     document.documentElement.style.setProperty('--base-font-size', `${px}px`)
     try { localStorage.setItem('font-size-px', `${px}px`) } catch {}
     const updated: AppSettings = { ...settings, fontSizeStep: step }
-    await saveSettings(updated)
-    onUpdate(updated)
-  }
-
-  const addLure = async () => {
-    if (!newLure.trim()) return
-    const updated: AppSettings = {
-      ...settings,
-      customLureTypes: [...(settings.customLureTypes ?? []), newLure.trim()],
-    }
-    await saveSettings(updated)
-    onUpdate(updated)
-    setNewLure('')
-  }
-
-  const removeLure = async (lure: string) => {
-    const updated: AppSettings = {
-      ...settings,
-      customLureTypes: settings.customLureTypes.filter(l => l !== lure),
-    }
     await saveSettings(updated)
     onUpdate(updated)
   }
