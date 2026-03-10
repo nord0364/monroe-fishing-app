@@ -772,13 +772,6 @@ function RodForm({ initial, prefilled, aiFields, onSave, onCancel }: {
     onSave(rod)
   }
 
-  const numInput = (label: string, value: string, onChange: (v: string) => void, placeholder: string) => (
-    <div>
-      <label className="block text-xs th-text-muted mb-1 font-medium uppercase tracking-wide">{label}</label>
-      <input type="number" className="w-full th-surface border th-border rounded-xl px-3 py-3 th-text text-base"
-        placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} />
-    </div>
-  )
 
   return (
     <div className="p-4 pb-32 max-w-lg mx-auto">
@@ -1551,7 +1544,7 @@ interface HookScanFlowProps {
   onCancel: () => void
 }
 
-function HookScanFlow({ hookStyleHint, hookTypeHint, apiKey, onComplete, onSkip, onCancel }: HookScanFlowProps) {
+function HookScanFlow({ hookStyleHint: _hookStyleHint, hookTypeHint: _hookTypeHint, apiKey, onComplete, onSkip, onCancel }: HookScanFlowProps) {
   const [scanning, setScanning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
