@@ -13,61 +13,6 @@ import BriefingView from './BriefingView'
 import InSessionGuide from './InSessionGuide'
 import type { AIBriefing } from '../../types'
 
-// ─── Rod ranking ──────────────────────────────────────────────────────────────
-
-function scoreRodForSession(rod: Rod, conditions: EnvironmentalConditions): number {
-  let score = 0
-  const month = new Date().getMonth()     // 0-indexed
-  const waterTemp = conditions.waterTempF ?? 62
-  const clarity   = conditions.waterClarity
-
-  const isCold    = waterTemp < 50
-  const isWarm    = waterTemp >= 65
-  const isPrespawn = month >= 2 && month <= 4   // Mar-May
-  const isFall    = month >= 8 && month <= 10   // Sep-Nov
-
-  // Power match
-  if (rod.power) {
-    const heavy   = ['Heavy', 'Extra Heavy', 'Medium Heavy']
-    const finesse = ['Ultra Light', 'Light', 'Medium Light']
-    if ((isPrespawn || isWarm) && heavy.includes(rod.power))   score += 3
-    if ((isCold || isFall)    && finesse.includes(rod.power))  score += 3
-    if (rod.power === 'Medium')                                 score += 1  // always versatile
-  }
-
-  // Action match
-  if (rod.action) {
-    const reactionActions = ['Fast', 'Extra Fast']
-    const finesseActions  = ['Slow', 'Moderate']
-    if (!isCold && reactionActions.includes(rod.action)) score += 2
-    if (isCold  && finesseActions.includes(rod.action))  score += 2
-  }
-
-  // Line type match to clarity
-  if (rod.lineType && clarity) {
-    if (clarity === 'Clear'   && rod.lineType === 'Fluorocarbon')                   score += 3
-    if (clarity === 'Clear'   && rod.lineType === 'Braid with Fluorocarbon Leader') score += 2
-    if (clarity === 'Stained' && (rod.lineType === 'Braid' || rod.lineType === 'Braid with Fluorocarbon Leader')) score += 2
-    if (clarity === 'Muddy'   && rod.lineType === 'Braid')                          score += 3
-  }
-
-  // Lure weight range vs typical session weight
-  const typicalOz = isCold ? 0.25 : (isWarm ? 0.5 : 0.375)
-  if (rod.lureWeightMinOz != null && rod.lureWeightMaxOz != null) {
-    if (typicalOz >= rod.lureWeightMinOz && typicalOz <= rod.lureWeightMaxOz) score += 3
-    else if (typicalOz >= rod.lureWeightMinOz - 0.125 && typicalOz <= rod.lureWeightMaxOz + 0.125) score += 1
-  }
-
-  return score
-}
-
-function selectRodsForSession(rods: Rod[], count: number, conditions: EnvironmentalConditions): Rod[] {
-  if (rods.length === 0 || count <= 0) return []
-  const scored = rods
-    .map(rod => ({ rod, score: scoreRodForSession(rod, conditions) }))
-    .sort((a, b) => b.score - a.score)
-  return scored.slice(0, Math.min(count, rods.length)).map(s => s.rod)
-}
 
 const BRIEFING_STORAGE_KEY = (sessionId: string) => `briefing-${sessionId}`
 
@@ -89,7 +34,7 @@ interface Props {
   onGoToLogger: () => void
 }
 
-type Step = 'idle' | 'loading' | 'review' | 'generating' | 'ready'
+type Step = 'idle' | 'loading' | 'rod-select' | 'review' | 'generating' | 'ready'
 type DateMode = 'today' | 'tomorrow' | 'custom'
 
 const DOTS = ['', '.', '..', '...']
@@ -132,7 +77,7 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
   const [apiError, setApiError]                     = useState('')
   const [dotIdx, setDotIdx]                         = useState(0)
   const [rodInventory, setRodInventory]             = useState<Rod[]>([])
-  const [rodCount, setRodCount]                     = useState<number>(3)
+  const [selectedRodIds, setSelectedRodIds]         = useState<string[]>([])
 
   // Quick question (on review step)
   const [qaInput, setQaInput]       = useState('')
@@ -239,16 +184,16 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
       setConditions(merged)
       if (merged.baroTrend)          { setBaroTrend(merged.baroTrend); setBaroTrendAuto(true) }
       if (merged.waterLevelVsNormal) { setWaterLevelVsNormal(merged.waterLevelVsNormal); setWaterLevelAuto(true) }
-      setStep('review')
+      setStep(rodInventory.length > 0 ? 'rod-select' : 'review')
     } catch (e) {
       setLoadError(
         isFuture
           ? 'Forecast load failed — you can still set conditions manually below.'
           : 'Some data failed to load — you can still override below.'
       )
-      setStep('review')
+      setStep(rodInventory.length > 0 ? 'rod-select' : 'review')
     }
-  }, [isFuture, targetDate, startHour, endHour])
+  }, [isFuture, targetDate, startHour, endHour, rodInventory.length])
 
   const startSession = async () => {
     if (!settings.anthropicApiKey) { setApiError('Please add your Anthropic API key in Settings first.'); return }
@@ -277,7 +222,7 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
         `Frame all guidance for the planned session time — use future tense ("conditions will favor...", "expect...").`
       : new Date().toLocaleString()
 
-    const selectedRods = selectRodsForSession(rodInventory, rodCount, finalConditions)
+    const selectedRods = rodInventory.filter(r => selectedRodIds.includes(r.id))
 
     const session: Session = {
       id: nanoid(),
@@ -418,6 +363,61 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
             ? `Fetching forecast for ${targetDateLabel}, ${fmtHour(startHour)}–${fmtHour(endHour)}…`
             : 'Fetching weather, moon, and water data…'}
         </p>
+      </div>
+    )
+  }
+
+  // ── Rod selection ────────────────────────────────────────────────────────────
+  if (step === 'rod-select') {
+    return (
+      <div className="p-4 pb-24 max-w-lg mx-auto">
+        <h1 className="text-xl font-bold th-text mb-0.5">Choose Your Rods</h1>
+        <p className="th-text-muted text-sm mb-4">Select the rods you're bringing today</p>
+
+        <div className="space-y-2 mb-6">
+          {rodInventory.map(rod => {
+            const isSelected = selectedRodIds.includes(rod.id)
+            const specs = [
+              rod.power, rod.action, rod.lineType,
+              rod.lineWeightLbs != null ? `${rod.lineWeightLbs}lb` : null,
+              rod.lureWeightMinOz != null && rod.lureWeightMaxOz != null
+                ? `lure ${rod.lureWeightMinOz}–${rod.lureWeightMaxOz}oz` : null,
+            ].filter(Boolean).join(' · ')
+            return (
+              <button
+                key={rod.id}
+                onClick={() => setSelectedRodIds(prev =>
+                  isSelected ? prev.filter(id => id !== rod.id) : [...prev, rod.id]
+                )}
+                className={`w-full text-left p-4 rounded-2xl border transition-colors ${
+                  isSelected
+                    ? 'th-btn-selected border-transparent'
+                    : 'th-surface th-border'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 text-xs ${
+                    isSelected ? 'bg-white/25 border-transparent' : 'border-current opacity-30'
+                  }`}>
+                    {isSelected && '✓'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="th-text font-semibold">{rod.nickname}</div>
+                    {specs && <div className="th-text-muted text-xs mt-0.5 truncate">{specs}</div>}
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        <button
+          onClick={() => setStep('review')}
+          disabled={selectedRodIds.length === 0}
+          className="w-full py-4 th-btn-primary rounded-2xl font-bold text-lg disabled:opacity-40 shadow-lg"
+        >
+          Continue →
+        </button>
       </div>
     )
   }
@@ -573,23 +573,18 @@ export default function PreSessionBriefing({ settings, activeSession, onSessionS
             </div>
           )}
 
-          {rodInventory.length > 0 && (
-            <div className="th-surface rounded-xl border th-border p-4">
-              <label className="section-label">How many rods are you bringing?</label>
-              <div className="flex gap-2 mt-2">
-                {[1, 2, 3, 4, 5, 6].map(n => (
-                  <button key={n} onClick={() => setRodCount(n)}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border ${
-                      rodCount === n ? 'th-btn-primary border-transparent' : 'th-surface th-text'
-                    }`}
-                    style={rodCount !== n ? { borderColor: 'var(--th-border)' } : {}}>
-                    {n}
-                  </button>
-                ))}
-              </div>
-              <p className="th-text-muted text-xs mt-2">
-                The app will select the {Math.min(rodCount, rodInventory.length)} best rod{Math.min(rodCount, rodInventory.length) !== 1 ? 's' : ''} for today's conditions and tell Scout which rod to recommend for each lure.
-              </p>
+          {selectedRodIds.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2.5 th-surface rounded-xl border th-border">
+              <span className="text-sm">🎣</span>
+              <span className="th-text text-sm">
+                {selectedRodIds.length} rod{selectedRodIds.length !== 1 ? 's' : ''} selected
+              </span>
+              <button
+                onClick={() => setStep('rod-select')}
+                className="ml-auto text-xs th-accent-text font-medium"
+              >
+                Change
+              </button>
             </div>
           )}
 

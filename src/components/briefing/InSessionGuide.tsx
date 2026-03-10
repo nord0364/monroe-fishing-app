@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Session, AIBriefing, CatchEvent, LandedFish } from '../../types'
+import type { Session, AIBriefing, CatchEvent, LandedFish, RodBriefing } from '../../types'
 import { getEventsForSession, getLandedFish } from '../../db/database'
 import { chatWithSessionGuide, type ChatMessage } from '../../api/claude'
 import { speakText, cancelSpeech, hasSpeech } from '../../utils/speech'
@@ -165,39 +165,45 @@ export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger
           )}
         </div>
 
-        {/* Compact recs with 🔊 */}
+        {/* Compact recs — rod-organized or legacy flat */}
         <div className="space-y-2">
-          {briefing.recommendations.map(rec => {
-            const open = expandedRec === rec.rank
-            const recText = `${rec.lureType}, ${rec.weight}, ${rec.color}. ${rec.depthBand}. ${rec.retrieveStyle}. ${rec.reasoning}.${rec.suggestedRod ? ` Suggested rod: ${rec.suggestedRod}.` : ''}`
-            const recId = `rec-${rec.rank}`
-            return (
-              <div key={rec.rank} className="th-surface rounded-xl border th-border overflow-hidden">
-                <button onClick={() => setExpandedRec(open ? null : rec.rank)} className="w-full text-left px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${CONFIDENCE_BADGE[rec.confidence] ?? ''}`}>
-                      #{rec.rank}
-                    </span>
-                    <span className="th-text font-semibold text-sm flex-1">{rec.lureType}</span>
-                    <SpeakBtn id={recId} speakingId={speakingId} onPress={() => speak(recText, recId)} />
-                    <span className="th-text-muted text-xs">{open ? '▲' : '▼'}</span>
-                  </div>
-                  <div className="th-text-muted text-xs mt-1 ml-7">
-                    {rec.weight} · {rec.color} · {rec.depthBand}
-                  </div>
-                </button>
-                {open && (
-                  <div className="px-3 pb-3 border-t th-border pt-2 space-y-1.5">
-                    <div className="text-xs th-text-muted grid grid-cols-2 gap-1">
-                      <span><span className="opacity-60">Retrieve: </span>{rec.retrieveStyle}</span>
-                      <span><span className="opacity-60">Column: </span>{rec.waterColumn}</span>
+          {briefing.rodSetups ? (
+            briefing.rodSetups.map(rs => (
+              <RodCardCompact key={rs.rodNickname} rs={rs} speakingId={speakingId} onSpeak={speak} />
+            ))
+          ) : (
+            (briefing.recommendations ?? []).map(rec => {
+              const open = expandedRec === rec.rank
+              const recText = `${rec.lureType}, ${rec.weight}, ${rec.color}. ${rec.depthBand}. ${rec.retrieveStyle}. ${rec.reasoning}.${rec.suggestedRod ? ` Suggested rod: ${rec.suggestedRod}.` : ''}`
+              const recId = `rec-${rec.rank}`
+              return (
+                <div key={rec.rank} className="th-surface rounded-xl border th-border overflow-hidden">
+                  <button onClick={() => setExpandedRec(open ? null : rec.rank)} className="w-full text-left px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${CONFIDENCE_BADGE[rec.confidence] ?? ''}`}>
+                        #{rec.rank}
+                      </span>
+                      <span className="th-text font-semibold text-sm flex-1">{rec.lureType}</span>
+                      <SpeakBtn id={recId} speakingId={speakingId} onPress={() => speak(recText, recId)} />
+                      <span className="th-text-muted text-xs">{open ? '▲' : '▼'}</span>
                     </div>
-                    <p className="th-text text-sm leading-relaxed">{rec.reasoning}</p>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                    <div className="th-text-muted text-xs mt-1 ml-7">
+                      {rec.weight} · {rec.color} · {rec.depthBand}
+                    </div>
+                  </button>
+                  {open && (
+                    <div className="px-3 pb-3 border-t th-border pt-2 space-y-1.5">
+                      <div className="text-xs th-text-muted grid grid-cols-2 gap-1">
+                        <span><span className="opacity-60">Retrieve: </span>{rec.retrieveStyle}</span>
+                        <span><span className="opacity-60">Column: </span>{rec.waterColumn}</span>
+                      </div>
+                      <p className="th-text text-sm leading-relaxed">{rec.reasoning}</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
 
         {/* Strategy sections with 🔊 */}
@@ -300,6 +306,66 @@ export default function InSessionGuide({ session, briefing, apiKey, onGoToLogger
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Compact rod card for on-the-water use ─────────────────────────────────────
+function RodCardCompact({
+  rs, speakingId, onSpeak,
+}: {
+  rs: RodBriefing
+  speakingId: string | null
+  onSpeak: (t: string, id: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const speakId = `rod-${rs.rodNickname}`
+  const speakText = [
+    `${rs.rodNickname}:`,
+    `${rs.primary.lureType}, ${rs.primary.weight}, ${rs.primary.color}. ${rs.primary.depthBand}. ${rs.primary.retrieveStyle}.${rs.primary.trailer ? ` Trailer: ${rs.primary.trailer}.` : ''} ${rs.primary.reasoning}`,
+    rs.backup ? `Backup: ${rs.backup.lureType}, ${rs.backup.color}. ${rs.backup.reasoning}` : null,
+  ].filter(Boolean).join(' ')
+
+  return (
+    <div className="th-surface rounded-xl border th-border overflow-hidden">
+      <button onClick={() => setExpanded(o => !o)} className="w-full text-left px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="th-text-muted text-xs font-bold shrink-0">{rs.rodNickname}</span>
+          {rs.weakMatch && <span className="text-amber-500 text-xs shrink-0">⚠</span>}
+          <span className="th-text font-semibold text-sm flex-1 truncate">{rs.primary.lureType}</span>
+          <SpeakBtn id={speakId} speakingId={speakingId} onPress={() => onSpeak(speakText, speakId)} />
+          <span className="th-text-muted text-xs">{expanded ? '▲' : '▼'}</span>
+        </div>
+        <div className="th-text-muted text-xs mt-1">
+          {rs.primary.weight} · {rs.primary.color} · {rs.primary.depthBand}
+        </div>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 border-t th-border pt-2 space-y-1.5">
+          <div className="text-xs th-text-muted grid grid-cols-2 gap-1">
+            <span><span className="opacity-60">Retrieve: </span>{rs.primary.retrieveStyle}</span>
+            <span><span className="opacity-60">Column: </span>{rs.primary.waterColumn}</span>
+          </div>
+          {rs.primary.trailer && (
+            <div className="text-xs text-emerald-400">+ {rs.primary.trailer}</div>
+          )}
+          <p className="th-text text-sm leading-relaxed">{rs.primary.reasoning}</p>
+          {rs.backup && (
+            <div className="pt-2 border-t th-border">
+              <div className="text-xs font-semibold th-text-muted mb-1">
+                Backup: {rs.backup.lureType}
+              </div>
+              <div className="th-text-muted text-xs">
+                {rs.backup.weight} · {rs.backup.color} · {rs.backup.retrieveStyle}
+              </div>
+              {rs.backup.trailer && (
+                <div className="text-xs text-emerald-400">+ {rs.backup.trailer}</div>
+              )}
+              <p className="th-text text-xs leading-relaxed mt-1">{rs.backup.reasoning}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

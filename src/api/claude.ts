@@ -6,6 +6,92 @@ function buildClientWithKey(apiKey: string) {
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
 }
 
+// ─── Rod-lure inventory matching helpers ──────────────────────────────────────
+
+function parseLureWeightOz(weight?: string): number | null {
+  if (!weight) return null
+  if (weight.toLowerCase() === 'weightless') return 0
+  const frac = weight.match(/(\d+)\/(\d+)/)
+  if (frac) return parseInt(frac[1]) / parseInt(frac[2])
+  const dec = weight.match(/([\d.]+)/)
+  if (dec) return parseFloat(dec[1])
+  return null
+}
+
+// Lure types that accept a soft plastic trailer, mapped to compatible body styles
+const TRAILER_COMPATIBLE: Record<string, string[]> = {
+  'Jig':          ['Craw', 'Creature', 'Paddle Tail'],
+  'Swim Jig':     ['Paddle Tail', 'Swimbait Body'],
+  'Football Jig': ['Craw', 'Creature'],
+  'Flipping Jig': ['Craw', 'Creature'],
+  'Finesse Jig':  ['Craw', 'Creature', 'Finesse Worm', 'Ned/TRD'],
+  'Casting Jig':  ['Craw', 'Creature'],
+  'Spinnerbait':  ['Paddle Tail', 'Swimbait Body'],
+  'Chatterbait':  ['Paddle Tail', 'Craw', 'Swimbait Body'],
+  'Buzzbait':     ['Swimbait Body', 'Paddle Tail'],
+  'Swimbait':     ['Swimbait Body', 'Paddle Tail'],
+}
+
+function buildRodInventoryBlock(
+  selectedRods: Rod[],
+  lures: OwnedLure[],
+  softPlastics: SoftPlastic[],
+): string {
+  if (selectedRods.length === 0) return ''
+
+  const activeLures   = lures.filter(l => (l.category ?? 'lure') !== 'hook' && l.condition !== 'Retired')
+  const availableSPs  = softPlastics.filter(s => s.condition !== 'Out')
+
+  const lines: string[] = ['\nROD-LURE COMPATIBILITY (pre-computed from inventory — use these options when assigning setups to rods):']
+
+  for (const rod of selectedRods) {
+    const specs = [
+      rod.power, rod.action, rod.lineType,
+      rod.lineWeightLbs != null ? `${rod.lineWeightLbs}lb` : null,
+      rod.lureWeightMinOz != null && rod.lureWeightMaxOz != null
+        ? `lure ${rod.lureWeightMinOz}–${rod.lureWeightMaxOz}oz` : null,
+    ].filter(Boolean).join(', ')
+
+    // Compatible = weight in rod's range (±1/16 oz tolerance) or no weight data
+    const compatible = activeLures.filter(l => {
+      const wOz = parseLureWeightOz(l.weight)
+      if (wOz === null) return true
+      if (rod.lureWeightMinOz == null || rod.lureWeightMaxOz == null) return true
+      return wOz >= rod.lureWeightMinOz - 0.0625 && wOz <= rod.lureWeightMaxOz + 0.0625
+    })
+
+    lines.push(`\n"${rod.nickname}"${specs ? ` (${specs})` : ''}:`)
+
+    if (compatible.length === 0) {
+      lines.push('  No inventory lures match this rod\'s weight range.')
+    } else {
+      for (const lure of compatible.slice(0, 8)) {
+        const lureStr = [
+          lure.lureType ?? 'Lure',
+          lure.weight,
+          lure.color,
+          lure.brand ? `(${lure.brand})` : null,
+        ].filter(Boolean).join(' ')
+
+        const compatStyles = TRAILER_COMPATIBLE[lure.lureType ?? '']
+        const trailers = compatStyles
+          ? availableSPs.filter(sp => sp.bodyStyle && compatStyles.includes(sp.bodyStyle))
+          : []
+        const trailerStr = trailers.length > 0
+          ? ` → trailers: ${trailers.slice(0, 3).map(sp =>
+              [sp.colorName ?? sp.colorFamily, sp.bodyStyle, sp.sizeInches != null ? `${sp.sizeInches}"` : null]
+                .filter(Boolean).join(' ')
+            ).join(', ')}`
+          : ''
+
+        lines.push(`  • ${lureStr}${trailerStr}`)
+      }
+    }
+  }
+
+  return lines.join('\n')
+}
+
 // ─── Pre-Session Briefing ──────────────────────────────────────────────────────
 
 export async function generatePreSessionBriefing(
@@ -116,25 +202,55 @@ Seasonal notes: ${fmtSeasonalNotes(launchCtx)}${launchCtx.detailedSummary.starts
   userParts.push(`\nCATCH HISTORY (${historyNote}):\n${catchSummary || 'No catch history yet.'}`)
 
   if (selectedRods && selectedRods.length > 0) {
-    const selLines = selectedRods.map(r => {
-      const specs = [
-        r.rodType,
-        r.power,
-        r.action,
-        r.lengthFt != null ? `${r.lengthFt}'${r.lengthIn ? `${r.lengthIn}"` : ''}` : null,
-        r.lineType,
-        r.lineWeightLbs != null ? `${r.lineWeightLbs}lb` : null,
-        r.lureWeightMinOz != null && r.lureWeightMaxOz != null ? `lure ${r.lureWeightMinOz}–${r.lureWeightMaxOz}oz` : null,
-        r.reelName ? `reel: ${r.reelName}` : null,
-      ].filter(Boolean).join(', ')
-      return `- "${r.nickname}": ${specs || 'no specs recorded'}`
-    }).join('\n')
-    userParts.push(`\nRODS THE ANGLER IS BRINGING TODAY (selected by app based on conditions):\n${selLines}\n\nIMPORTANT ROD INSTRUCTION: In the "suggestedRod" field for each recommendation, specify the rod nickname EXACTLY as listed above. Do not say "a medium heavy rod" — use the exact nickname. Match each lure to the best rod from this list based on lure weight, technique, and line type.`)
-  } else if (allRods && allRods.length > 0) {
-    userParts.push(`\nFor each recommendation, include a "suggestedRod" field with the nickname of the best matching rod from the Full Rod Inventory.`)
-  }
+    // Rod-organized format: pre-compute inventory matches and request per-rod setups
+    const rodInventoryBlock = buildRodInventoryBlock(selectedRods, ownedLures ?? [], softPlastics ?? [])
+    userParts.push(rodInventoryBlock)
 
-  userParts.push(`
+    userParts.push(`
+Respond with ONLY valid JSON — no markdown, no code fences, no explanation before or after. Use this exact structure:
+{
+  "rodSetups": [
+    {
+      "rodNickname": "string (EXACT nickname from the rods listed above)",
+      "primary": {
+        "lureType": "string",
+        "weight": "string",
+        "color": "string",
+        "retrieveStyle": "string",
+        "waterColumn": "string",
+        "depthBand": "string",
+        "trailer": "string (only if matching soft plastic exists in inventory, e.g. 'Green Pumpkin Craw 3\\"' — omit otherwise)",
+        "reasoning": "string (2-3 sentences — specific and actionable)"
+      },
+      "backup": {
+        "lureType": "string",
+        "weight": "string",
+        "color": "string",
+        "retrieveStyle": "string",
+        "waterColumn": "string",
+        "depthBand": "string",
+        "trailer": "string (omit if no matching trailer)",
+        "reasoning": "string (1-2 sentences)"
+      },
+      "weakMatch": false,
+      "weakMatchReason": "string (only include if weakMatch is true — e.g. 'Heavy power rod less ideal for cold-water finesse')"
+    }
+  ],
+  "conditionsSummary": "string (1 sentence: the single most important condition factor today and why)",
+  "startingArea": "string (2-3 sentences: exactly where to start from ${launchSite}, which direction, what structure to target first)",
+  "primaryPattern": "string (2-3 sentences: the core technique to rely on today and when to use it)",
+  "backupPattern": "string (2-3 sentences: what to switch to if primary isn't producing, trigger for the switch)",
+  "narrative": "string (1-2 sentences: any notable observations or timing windows the angler should know)"
+}
+
+Provide one rodSetup entry per rod. Prioritize lures the angler owns (from the compatibility block). Be specific and data-driven where history supports it.`)
+  } else {
+    // No rods selected — use flat recommendations format
+    if (allRods && allRods.length > 0) {
+      userParts.push(`\nFor each recommendation, include a "suggestedRod" field with the nickname of the best matching rod from the Full Rod Inventory.`)
+    }
+
+    userParts.push(`
 Respond with ONLY valid JSON — no markdown, no code fences, no explanation before or after. Use this exact structure:
 {
   "recommendations": [
@@ -160,6 +276,7 @@ Respond with ONLY valid JSON — no markdown, no code fences, no explanation bef
 }
 
 Provide 2-3 ranked recommendations. Be specific and data-driven where history supports it.`)
+  }
 
   const prompt = userParts.join('\n')
 
@@ -178,7 +295,7 @@ Provide 2-3 ranked recommendations. Be specific and data-driven where history su
     let fullText = ''
     const stream = client.messages.stream({
       model: 'claude-opus-4-6',
-      max_tokens: 2000,
+      max_tokens: 3000,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
     })
@@ -194,7 +311,7 @@ Provide 2-3 ranked recommendations. Be specific and data-driven where history su
   } else {
     const response = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 2000,
+      max_tokens: 3000,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
     })
@@ -265,9 +382,13 @@ export async function* chatWithSessionGuide(
 ): AsyncGenerator<string> {
   const client = buildClientWithKey(apiKey)
 
-  const recSummary = briefing.recommendations.map(r =>
-    `#${r.rank} ${r.confidence}: ${r.lureType} (${r.weight}, ${r.color}) — ${r.depthBand}, ${r.waterColumn}, ${r.retrieveStyle}`
-  ).join('\n')
+  const recSummary = briefing.rodSetups && briefing.rodSetups.length > 0
+    ? briefing.rodSetups.map(rs =>
+        `${rs.rodNickname}: ${rs.primary.lureType} (${rs.primary.weight}, ${rs.primary.color}) — ${rs.primary.depthBand}, ${rs.primary.waterColumn}, ${rs.primary.retrieveStyle}${rs.backup ? ` | Backup: ${rs.backup.lureType} (${rs.backup.color})` : ''}`
+      ).join('\n')
+    : (briefing.recommendations ?? []).map(r =>
+        `#${r.rank} ${r.confidence}: ${r.lureType} (${r.weight}, ${r.color}) — ${r.depthBand}, ${r.waterColumn}, ${r.retrieveStyle}`
+      ).join('\n')
 
   const eventSummary = sessionEvents.length
     ? sessionEvents.map(e => {

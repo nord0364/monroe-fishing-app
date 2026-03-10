@@ -437,8 +437,30 @@ export interface PersonalBestPin {
 
 // ─── AI Response ─────────────────────────────────────────────────────────────
 
+export interface RodSetupBlock {
+  lureType: string
+  weight: string
+  color: string
+  retrieveStyle: string
+  waterColumn: string
+  depthBand: string
+  trailer?: string       // e.g. "Green Pumpkin Craw 3\"" — only when matching SP in inventory
+  reasoning: string
+}
+
+export interface RodBriefing {
+  rodNickname: string
+  primary: RodSetupBlock
+  backup?: RodSetupBlock
+  weakMatch?: boolean        // true if rod isn't ideal for conditions
+  weakMatchReason?: string
+}
+
 export interface AIBriefing {
-  recommendations: BriefingRecommendation[]
+  // New rod-organized format (present when user selected rods)
+  rodSetups?: RodBriefing[]
+  // Legacy flat format (present for old sessions or no-rods case)
+  recommendations?: BriefingRecommendation[]
   conditionsSummary?: string
   startingArea?: string
   primaryPattern?: string
