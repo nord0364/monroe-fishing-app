@@ -611,7 +611,7 @@ export default function Settings({ settings, onUpdate }: Props) {
               className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 (settings.readResponsesAloud ?? false)
                   ? 'bg-[color:var(--th-accent-text)] text-white'
-                  : 'bg-[color:var(--th-surface-deep)] border th-border th-text-muted'
+                  : 'bg-gray-400 text-white'
               }`}
               aria-label="Toggle read responses aloud"
             >
@@ -667,27 +667,6 @@ export default function Settings({ settings, onUpdate }: Props) {
         {saved ? '✓ Saved' : 'Save Settings'}
       </button>
 
-      {/* ── Custom lure types ────────────────────────────────────────────── */}
-      <div className="th-surface rounded-xl p-4 border th-border space-y-3">
-        <h2 className="font-semibold th-text text-sm">Custom Lure Types</h2>
-        <p className="th-text-muted text-xs">Add lure types not in the default list for the catch logger.</p>
-        {(settings.customLureTypes ?? []).map(lure => (
-          <div key={lure} className="flex items-center justify-between">
-            <span className="th-text text-sm">{lure}</span>
-            <button onClick={() => removeLure(lure)} className="text-red-400 text-sm px-2 py-1">Remove</button>
-          </div>
-        ))}
-        <div className="flex gap-2">
-          <input
-            className="flex-1 th-surface-deep border th-border rounded-lg px-3 py-2.5 th-text text-sm"
-            placeholder="e.g. Ned Rig"
-            value={newLure}
-            onChange={e => setNewLure(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addLure()}
-          />
-          <button onClick={addLure} className="px-4 py-2 th-surface-deep border th-border rounded-lg th-text text-sm font-medium">Add</button>
-        </div>
-      </div>
 
       {/* ── Catch Data ───────────────────────────────────────────────────── */}
       <div className="th-surface rounded-xl p-4 border th-border">
