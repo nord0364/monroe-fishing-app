@@ -820,11 +820,23 @@ export async function identifySoftPlastic(
   const SP_COLOR_FAMILIES = ['Black and Blue', 'Brown', 'Chartreuse', 'Green Pumpkin', 'Natural', 'Smoke', 'Watermelon', 'White', 'Other']
   const SP_RIGGING_STYLES = ['Drop Shot', 'Freeform', 'Ned', 'Shaky Head', 'Swimhead', 'Texas', 'Wacky', 'Other']
 
-  const systemPrompt = `You are identifying a fishing soft plastic bait from an image. The image may show original packaging, a loose bait, or both. Extract as many of the following fields as you can determine with reasonable confidence: brand name, product name, body style (choose from: ${SP_BODY_STYLES.join(', ')}), size in inches, color name as printed or described, color family (choose from: ${SP_COLOR_FAMILIES.join(', ')}), quantity if shown on packaging, hook size recommendation if printed, whether it appears to be hand poured (yes/no/unknown), and any rigging style indicators (choose from: ${SP_RIGGING_STYLES.join(', ')}). Return only a JSON object with these fields and a confidence value of "high", "medium", or "low" for each. Do not include any explanation or preamble.`
+  const systemPrompt = `You are identifying a fishing soft plastic bait from an image. The image may show original packaging, a loose bait, or both. Extract every field you can determine with reasonable confidence. Return ONLY a compact JSON object — no prose, no markdown — with these exact keys, each as {"value":...,"confidence":"high"|"medium"|"low"}:
+- brand (string)
+- productName (string)
+- bodyStyle (one of: ${SP_BODY_STYLES.join(', ')})
+- sizeInches (number)
+- colorName (string — as printed or described)
+- colorFamily (one of: ${SP_COLOR_FAMILIES.join(', ')})
+- quantity (number — count per pack if visible)
+- hookSizeRecommendation (string — e.g. "3/0" if printed)
+- handPoured (boolean — true/false/omit if unknown)
+- riggingStyles (array of: ${SP_RIGGING_STYLES.join(', ')})
+
+Omit any field you cannot determine. Output the JSON object immediately with no text before or after it.`
 
   const response = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 400,
+    max_tokens: 800,
     system: systemPrompt,
     messages: [{
       role: 'user',
