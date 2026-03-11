@@ -213,7 +213,7 @@ Respond with ONLY valid JSON — no markdown, no code fences, no explanation bef
     {
       "rodNickname": "string (EXACT nickname from the rods listed above)",
       "primary": {
-        "lureType": "string",
+        "lureType": "string (if recommending a jig, specify the type: Casting Jig, Finesse Jig, Flipping Jig, Football Jig, or Swim Jig — never just 'Jig')",
         "weight": "string",
         "color": "string",
         "retrieveStyle": "string",
@@ -223,7 +223,7 @@ Respond with ONLY valid JSON — no markdown, no code fences, no explanation bef
         "reasoning": "string (2-3 sentences — specific and actionable)"
       },
       "backup": {
-        "lureType": "string",
+        "lureType": "string (if a jig, specify: Casting Jig, Finesse Jig, Flipping Jig, Football Jig, or Swim Jig)",
         "weight": "string",
         "color": "string",
         "retrieveStyle": "string",
@@ -256,7 +256,7 @@ Respond with ONLY valid JSON — no markdown, no code fences, no explanation bef
   "recommendations": [
     {
       "rank": 1,
-      "lureType": "string",
+      "lureType": "string (if recommending a jig, specify the type: Casting Jig, Finesse Jig, Flipping Jig, Football Jig, or Swim Jig — never just 'Jig')",
       "weight": "string",
       "color": "string",
       "retrieveStyle": "string",
@@ -400,7 +400,7 @@ export async function* chatWithSessionGuide(
       }).filter(Boolean).join('\n')
     : 'No events logged yet this session.'
 
-  const systemPrompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington, Indiana. The angler is ON THE WATER RIGHT NOW during an active session. Give specific, concise, actionable advice. The angler has limited attention — keep answers to 3-5 sentences max unless they ask for more detail.
+  const systemPrompt = `You are an expert largemouth bass fishing guide for Lake Monroe, Bloomington, Indiana. The angler is ON THE WATER RIGHT NOW during an active session. Give specific, concise, actionable advice. The angler has limited attention — keep answers to 3-5 sentences max unless they ask for more detail. When recommending a jig, always specify the exact type (Casting Jig, Finesse Jig, Flipping Jig, Football Jig, or Swim Jig) — never just say "jig".
 
 TODAY'S CONDITIONS:
 - Launch site: ${launchSite}
