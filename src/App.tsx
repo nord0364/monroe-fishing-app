@@ -5,8 +5,9 @@ import { FONT_SIZE_STEPS, DEFAULT_FONT_STEP } from './constants'
 import { getSettings, saveSettings, exportAllDataFull, runTackleStoreMigration, runOwnedLureDataMigration } from './db/database'
 import {
   loadGoogleIdentityServices, syncToGoogleDrive,
-  setQueuedSyncProvider, DEFAULT_CLIENT_ID,
+  setQueuedSyncProvider, setPostSyncHook, DEFAULT_CLIENT_ID,
 } from './api/googleDrive'
+import { processPendingTacklePhotoUploads } from './utils/tacklePhotoSync'
 import { fetchMoonData } from './api/moon'
 import BottomNav from './components/layout/BottomNav'
 import type { NavTab } from './components/layout/BottomNav'
@@ -93,6 +94,15 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false)
   // Post-session Guide overlay — opened via Analyze button in PostSessionReview
   const [postSessionGuideSession, setPostSessionGuideSession] = useState<Session | null>(null)
+  // Toast notification
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 5_000)
+  }, [])
 
   useEffect(() => {
     Promise.all([getSettings(), runTackleStoreMigration(), runOwnedLureDataMigration()]).then(([s]) => {
@@ -105,6 +115,18 @@ export default function App() {
     const clientId = settings.googleClientId?.trim() || DEFAULT_CLIENT_ID
     loadGoogleIdentityServices(clientId).catch(() => {})
   }, [ready, settings.googleClientId])
+
+  // Register post-Drive-sync hook for pending tackle photo uploads + migration
+  useEffect(() => {
+    setPostSyncHook(async () => {
+      const result = await processPendingTacklePhotoUploads()
+      if (result.failed > 0) {
+        showToast('One or more tackle photos could not be uploaded to Google Drive. They will be retried next time you are online.')
+      } else if (result.migrated > 0) {
+        showToast('Your tackle photos have been backed up to Google Drive.')
+      }
+    })
+  }, [showToast])
 
   useEffect(() => {
     setQueuedSyncProvider(() => exportAllDataFull())
@@ -243,6 +265,13 @@ export default function App() {
   return (
     <div className="th-base min-h-screen th-text">
       <OfflineBanner />
+
+      {/* Toast notifications */}
+      {toast && (
+        <div className="fixed bottom-20 left-4 right-4 z-50 bg-gray-800 text-white px-4 py-3 rounded-2xl text-sm shadow-lg leading-snug">
+          {toast}
+        </div>
+      )}
 
       {showSessionBanner && (
         <button

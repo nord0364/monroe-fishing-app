@@ -402,6 +402,9 @@ export interface OwnedLure {
   spoonStyle?: SpoonStyle
   // Shared
   photoDataUrl?: string
+  drivePhotoFileId?: string      // Drive file ID after successful upload
+  photoPendingUpload?: boolean   // true = has photoDataUrl waiting for Drive upload
+  photoUploadAttempts?: number   // retry counter; stop retrying after 3
   notes?: string
   addedAt: number
 }

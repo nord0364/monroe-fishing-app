@@ -632,7 +632,12 @@ export async function exportAllDataJSON(): Promise<string> {
     version: 4,
     sessions,
     events,
-    ownedLures:   ownedLures.map(l => ({ ...l, photoDataUrl: l.photoDataUrl ? '[photo]' : undefined })),
+    ownedLures:   ownedLures.map(l => ({
+      ...l,
+      photoDataUrl:        l.photoDataUrl ? '[photo]' : undefined,
+      photoPendingUpload:  undefined,
+      photoUploadAttempts: undefined,
+    })),
     rodSetups:    rodSetups.map(r => ({ ...r, photoDataUrl: r.photoDataUrl ? '[photo]' : undefined })),
     rods,
     softPlastics,
@@ -646,7 +651,12 @@ export async function exportTackleJSON(): Promise<string> {
   return JSON.stringify({
     exportedAt: new Date().toISOString(),
     version: 1,
-    tackle: lures.map(l => ({ ...l, photoDataUrl: l.photoDataUrl ? '[photo]' : undefined })),
+    tackle: lures.map(l => ({
+      ...l,
+      photoDataUrl:        l.photoDataUrl ? '[photo]' : undefined,
+      photoPendingUpload:  undefined,
+      photoUploadAttempts: undefined,
+    })),
   }, null, 2)
 }
 
@@ -757,8 +767,8 @@ export async function replaceAllData(
     // placeholder and restore the inventory record without the photo rather
     // than silently discarding the whole entry.
     const input: OwnedLure = photoField === '[photo]'
-      ? { ...l, addedAt: l.addedAt ?? now, photoDataUrl: undefined }
-      : { ...l, addedAt: l.addedAt ?? now }
+      ? { ...l, addedAt: l.addedAt ?? now, photoDataUrl: undefined, photoPendingUpload: undefined, photoUploadAttempts: undefined }
+      : { ...l, addedAt: l.addedAt ?? now, photoPendingUpload: undefined, photoUploadAttempts: undefined }
     if (photoField === '[photo]') {
       console.log(`[restore] photo placeholder stripped for id=${l.id} — entry will still be restored`)
     }
@@ -824,8 +834,8 @@ export async function bulkImportData(data: {
   for (const l of data.ownedLures ?? []) {
     const lPhoto = (l as OwnedLure & { photoDataUrl?: string }).photoDataUrl
     const base: OwnedLure = lPhoto === '[photo]'
-      ? { ...l, addedAt: l.addedAt ?? now, photoDataUrl: undefined }
-      : { ...l, addedAt: l.addedAt ?? now }
+      ? { ...l, addedAt: l.addedAt ?? now, photoDataUrl: undefined, photoPendingUpload: undefined, photoUploadAttempts: undefined }
+      : { ...l, addedAt: l.addedAt ?? now, photoPendingUpload: undefined, photoUploadAttempts: undefined }
     const normalized = normalizeLegacyOwnedLure(base)
     if (normalized !== null) await db.put('ownedLures', normalized)
   }

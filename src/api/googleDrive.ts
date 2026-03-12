@@ -3,13 +3,15 @@
 
 export const DEFAULT_CLIENT_ID = '739245351229-s64vg3piu45jrhg98ovqi7ik51k5rfpm.apps.googleusercontent.com'
 
-const SCOPE            = 'https://www.googleapis.com/auth/drive.file'
-const FOLDER_NAME      = 'Monroe Fishing App'
-const FILE_PREFIX      = 'monroe-fishing-backup-'
-const FOLDER_KEY       = 'gdrive_folder_id'
-const CONNECTED_KEY    = 'gdrive_connected'
-const LAST_SYNC_KEY    = 'gdrive_last_sync'
-const SYNC_QUEUED_KEY  = 'gdrive_sync_queued'
+const SCOPE              = 'https://www.googleapis.com/auth/drive.file'
+const FOLDER_NAME        = 'Monroe Fishing App'
+const TACKLE_FOLDER_NAME = 'Tackle'
+const FILE_PREFIX        = 'monroe-fishing-backup-'
+const FOLDER_KEY         = 'gdrive_folder_id'
+const TACKLE_FOLDER_KEY  = 'gdrive_tackle_folder_id'
+const CONNECTED_KEY      = 'gdrive_connected'
+const LAST_SYNC_KEY      = 'gdrive_last_sync'
+const SYNC_QUEUED_KEY    = 'gdrive_sync_queued'
 
 // ── Type shims ────────────────────────────────────────────────────────────────
 interface GTokenResponse {
@@ -54,8 +56,11 @@ let _tc:      GTokenClient | null = null
 let _token:   string | null       = null
 let _expiry:  number              = 0
 let _folder:  string | null       = localStorage.getItem(FOLDER_KEY)
+let _tackleFolder: string | null  = localStorage.getItem(TACKLE_FOLDER_KEY)
 let _inflight = false
 let _onlineListenerAdded = false
+let _postSyncHook: (() => Promise<void>) | null = null
+const _photoCache = new Map<string, string>()  // fileId → blob URL (session cache)
 
 // Derive initial status from localStorage flags
 let _status: DriveStatus = (() => {
@@ -81,6 +86,10 @@ export const hasSyncQueued = (): boolean => !!localStorage.getItem(SYNC_QUEUED_K
 
 export function setQueuedSyncProvider(fn: () => Promise<string>) {
   _dataProvider = fn
+}
+
+export function setPostSyncHook(fn: () => Promise<void>) {
+  _postSyncHook = fn
 }
 
 export function onDriveStatusChange(cb: (s: DriveStatus) => void): () => void {
@@ -173,10 +182,12 @@ export function connectGoogleDrive(): Promise<void> {
 }
 
 export function disconnectGoogleDrive() {
-  _token  = null
-  _expiry = 0
-  _folder = null
+  _token        = null
+  _expiry       = 0
+  _folder       = null
+  _tackleFolder = null
   localStorage.removeItem(FOLDER_KEY)
+  localStorage.removeItem(TACKLE_FOLDER_KEY)
   localStorage.removeItem(CONNECTED_KEY)
   localStorage.removeItem(SYNC_QUEUED_KEY)
   localStorage.removeItem(LAST_SYNC_KEY)
@@ -218,6 +229,102 @@ async function getOrCreateFolder(): Promise<string> {
   _folder  = cd.id
   localStorage.setItem(FOLDER_KEY, _folder)
   return _folder
+}
+
+// ── Tackle photo folder ────────────────────────────────────────────────────────
+async function getOrCreateTackleFolder(): Promise<string> {
+  if (_tackleFolder) return _tackleFolder
+  const root = await getOrCreateFolder()
+  const q = encodeURIComponent(
+    `name='${TACKLE_FOLDER_NAME}' and '${root}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  )
+  const sr = await authedGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`)
+  const sd = await sr.json() as { files?: { id: string }[] }
+  if (sd.files?.length) {
+    _tackleFolder = sd.files[0].id
+    localStorage.setItem(TACKLE_FOLDER_KEY, _tackleFolder)
+    return _tackleFolder
+  }
+  const cr = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${_token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ name: TACKLE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: [root] }),
+  })
+  const cd = await cr.json() as { id: string }
+  _tackleFolder = cd.id
+  localStorage.setItem(TACKLE_FOLDER_KEY, _tackleFolder)
+  return _tackleFolder
+}
+
+// ── Photo upload ───────────────────────────────────────────────────────────────
+export async function uploadTacklePhoto(
+  itemId: string,
+  imageDataUrl: string,
+  existingFileId?: string,
+): Promise<string> {
+  if (!hasValidToken()) throw new Error('Drive token expired')
+
+  // Delete old file first (fire-and-forget; ignore 404s)
+  if (existingFileId) {
+    try { await deleteDriveFile(existingFileId) } catch { /* ignore */ }
+  }
+
+  const folder   = await getOrCreateTackleFolder()
+  const filename = `tackle-${itemId}.jpg`
+
+  // Convert data URL to raw bytes
+  const base64 = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : imageDataUrl
+  const binary  = atob(base64)
+  const bytes   = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+  // Build multipart body (metadata + binary image)
+  const boundary = 'tackle_photo_' + Date.now()
+  const meta     = JSON.stringify({ name: filename, mimeType: 'image/jpeg', parents: [folder] })
+  const enc      = new TextEncoder()
+  const metaBlock  = enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`)
+  const imgHeader  = enc.encode(`--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`)
+  const endBlock   = enc.encode(`\r\n--${boundary}--`)
+  const body = new Uint8Array(metaBlock.length + imgHeader.length + bytes.length + endBlock.length)
+  let off = 0
+  body.set(metaBlock, off);  off += metaBlock.length
+  body.set(imgHeader, off);  off += imgHeader.length
+  body.set(bytes, off);      off += bytes.length
+  body.set(endBlock, off)
+
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${_token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  })
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+  const data = await res.json() as { id: string }
+  return data.id
+}
+
+// ── Photo delete ───────────────────────────────────────────────────────────────
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  if (!hasValidToken()) return
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method:  'DELETE',
+    headers: { Authorization: `Bearer ${_token}` },
+  })
+  if (!res.ok && res.status !== 204 && res.status !== 404) throw new Error(`Delete failed: ${res.status}`)
+}
+
+// ── Photo download (returns blob URL, cached for session) ──────────────────────
+export async function downloadDrivePhoto(fileId: string): Promise<string> {
+  const cached = _photoCache.get(fileId)
+  if (cached) return cached
+  if (!hasValidToken()) throw new Error('Drive token expired')
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${_token}` },
+  })
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`)
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  _photoCache.set(fileId, url)
+  return url
 }
 
 // ── Filename ──────────────────────────────────────────────────────────────────
@@ -314,6 +421,8 @@ export async function syncToGoogleDrive(jsonData: string): Promise<void> {
 
     localStorage.setItem(LAST_SYNC_KEY, String(Date.now()))
     setStatus('connected')
+    // Run pending tackle photo uploads after a successful JSON backup
+    if (_postSyncHook) { _postSyncHook().catch(() => {}) }
   } catch {
     localStorage.setItem(SYNC_QUEUED_KEY, '1')
     setStatus('error')

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type {
   OwnedLure, TackleCategory, TackleOrigin, TackleCondition, HookStyle,
   AppSettings, Rod, RodType, RodPower, RodAction, RodLineType,
@@ -17,6 +17,8 @@ import {
   type LureIdentification, type LureScanResult, type HookIdentification, type RodScanResult,
 } from '../../api/claude'
 import { SP_BODY_STYLES, SP_COLOR_FAMILIES, SP_RIGGING_STYLES, SP_CONDITIONS } from '../../constants'
+import { attemptTacklePhotoUpload, downloadDrivePhoto } from '../../utils/tacklePhotoSync'
+import { getDriveStatus } from '../../api/googleDrive'
 
 // ─── Rod constants ─────────────────────────────────────────────────────────────
 const ROD_TYPES:      RodType[]    = ['Baitcasting', 'Spinning']
@@ -469,9 +471,10 @@ interface PhotoSectionProps {
   setPhoto: (v: string) => void
   apiKey?: string
   onAiSuggestion: (s: LureIdentification) => void
+  onViewPhoto?: (src: string) => void
 }
 
-function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionProps) {
+function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion, onViewPhoto }: PhotoSectionProps) {
   const [analyzing, setAnalyzing] = useState(false)
   const [suggestion, setSuggestion] = useState<LureIdentification | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -503,11 +506,17 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-3">
-        <div className="relative w-20 h-20 shrink-0">
+        <div className="relative w-[120px] h-[120px] shrink-0">
           {photo ? (
-            <img src={photo} className="w-20 h-20 rounded-xl object-cover" alt="" />
+            <button
+              className="w-[120px] h-[120px] rounded-xl overflow-hidden focus:outline-none"
+              onClick={() => onViewPhoto?.(photo)}
+              aria-label="View photo fullscreen"
+            >
+              <img src={photo} className="w-full h-full object-cover" alt="" />
+            </button>
           ) : (
-            <div className="w-20 h-20 rounded-xl th-surface-deep flex items-center justify-center text-3xl">📸</div>
+            <div className="w-[120px] h-[120px] rounded-xl th-surface-deep flex items-center justify-center text-4xl">📸</div>
           )}
           {analyzing && (
             <div className="absolute inset-0 rounded-xl bg-black/60 flex flex-col items-center justify-center gap-1">
@@ -560,6 +569,126 @@ function PhotoSection({ photo, setPhoto, apiKey, onAiSuggestion }: PhotoSectionP
   )
 }
 
+// ─── Photo viewer (full-screen overlay) ───────────────────────────────────────
+
+interface PhotoViewerProps {
+  src: string
+  label: string
+  onClose: () => void
+}
+
+function PhotoViewer({ src, label, onClose }: PhotoViewerProps) {
+  const [scale, setScale]     = useState(1)
+  const lastTapRef            = useRef(0)
+  const startYRef             = useRef<number | null>(null)
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  const handleDoubleTap = useCallback(() => {
+    const now = Date.now()
+    if (now - lastTapRef.current < 300) {
+      setScale(s => s === 1 ? 2 : 1)
+    }
+    lastTapRef.current = now
+  }, [])
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    startYRef.current = e.touches[0].clientY
+  }
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (scale !== 1 || startYRef.current === null) return
+    const dy = e.changedTouches[0].clientY - startYRef.current
+    if (dy > 80) onClose()
+    startYRef.current = null
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black flex flex-col"
+      onClick={e => { if (e.target === e.currentTarget && scale === 1) onClose() }}
+    >
+      {/* Close button */}
+      <div className="absolute top-4 right-4 z-10">
+        <button
+          onClick={onClose}
+          className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center text-white text-xl font-bold"
+          aria-label="Close"
+        >✕</button>
+      </div>
+
+      {/* Photo */}
+      <div
+        className="flex-1 flex items-center justify-center overflow-hidden"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onClick={handleDoubleTap}
+      >
+        <img
+          src={src}
+          alt={label}
+          className="max-w-full max-h-full object-contain select-none"
+          style={{
+            transform: `scale(${scale})`,
+            transition: 'transform 0.2s ease',
+            cursor: scale > 1 ? 'zoom-out' : 'zoom-in',
+          }}
+          draggable={false}
+        />
+      </div>
+
+      {/* Label */}
+      <div className="px-4 py-3 text-center">
+        <p className="text-white/80 text-xs truncate">{label}</p>
+        {scale === 1 && (
+          <p className="text-white/40 text-xs mt-0.5">Double-tap to zoom · swipe down to close</p>
+        )}
+        {scale > 1 && (
+          <p className="text-white/40 text-xs mt-0.5">Double-tap to zoom out · tap ✕ to close</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Hook: resolve photo URL (local first, then Drive) ─────────────────────────
+
+function useTacklePhoto(item: OwnedLure): {
+  url: string | null
+  driveError: 'expired' | 'offline' | 'broken' | null
+} {
+  const [url,        setUrl]        = useState<string | null>(item.photoDataUrl ?? null)
+  const [driveError, setDriveError] = useState<'expired' | 'offline' | 'broken' | null>(null)
+
+  useEffect(() => {
+    if (item.photoDataUrl) {
+      setUrl(item.photoDataUrl)
+      setDriveError(null)
+      return
+    }
+    if (!item.drivePhotoFileId) {
+      setUrl(null)
+      return
+    }
+    setDriveError(null)
+    downloadDrivePhoto(item.drivePhotoFileId)
+      .then(blobUrl => { setUrl(blobUrl); setDriveError(null) })
+      .catch(() => {
+        setUrl(null)
+        const status = getDriveStatus()
+        if (status === 'expired')      setDriveError('expired')
+        else if (!navigator.onLine)    setDriveError('offline')
+        else                           setDriveError('broken')
+      })
+  }, [item.photoDataUrl, item.drivePhotoFileId])
+
+  return { url, driveError }
+}
+
 // ─── DenseRow ─────────────────────────────────────────────────────────────────
 
 function DenseRow({ item, onEdit, onDelete, multiSelect, selected, onToggleSelect, onLongPress }: {
@@ -572,8 +701,10 @@ function DenseRow({ item, onEdit, onDelete, multiSelect, selected, onToggleSelec
   onLongPress?: () => void
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [viewerOpen,    setViewerOpen]    = useState(false)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cat = effectiveCategory(item)
+  const { url: photoUrl, driveError } = useTacklePhoto(item)
 
   const primaryLabel = cat === 'hook'
     ? (item.hookStyle ?? 'Hook')
@@ -597,6 +728,10 @@ function DenseRow({ item, onEdit, onDelete, multiSelect, selected, onToggleSelec
   }
 
   return (
+    <>
+    {viewerOpen && photoUrl && (
+      <PhotoViewer src={photoUrl} label={primaryLabel} onClose={() => setViewerOpen(false)} />
+    )}
     <div
       className={`flex items-center gap-2 pl-9 pr-3 py-2 min-h-[44px] ${item.condition === 'Retired' ? 'opacity-50' : ''} ${selected ? 'bg-[color:var(--th-accent)]/10' : ''}`}
       onPointerDown={handlePointerDown}
@@ -608,11 +743,20 @@ function DenseRow({ item, onEdit, onDelete, multiSelect, selected, onToggleSelec
         <span className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${selected ? 'bg-[color:var(--th-accent-text)] border-[color:var(--th-accent-text)]' : 'border-[color:var(--th-border)]'}`}>
           {selected && <span className="text-white text-xs leading-none">✓</span>}
         </span>
+      ) : photoUrl ? (
+        <button
+          className="w-9 h-9 rounded-md overflow-hidden shrink-0 focus:outline-none"
+          onClick={e => { e.stopPropagation(); setViewerOpen(true) }}
+          aria-label="View photo"
+        >
+          <img src={photoUrl} className="w-9 h-9 object-cover" alt="" />
+        </button>
+      ) : driveError ? (
+        <span className="w-9 h-9 rounded-md shrink-0 flex items-center justify-center bg-gray-800/40 text-xs">
+          {driveError === 'expired' ? '🔒' : driveError === 'offline' ? '📵' : '⚠'}
+        </span>
       ) : (
         <span style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: hex, border: '1px solid rgba(128,128,128,0.4)' }} />
-      )}
-      {item.photoDataUrl && !multiSelect && (
-        <img src={item.photoDataUrl} className="w-8 h-8 rounded-md object-cover shrink-0" alt="" />
       )}
       <div className="flex-1 min-w-0">
         <div className="th-text text-sm font-medium leading-tight truncate">
@@ -643,6 +787,7 @@ function DenseRow({ item, onEdit, onDelete, multiSelect, selected, onToggleSelec
         </>
       )}
     </div>
+    </>
   )
 }
 
@@ -991,6 +1136,7 @@ function LureForm({ initial, apiKey, lureTypeHint, prefilled, aiFields, onSave, 
   const [photo,          setPhoto]          = useState(initial?.photoDataUrl ?? '')
   const [saving,         setSaving]         = useState(false)
   const [showReassign,   setShowReassign]   = useState(false)
+  const [viewerSrc,      setViewerSrc]      = useState<string | null>(null)
 
   const aiLabel = (key: string) => aiFields?.has(key)
     ? <span className="text-[10px] th-accent-text font-semibold ml-1">✦ AI</span>
@@ -1012,24 +1158,29 @@ function LureForm({ initial, apiKey, lureTypeHint, prefilled, aiFields, onSave, 
     if (showJigSubgroup && !jigSubgroup) return
     setSaving(true)
     const item: OwnedLure = {
-      id:             initial?.id ?? nanoid(),
-      category:       'lure',
-      lureType:       resolvedType,
-      jigSubgroup:    showJigSubgroup ? jigSubgroup : undefined,
-      weight:         weightNA ? undefined : (weight || undefined),
-      weightNA:       weightNA || undefined,
-      color:          color.trim(),
-      secondaryColor: secondaryColor.trim() || undefined,
-      bladeConfig:    bladeConfig.trim() || undefined,
-      brand:          brand.trim() || undefined,
-      origin:         origin || undefined,
-      condition:      condition || undefined,
-      notes:          notes.trim() || undefined,
-      photoDataUrl:   photo || undefined,
-      addedAt:        initial?.addedAt ?? Date.now(),
+      id:                  initial?.id ?? nanoid(),
+      category:            'lure',
+      lureType:            resolvedType,
+      jigSubgroup:         showJigSubgroup ? jigSubgroup : undefined,
+      weight:              weightNA ? undefined : (weight || undefined),
+      weightNA:            weightNA || undefined,
+      color:               color.trim(),
+      secondaryColor:      secondaryColor.trim() || undefined,
+      bladeConfig:         bladeConfig.trim() || undefined,
+      brand:               brand.trim() || undefined,
+      origin:              origin || undefined,
+      condition:           condition || undefined,
+      notes:               notes.trim() || undefined,
+      photoDataUrl:        photo || undefined,
+      drivePhotoFileId:    initial?.drivePhotoFileId,
+      addedAt:             initial?.addedAt ?? Date.now(),
     }
     await saveOwnedLure(item)
     onSave(item)
+    // Background Drive upload — don't block the save flow
+    if (item.photoDataUrl) {
+      attemptTacklePhotoUpload(item).catch(() => {})
+    }
   }
 
   const canSave = (() => {
@@ -1065,9 +1216,17 @@ function LureForm({ initial, apiKey, lureTypeHint, prefilled, aiFields, onSave, 
         )}
       </div>
 
+      {viewerSrc && (
+        <PhotoViewer
+          src={viewerSrc}
+          label={`${lureCategory || 'Lure'} · ${color || 'photo'}`}
+          onClose={() => setViewerSrc(null)}
+        />
+      )}
+
       <div className="th-surface rounded-2xl border th-border p-4 space-y-3">
         <p className="section-label">Photo</p>
-        <PhotoSection photo={photo} setPhoto={setPhoto} apiKey={apiKey} onAiSuggestion={applyAi} />
+        <PhotoSection photo={photo} setPhoto={setPhoto} apiKey={apiKey} onAiSuggestion={applyAi} onViewPhoto={setViewerSrc} />
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
@@ -1224,8 +1383,10 @@ function HookForm({ initial, hookStyleHint, hookTypeHint, prefilled, aiFields, o
     initial?.quantity !== undefined ? String(initial.quantity) : prefilled?.quantity !== undefined ? String(prefilled.quantity) : ''
   )
   const [notes,        setNotes]        = useState(initial?.notes ?? prefilled?.notes ?? '')
+  const [photo,        setPhoto]        = useState(initial?.photoDataUrl ?? '')
   const [saving,       setSaving]       = useState(false)
   const [showReassign, setShowReassign] = useState(false)
+  const [viewerSrc,    setViewerSrc]    = useState<string | null>(null)
 
   const aiLabel = (key: string) => aiFields?.has(key)
     ? <span className="text-[10px] th-accent-text font-semibold ml-1">✦ AI</span>
@@ -1236,20 +1397,25 @@ function HookForm({ initial, hookStyleHint, hookTypeHint, prefilled, aiFields, o
     setSaving(true)
     const qty = quantity !== '' ? parseInt(quantity, 10) : undefined
     const item: OwnedLure = {
-      id:        initial?.id ?? nanoid(),
-      category:  'hook',
-      color:     '',
-      hookType:  hookType || undefined,
-      hookStyle: hookStyle as HookStyle,
-      hookSize:  hookSize.trim() || undefined,
-      weight:    hookType === 'weighted' ? (weight.trim() || undefined) : undefined,
-      brand:     brand.trim() || undefined,
-      quantity:  qty !== undefined && !isNaN(qty) ? qty : undefined,
-      notes:     notes.trim() || undefined,
-      addedAt:   initial?.addedAt ?? Date.now(),
+      id:               initial?.id ?? nanoid(),
+      category:         'hook',
+      color:            '',
+      hookType:         hookType || undefined,
+      hookStyle:        hookStyle as HookStyle,
+      hookSize:         hookSize.trim() || undefined,
+      weight:           hookType === 'weighted' ? (weight.trim() || undefined) : undefined,
+      brand:            brand.trim() || undefined,
+      quantity:         qty !== undefined && !isNaN(qty) ? qty : undefined,
+      notes:            notes.trim() || undefined,
+      photoDataUrl:     photo || undefined,
+      drivePhotoFileId: initial?.drivePhotoFileId,
+      addedAt:          initial?.addedAt ?? Date.now(),
     }
     await saveOwnedLure(item)
     onSave(item)
+    if (item.photoDataUrl) {
+      attemptTacklePhotoUpload(item).catch(() => {})
+    }
   }
 
   const canSave = hookStyle && !saving
@@ -1268,6 +1434,14 @@ function HookForm({ initial, hookStyleHint, hookTypeHint, prefilled, aiFields, o
         />
       )}
 
+      {viewerSrc && (
+        <PhotoViewer
+          src={viewerSrc}
+          label={`${hookStyle || 'Hook'} · photo`}
+          onClose={() => setViewerSrc(null)}
+        />
+      )}
+
       <div className="flex items-center gap-3">
         <button onClick={onCancel} className="th-accent-text text-sm min-h-[44px] px-1">← Cancel</button>
         <h2 className="th-text font-bold text-lg flex-1">{initial ? 'Edit Hook' : 'Add Hook'}</h2>
@@ -1276,6 +1450,11 @@ function HookForm({ initial, hookStyleHint, hookTypeHint, prefilled, aiFields, o
             Move to…
           </button>
         )}
+      </div>
+
+      <div className="th-surface rounded-2xl border th-border p-4 space-y-3">
+        <p className="section-label">Photo</p>
+        <PhotoSection photo={photo} setPhoto={setPhoto} apiKey={undefined} onAiSuggestion={() => {}} onViewPhoto={setViewerSrc} />
       </div>
 
       <div className="th-surface rounded-2xl border th-border p-4 space-y-4">
