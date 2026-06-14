@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meerkat Dance!</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Comic Sans MS', 'Chalkboard SE', cursive;
+}
+
+#stage {
+  width: 100%; height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── BACKGROUNDS ── */
+.bg {
+  position: absolute; inset: 0;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.bg.active { opacity: 1; }
+
+#bg-madagascar {
+  background: linear-gradient(180deg,
+    #6EC6E6 0%, #A8D8F0 45%,
+    #C8B560 45%, #C8B560 55%,
+    #5A8C3A 55%, #4A7A2A 100%);
+}
+/* Sun */
+#bg-madagascar::before {
+  content: '';
+  position: absolute;
+  width: 90px; height: 90px;
+  background: radial-gradient(circle, #FFEE44, #FFB800);
+  border-radius: 50%;
+  top: 8%; right: 18%;
+  box-shadow: 0 0 50px #FFD70088;
+}
+/* Clouds */
+#bg-madagascar::after {
+  content: '';
+  position: absolute;
+  width: 120px; height: 50px;
+  background: white;
+  border-radius: 50px;
+  top: 12%; left: 10%;
+  box-shadow: 160px 20px 0 110px white, 80px -10px 0 90px white;
+  opacity: .85;
+}
+
+#bg-jungle {
+  background: linear-gradient(180deg,
+    #0D2B0D 0%, #1A4A10 25%,
+    #1E5C18 55%, #0D3A0D 100%);
+}
+#bg-desert {
+  background: linear-gradient(180deg,
+    #FF9A44 0%, #FFBB66 35%,
+    #F5C97A 60%, #DAA520 100%);
+}
+#bg-mountain {
+  background: linear-gradient(180deg,
+    #8AAEC8 0%, #B0C8DC 35%,
+    #FFFFFF 55%, #E8E8E8 65%,
+    #7A9A50 65%, #5A7A30 100%);
+}
+
+/* ── SVG STAGE ── */
+#svg-stage {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+}
+
+/* ── SPEECH BUBBLES ── */
+.bubble {
+  position: absolute;
+  background: white;
+  border: 3px solid #222;
+  border-radius: 16px;
+  padding: 8px 14px;
+  font-size: clamp(11px, 1.6vw, 15px);
+  font-weight: bold;
+  text-align: center;
+  max-width: 220px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 80;
+  pointer-events: none;
+  transform: translateX(-50%);
+  line-height: 1.3;
+  box-shadow: 3px 3px 0 #22222244;
+}
+.bubble.yellow {
+  background: #FFE83A;
+  border-color: #E07000;
+}
+.bubble.orange {
+  background: linear-gradient(135deg, #FFD700, #FF8C00);
+  border-color: #CC4400;
+}
+.bubble.show { opacity: 1; }
+
+.bubble-tail {
+  position: absolute;
+  bottom: -14px; left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 14px solid #222;
+}
+.bubble-tail-inner {
+  position: absolute;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 10px solid white;
+}
+.bubble.yellow .bubble-tail-inner { border-top-color: #FFE83A; }
+.bubble.orange .bubble-tail-inner { border-top-color: #FF8C00; }
+
+/* ── CAPTION BAR ── */
+#caption {
+  position: absolute;
+  bottom: 4%;
+  left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.72);
+  color: white;
+  padding: 10px 22px;
+  border-radius: 12px;
+  font-size: clamp(13px, 2vw, 18px);
+  text-align: center;
+  z-index: 90;
+  max-width: 85%;
+  opacity: 0;
+  transition: opacity .4s;
+  letter-spacing: .03em;
+}
+#caption.show { opacity: 1; }
+
+/* ── MUSIC BADGE ── */
+#music-badge {
+  position: absolute;
+  top: 18px; right: 18px;
+  background: rgba(0,0,0,.65);
+  color: #FFD700;
+  padding: 7px 16px;
+  border-radius: 20px;
+  font-size: clamp(11px, 1.5vw, 14px);
+  opacity: 0;
+  transition: opacity .5s;
+  z-index: 90;
+}
+#music-badge.show { opacity: 1; }
+
+/* ── SCENE LABEL ── */
+#scene-label {
+  position: absolute;
+  top: 18px; left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(16px, 3vw, 28px);
+  font-weight: bold;
+  color: white;
+  text-shadow: 2px 2px 6px #000, -1px -1px 4px #000;
+  z-index: 90;
+  opacity: 0;
+  transition: opacity .5s;
+}
+#scene-label.show { opacity: 1; }
+
+/* ── RESTART BUTTON ── */
+#restart-btn {
+  display: none;
+  position: absolute;
+  bottom: 8%; left: 50%;
+  transform: translateX(-50%);
+  padding: 13px 32px;
+  font-size: 20px;
+  font-family: inherit;
+  font-weight: bold;
+  background: #FFD700;
+  border: 3px solid #333;
+  border-radius: 30px;
+  cursor: pointer;
+  z-index: 200;
+  box-shadow: 4px 4px 0 #333;
+  transition: transform .1s;
+}
+#restart-btn:hover { transform: translateX(-50%) scale(1.06); }
+#restart-btn:active { transform: translateX(-50%) scale(.97); }
+
+/* ── CSS KEYFRAMES ── */
+@keyframes mk-dance {
+  0%   { transform: rotate(-14deg) translateY(0); }
+  20%  { transform: rotate(14deg)  translateY(-18px) translateX(4px); }
+  40%  { transform: rotate(-9deg)  translateY(-6px)  translateX(-4px); }
+  60%  { transform: rotate(10deg)  translateY(-20px) translateX(3px); }
+  80%  { transform: rotate(-14deg) translateY(-10px) translateX(-2px); }
+  100% { transform: rotate(-14deg) translateY(0); }
+}
+@keyframes mk-goofy {
+  0%   { transform: rotate(-20deg) translateY(0)    scaleX(1); }
+  25%  { transform: rotate(20deg)  translateY(-22px) scaleX(.92); }
+  50%  { transform: rotate(-15deg) translateY(-8px)  scaleX(1.05); }
+  75%  { transform: rotate(18deg)  translateY(-25px) scaleX(.94); }
+  100% { transform: rotate(-20deg) translateY(0)    scaleX(1); }
+}
+@keyframes mk-bounce {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-28px); }
+}
+@keyframes mk-pant {
+  0%,100% { transform: scaleX(1) scaleY(1); }
+  50%     { transform: scaleX(1.05) scaleY(.96); }
+}
+@keyframes mk-slam {
+  0%   { transform: translateY(0) rotate(0deg); }
+  30%  { transform: translateY(16px) rotate(6deg); }
+  50%  { transform: translateY(-10px) rotate(-4deg); }
+  70%  { transform: translateY(4px); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes mk-startle {
+  0%,100% { transform: translateX(0) translateY(0) rotate(0); }
+  20%     { transform: translateX(-10px) translateY(-15px) rotate(-12deg); }
+  50%     { transform: translateX(10px)  translateY(-10px) rotate(12deg); }
+  75%     { transform: translateX(-5px)  translateY(-5px)  rotate(-6deg); }
+}
+@keyframes mk-headturn {
+  0%   { transform: translateX(0); }
+  30%  { transform: translateX(-12px); }
+  70%  { transform: translateX(12px); }
+  100% { transform: translateX(0); }
+}
+@keyframes mk-situp {
+  0%   { transform: rotate(-75deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes char-jumpin {
+  0%   { transform: translateY(90px); opacity: 0; }
+  55%  { transform: translateY(-30px); opacity: 1; }
+  75%  { transform: translateY(10px); }
+  100% { transform: translateY(0); }
+}
+@keyframes bigtext-pop {
+  0%   { transform: translateX(-50%) scale(.4); opacity: 0; }
+  60%  { transform: translateX(-50%) scale(1.15); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+@keyframes float-note {
+  0%   { transform: translateY(0) rotate(0deg);   opacity: 1; }
+  100% { transform: translateY(-60px) rotate(20deg); opacity: 0; }
+}
+@keyframes shake-cam {
+  0%,100% { transform: translate(0,0); }
+  20%     { transform: translate(-4px, 3px); }
+  40%     { transform: translate(4px, -3px); }
+  60%     { transform: translate(-3px, 2px); }
+  80%     { transform: translate(3px, -2px); }
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <!-- Backgrounds -->
+  <div id="bg-madagascar" class="bg active"></div>
+  <div id="bg-jungle"     class="bg"></div>
+  <div id="bg-desert"     class="bg"></div>
+  <div id="bg-mountain"   class="bg"></div>
+
+  <!-- SVG scene -->
+  <svg id="svg-stage" viewBox="0 0 800 480" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <radialGradient id="rock-grad" cx="40%" cy="35%">
+        <stop offset="0%"   stop-color="#9E9890"/>
+        <stop offset="100%" stop-color="#5A5650"/>
+      </radialGradient>
+      <radialGradient id="rock-grad2" cx="40%" cy="35%">
+        <stop offset="0%"   stop-color="#9E9890"/>
+        <stop offset="100%" stop-color="#5A5650"/>
+      </radialGradient>
+    </defs>
+
+    <!-- Ground -->
+    <rect id="ground-rect" x="0" y="360" width="800" height="120" fill="#8B7355"/>
+    <rect id="grass-rect"  x="0" y="372" width="800" height="108" fill="#3A8030" opacity=".65"/>
+
+    <!-- Biome decorations group -->
+    <g id="biome-decos" opacity="0" style="transition:opacity 1s"/>
+
+    <!-- Rocks -->
+    <g id="rocks-group">
+      <!-- Rock 1 -->
+      <ellipse cx="118" cy="362" rx="58" ry="30" fill="url(#rock-grad)"/>
+      <ellipse cx="108" cy="355" rx="32" ry="15" fill="#aaa89880" />
+      <!-- Rock 2 -->
+      <ellipse cx="258" cy="358" rx="54" ry="27" fill="url(#rock-grad)"/>
+      <ellipse cx="248" cy="352" rx="29" ry="13" fill="#aaa89880"/>
+      <!-- Rock 3 (center / elevated) -->
+      <ellipse cx="400" cy="350" rx="66" ry="34" fill="url(#rock-grad)"/>
+      <ellipse cx="388" cy="342" rx="36" ry="16" fill="#aaa89880"/>
+      <!-- Rock 4 -->
+      <ellipse cx="542" cy="358" rx="54" ry="27" fill="url(#rock-grad)"/>
+      <ellipse cx="532" cy="352" rx="29" ry="13" fill="#aaa89880"/>
+      <!-- Rock 5 -->
+      <ellipse cx="682" cy="362" rx="58" ry="30" fill="url(#rock-grad)"/>
+      <ellipse cx="672" cy="355" rx="32" ry="15" fill="#aaa89880"/>
+    </g>
+
+    <!-- Meerkat group (populated by JS) -->
+    <g id="mk-group"/>
+
+    <!-- Madagascar chars group -->
+    <g id="char-group"/>
+
+    <!-- Music notes layer -->
+    <g id="notes-layer"/>
+  </svg>
+
+  <!-- Bubble layer -->
+  <div id="bubble-layer" style="position:absolute;inset:0;pointer-events:none;z-index:70;"></div>
+
+  <!-- UI -->
+  <div id="scene-label"></div>
+  <div id="music-badge">🎵 I Like to Move It — Move It!</div>
+  <div id="caption"></div>
+  <button id="restart-btn" onclick="location.reload()">▶ Watch Again</button>
+</div>
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────
+//  UTILITY
+// ─────────────────────────────────────────────
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+const captionEl    = $('caption');
+const musicBadge   = $('music-badge');
+const sceneLabelEl = $('scene-label');
+const bubbleLayer  = $('bubble-layer');
+const mkGroup      = $('mk-group');
+const charGroup    = $('char-group');
+const biomeDecos   = $('biome-decos');
+const notesLayer   = $('notes-layer');
+
+function svgEl(tag, attrs = {}, innerHTML = '') {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (innerHTML) el.innerHTML = innerHTML;
+  return el;
+}
+
+function caption(text, ms) {
+  return new Promise(r => {
+    captionEl.textContent = text;
+    captionEl.classList.add('show');
+    setTimeout(() => {
+      captionEl.classList.remove('show');
+      setTimeout(r, 420);
+    }, ms);
+  });
+}
+function hideCaption() { captionEl.classList.remove('show'); }
+
+function setSceneLabel(text, ms = 2000) {
+  sceneLabelEl.textContent = text;
+  sceneLabelEl.classList.add('show');
+  setTimeout(() => sceneLabelEl.classList.remove('show'), ms);
+}
+
+function showMusic() { musicBadge.classList.add('show'); }
+function hideMusic() { musicBadge.classList.remove('show'); }
+
+function shake() {
+  const s = $('stage');
+  s.style.animation = 'shake-cam .35s ease';
+  setTimeout(() => s.style.animation = '', 360);
+}
+
+function anim(el, name, dur = '.5s', count = '1', timing = 'ease-in-out', fill = 'forwards') {
+  if (!el) return;
+  el.style.animation = `${name} ${dur} ${timing} ${count} ${fill}`;
+}
+function clearAnim(el) { if (el) el.style.animation = ''; }
+
+// ─────────────────────────────────────────────
+//  BUBBLE FACTORY
+// ─────────────────────────────────────────────
+const activeBubbles = [];
+
+function bubble(text, svgX, svgY, cls = '', autoHide = 0) {
+  const b = document.createElement('div');
+  b.className = 'bubble' + (cls ? ' ' + cls : '');
+  b.style.left = (svgX / 800 * 100).toFixed(1) + '%';
+  b.style.top  = (svgY / 480 * 100).toFixed(1) + '%';
+
+  const tail = document.createElement('div');
+  tail.className = 'bubble-tail';
+  const tailInner = document.createElement('div');
+  tailInner.className = 'bubble-tail-inner';
+  tail.appendChild(tailInner);
+
+  b.textContent = text;
+  b.appendChild(tail);
+  bubbleLayer.appendChild(b);
+  activeBubbles.push(b);
+
+  requestAnimationFrame(() => b.classList.add('show'));
+  if (autoHide) setTimeout(() => hideBubble(b), autoHide);
+  return b;
+}
+
+function hideBubble(b) {
+  if (b) b.classList.remove('show');
+}
+
+function clearAllBubbles() {
+  activeBubbles.forEach(b => { if (b.parentNode) b.parentNode.removeChild(b); });
+  activeBubbles.length = 0;
+}
+
+// ─────────────────────────────────────────────
+//  MEERKAT SVG
+// ─────────────────────────────────────────────
+// Meerkat is always drawn at (0,0), parent <g> is translated.
+// poses: 'lounge' | 'stand' | 'dazed'
+
+function mkSVG(id, cx, cy, opts = {}) {
+  const {
+    color     = '#C4A265',
+    belly     = '#E5D09A',
+    pose      = 'lounge',
+    isCenter  = false,
+  } = opts;
+
+  const g = svgEl('g', { id, transform: `translate(${cx},${cy})` });
+  g.style.transition = 'transform .5s ease';
+
+  if (pose === 'lounge') {
+    g.innerHTML = `
+      <!-- lounging body tilted ~-80deg -->
+      <g transform="rotate(-78)">
+        <ellipse cx="0" cy="0" rx="26" ry="13" fill="${color}"/>
+        <ellipse cx="0" cy="0" rx="17" ry="8"  fill="${belly}"/>
+        <!-- tail -->
+        <path d="M24 -2 Q42 -20 37 -36 Q33 -44 27 -41 Q33 -30 30 -18 Q24 -6 18 -2"
+              fill="${color}"/>
+        <!-- head -->
+        <ellipse cx="-22" cy="-1" rx="16" ry="14" fill="${color}"/>
+        <!-- ears -->
+        <ellipse cx="-32" cy="-12" rx="6" ry="7" fill="${color}"/>
+        <ellipse cx="-12" cy="-14" rx="6" ry="7" fill="${color}"/>
+        <ellipse cx="-32" cy="-11" rx="3.5" ry="4" fill="#7A3A10"/>
+        <ellipse cx="-12" cy="-13" rx="3.5" ry="4" fill="#7A3A10"/>
+        <!-- eye patches -->
+        <ellipse cx="-26" cy="-2" rx="7"   ry="6" fill="#4A3520"/>
+        <ellipse cx="-15" cy="-2" rx="6.5" ry="6" fill="#4A3520"/>
+        <!-- closed eyes -->
+        <path d="M-29 -1 Q-26 2 -23 -1" stroke="#111" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M-18 -1 Q-15 2 -12 -1" stroke="#111" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <!-- nose -->
+        <ellipse cx="-19" cy="5" rx="2.5" ry="1.8" fill="#7A3A10"/>
+        <!-- arms flopped -->
+        <line x1="-5" y1="6"  x2="-2"  y2="14" stroke="${color}" stroke-width="5" stroke-linecap="round"/>
+        <line x1="5"  y1="7"  x2="9"   y2="14" stroke="${color}" stroke-width="5" stroke-linecap="round"/>
+      </g>
+    `;
+  } else if (pose === 'stand') {
+    g.innerHTML = `
+      <!-- tail -->
+      <path d="M14 20 Q30 0 26 -22 Q23 -32 17 -28 Q23 -18 20 -6 Q15 10 10 20"
+            fill="${color}"/>
+      <!-- body -->
+      <ellipse cx="0" cy="14" rx="19" ry="23" fill="${color}"/>
+      <ellipse cx="0" cy="18" rx="12" ry="15" fill="${belly}"/>
+      <!-- left leg -->
+      <line x1="-9"  y1="35" x2="-14" y2="46" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+      <!-- right leg -->
+      <line x1="9"   y1="35" x2="14"  y2="46" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+      <!-- left arm -->
+      <line x1="-16" y1="7"  x2="-27" y2="20" stroke="${color}" stroke-width="6" stroke-linecap="round" id="${id}-larm"/>
+      <!-- right arm -->
+      <line x1="16"  y1="7"  x2="27"  y2="20" stroke="${color}" stroke-width="6" stroke-linecap="round" id="${id}-rarm"/>
+      <!-- head -->
+      <ellipse cx="0" cy="-20" rx="19" ry="18" fill="${color}" id="${id}-head"/>
+      <!-- ears -->
+      <ellipse cx="-15" cy="-33" rx="7" ry="8" fill="${color}"/>
+      <ellipse cx="15"  cy="-33" rx="7" ry="8" fill="${color}"/>
+      <ellipse cx="-15" cy="-32" rx="4" ry="5" fill="#7A3A10"/>
+      <ellipse cx="15"  cy="-32" rx="4" ry="5" fill="#7A3A10"/>
+      <!-- eye patches -->
+      <ellipse cx="-7" cy="-20" rx="8" ry="7" fill="#4A3520"/>
+      <ellipse cx="7"  cy="-20" rx="8" ry="7" fill="#4A3520"/>
+      <!-- eyes -->
+      <circle cx="-7"  cy="-20" r="4.5" fill="white"/>
+      <circle cx="7"   cy="-20" r="4.5" fill="white"/>
+      <circle cx="-7"  cy="-20" r="2.8" fill="#111" id="${id}-leye"/>
+      <circle cx="7"   cy="-20" r="2.8" fill="#111" id="${id}-reye"/>
+      <!-- nose -->
+      <ellipse cx="0" cy="-11" rx="3.2" ry="2.2" fill="#7A3A10"/>
+      <!-- mouth -->
+      <path d="M-5 -6 Q0 -3 5 -6" stroke="#7A3A10" stroke-width="1.5" fill="none"/>
+      ${isCenter ? `<text x="0" y="-48" text-anchor="middle" font-size="14" fill="#FF3300">★</text>` : ''}
+    `;
+  } else if (pose === 'dazed') {
+    // standing but with spiral eyes and dazed expression
+    g.innerHTML = `
+      <path d="M14 20 Q30 0 26 -22 Q23 -32 17 -28 Q23 -18 20 -6 Q15 10 10 20" fill="${color}"/>
+      <ellipse cx="0" cy="14" rx="19" ry="23" fill="${color}"/>
+      <ellipse cx="0" cy="18" rx="12" ry="15" fill="${belly}"/>
+      <line x1="-9"  y1="35" x2="-14" y2="46" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+      <line x1="9"   y1="35" x2="14"  y2="46" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+      <line x1="-16" y1="7"  x2="-27" y2="20" stroke="${color}" stroke-width="6" stroke-linecap="round"/>
+      <line x1="16"  y1="7"  x2="27"  y2="20" stroke="${color}" stroke-width="6" stroke-linecap="round"/>
+      <ellipse cx="0" cy="-20" rx="19" ry="18" fill="${color}"/>
+      <ellipse cx="-15" cy="-33" rx="7" ry="8" fill="${color}"/>
+      <ellipse cx="15"  cy="-33" rx="7" ry="8" fill="${color}"/>
+      <ellipse cx="-15" cy="-32" rx="4" ry="5" fill="#7A3A10"/>
+      <ellipse cx="15"  cy="-32" rx="4" ry="5" fill="#7A3A10"/>
+      <ellipse cx="-7" cy="-20" rx="8" ry="7" fill="#4A3520"/>
+      <ellipse cx="7"  cy="-20" rx="8" ry="7" fill="#4A3520"/>
+      <!-- spiral eyes -->
+      <text x="-7"  y="-16" text-anchor="middle" font-size="12" fill="white">@</text>
+      <text x="7"   y="-16" text-anchor="middle" font-size="12" fill="white">@</text>
+      <ellipse cx="0" cy="-11" rx="3.2" ry="2.2" fill="#7A3A10"/>
+      <!-- wavy dazed mouth -->
+      <path d="M-6 -4 Q-2 -7 0 -4 Q2 -1 6 -4" stroke="#7A3A10" stroke-width="1.5" fill="none"/>
+      <!-- stars around head -->
+      <text x="-24" y="-36" font-size="10" fill="#FFD700">✦</text>
+      <text x="20"  y="-34" font-size="10" fill="#FFD700">✦</text>
+      <text x="-4"  y="-46" font-size="10" fill="#FFD700">✦</text>
+    `;
+  }
+
+  return g;
+}
+
+// ─────────────────────────────────────────────
+//  MADAGASCAR CHARACTERS
+// ─────────────────────────────────────────────
+function madCharSVG(type, cx, cy) {
+  const g = svgEl('g', { id: `char-${type}`, transform: `translate(${cx},${cy})` });
+  g.style.opacity = '0';
+  g.style.transition = 'opacity .5s, transform .5s';
+
+  if (type === 'alex') {
+    g.innerHTML = `
+      <!-- Alex the Lion -->
+      <ellipse cx="0" cy="14" rx="21" ry="26" fill="#DAA520"/>
+      <ellipse cx="0" cy="-22" rx="26" ry="26" fill="#7A3010"/>
+      <ellipse cx="0" cy="-22" rx="17" ry="17" fill="#DAA520"/>
+      <circle cx="-16" cy="-40" r="7" fill="#DAA520"/>
+      <circle cx="16"  cy="-40" r="7" fill="#DAA520"/>
+      <ellipse cx="-6"  cy="-25" r="4.5" fill="white"/>
+      <ellipse cx="6"   cy="-25" r="4.5" fill="white"/>
+      <circle  cx="-6"  cy="-25" r="2.8" fill="#338855"/>
+      <circle  cx="6"   cy="-25" r="2.8" fill="#338855"/>
+      <circle  cx="-5.5" cy="-25.5" r="1.4" fill="#111"/>
+      <circle  cx="6.5"  cy="-25.5" r="1.4" fill="#111"/>
+      <ellipse cx="0" cy="-17" rx="4.5" ry="2.8" fill="#8B0000"/>
+      <path d="M-5 -11 Q0 -7 5 -11" stroke="#8B0000" stroke-width="2" fill="none"/>
+      <line x1="-18" y1="3"  x2="-30" y2="18" stroke="#DAA520" stroke-width="9" stroke-linecap="round"/>
+      <line x1="18"  y1="3"  x2="30"  y2="18" stroke="#DAA520" stroke-width="9" stroke-linecap="round"/>
+      <line x1="-9"  y1="37" x2="-13" y2="46" stroke="#DAA520" stroke-width="8" stroke-linecap="round"/>
+      <line x1="9"   y1="37" x2="13"  y2="46" stroke="#DAA520" stroke-width="8" stroke-linecap="round"/>
+      <text x="0" y="-56" text-anchor="middle" font-size="11" fill="white" font-weight="bold" font-family="sans-serif">ALEX</text>
+    `;
+  } else if (type === 'marty') {
+    g.innerHTML = `
+      <!-- Marty the Zebra -->
+      <ellipse cx="0" cy="14" rx="19" ry="23" fill="white"/>
+      <path d="M-13 2  Q0 -1 13 2  Q9 7 0 5 Q-9 7 -13 2"  fill="black"/>
+      <path d="M-15 14 Q0 11 15 14 Q11 19 0 17 Q-11 19 -15 14" fill="black"/>
+      <path d="M-14 26 Q0 23 14 26 Q10 31 0 29 Q-10 31 -14 26" fill="black"/>
+      <rect x="-8" y="-44" width="16" height="48" rx="8" fill="white"/>
+      <path d="M-7 -32 Q0 -35 7 -32" stroke="black" stroke-width="2.5" fill="none"/>
+      <path d="M-7 -20 Q0 -23 7 -20" stroke="black" stroke-width="2" fill="none"/>
+      <path d="M-6 -40 L-9 -56" stroke="black" stroke-width="4" stroke-linecap="round"/>
+      <path d="M0  -44 L0  -60" stroke="black" stroke-width="4" stroke-linecap="round"/>
+      <path d="M6  -40 L9  -56" stroke="black" stroke-width="4" stroke-linecap="round"/>
+      <ellipse cx="0" cy="-50" rx="14" ry="12" fill="white"/>
+      <ellipse cx="0" cy="-42" rx="9"  ry="7"  fill="#CCC"/>
+      <ellipse cx="-3" cy="-46" rx="2" ry="1.5" fill="#888"/>
+      <ellipse cx="3"  cy="-46" rx="2" ry="1.5" fill="#888"/>
+      <circle cx="-7"  cy="-53" r="4" fill="white"/>
+      <circle cx="7"   cy="-53" r="4" fill="white"/>
+      <circle cx="-7"  cy="-53" r="2.5" fill="brown"/>
+      <circle cx="7"   cy="-53" r="2.5" fill="brown"/>
+      <path d="M-12 -58 L-16 -70 L-5 -62" fill="white" stroke="black" stroke-width="1"/>
+      <path d="M12  -58 L16  -70 L5  -62" fill="white" stroke="black" stroke-width="1"/>
+      <line x1="-16" y1="4"  x2="-27" y2="18" stroke="white" stroke-width="8" stroke-linecap="round"/>
+      <line x1="16"  y1="4"  x2="27"  y2="18" stroke="white" stroke-width="8" stroke-linecap="round"/>
+      <line x1="-9"  y1="35" x2="-13" y2="45" stroke="black" stroke-width="7" stroke-linecap="round"/>
+      <line x1="9"   y1="35" x2="13"  y2="45" stroke="black" stroke-width="7" stroke-linecap="round"/>
+      <text x="0" y="-76" text-anchor="middle" font-size="11" fill="black" font-weight="bold" font-family="sans-serif">MARTY</text>
+    `;
+  } else if (type === 'melman') {
+    g.innerHTML = `
+      <!-- Melman the Giraffe -->
+      <ellipse cx="0" cy="16" rx="19" ry="24" fill="#DAA520"/>
+      <circle cx="-7"  cy="6"  r="7" fill="#8B6914" opacity=".65"/>
+      <circle cx="8"   cy="19" r="7" fill="#8B6914" opacity=".65"/>
+      <circle cx="-5"  cy="30" r="6" fill="#8B6914" opacity=".65"/>
+      <rect x="-7" y="-50" width="14" height="64" rx="7" fill="#DAA520"/>
+      <circle cx="-3" cy="-28" r="5" fill="#8B6914" opacity=".65"/>
+      <circle cx="4"  cy="-12" r="4" fill="#8B6914" opacity=".65"/>
+      <ellipse cx="0" cy="-56" rx="15" ry="12" fill="#DAA520"/>
+      <line x1="-6" y1="-65" x2="-9"  y2="-76" stroke="#8B6914" stroke-width="3.5" stroke-linecap="round"/>
+      <line x1="6"  y1="-65" x2="9"   y2="-76" stroke="#8B6914" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="-6"  cy="-59" r="4" fill="white"/>
+      <circle cx="6"   cy="-59" r="4" fill="white"/>
+      <circle cx="-6"  cy="-59" r="2.5" fill="brown"/>
+      <circle cx="6"   cy="-59" r="2.5" fill="brown"/>
+      <ellipse cx="-3" cy="-50" rx="2" ry="1.2" fill="#8B6914"/>
+      <ellipse cx="3"  cy="-50" rx="2" ry="1.2" fill="#8B6914"/>
+      <line x1="-16" y1="5"  x2="-27" y2="18" stroke="#DAA520" stroke-width="8" stroke-linecap="round"/>
+      <line x1="16"  y1="5"  x2="27"  y2="18" stroke="#DAA520" stroke-width="8" stroke-linecap="round"/>
+      <line x1="-9"  y1="38" x2="-13" y2="47" stroke="#DAA520" stroke-width="8" stroke-linecap="round"/>
+      <line x1="9"   y1="38" x2="13"  y2="47" stroke="#DAA520" stroke-width="8" stroke-linecap="round"/>
+      <text x="0" y="-84" text-anchor="middle" font-size="11" fill="black" font-weight="bold" font-family="sans-serif">MELMAN</text>
+    `;
+  } else if (type === 'gloria') {
+    g.innerHTML = `
+      <!-- Gloria the Hippo -->
+      <ellipse cx="0" cy="18" rx="28" ry="28" fill="#9370DB"/>
+      <ellipse cx="0" cy="-20" rx="24" ry="22" fill="#9370DB"/>
+      <circle cx="-20" cy="-34" r="8" fill="#9370DB"/>
+      <circle cx="20"  cy="-34" r="8" fill="#9370DB"/>
+      <circle cx="-20" cy="-34" r="4.5" fill="#DDA0DD"/>
+      <circle cx="20"  cy="-34" r="4.5" fill="#DDA0DD"/>
+      <ellipse cx="0" cy="-10" rx="16" ry="11" fill="#BA8FCA"/>
+      <circle cx="-6"  cy="-14" r="4" fill="#7B5EA7"/>
+      <circle cx="6"   cy="-14" r="4" fill="#7B5EA7"/>
+      <circle cx="-10" cy="-24" r="5.5" fill="white"/>
+      <circle cx="10"  cy="-24" r="5.5" fill="white"/>
+      <circle cx="-10" cy="-24" r="3.2" fill="brown"/>
+      <circle cx="10"  cy="-24" r="3.2" fill="brown"/>
+      <circle cx="-9.2" cy="-24.5" r="1.6" fill="black"/>
+      <circle cx="10.8" cy="-24.5" r="1.6" fill="black"/>
+      <path d="M-9 -4 Q0 3 9 -4" stroke="#7B5EA7" stroke-width="2.5" fill="none"/>
+      <line x1="-24" y1="8"  x2="-36" y2="22" stroke="#9370DB" stroke-width="11" stroke-linecap="round"/>
+      <line x1="24"  y1="8"  x2="36"  y2="22" stroke="#9370DB" stroke-width="11" stroke-linecap="round"/>
+      <line x1="-13" y1="42" x2="-17" y2="48" stroke="#9370DB" stroke-width="10" stroke-linecap="round"/>
+      <line x1="13"  y1="42" x2="17"  y2="48" stroke="#9370DB" stroke-width="10" stroke-linecap="round"/>
+      <text x="0" y="-50" text-anchor="middle" font-size="11" fill="white" font-weight="bold" font-family="sans-serif">GLORIA</text>
+    `;
+  }
+
+  return g;
+}
+
+// ─────────────────────────────────────────────
+//  BIOME DECORATIONS
+// ─────────────────────────────────────────────
+function setBiome(name) {
+  // Swap background
+  document.querySelectorAll('.bg').forEach(b => b.classList.remove('active'));
+  $('bg-' + name).classList.add('active');
+
+  // Ground/grass colors
+  const groundColors = {
+    madagascar: ['#8B7355', '#3A8030'],
+    jungle:     ['#3A2A10', '#1A5A10'],
+    desert:     ['#D4A030', '#C8882A'],
+    mountain:   ['#6A7A88', '#888A90'],
+  };
+  const [gc, grc] = groundColors[name] || groundColors.madagascar;
+  $('ground-rect').setAttribute('fill', gc);
+  $('grass-rect').setAttribute('fill', grc);
+
+  biomeDecos.style.opacity = '0';
+  biomeDecos.innerHTML = '';
+
+  setTimeout(() => {
+    if (name === 'jungle') {
+      const treeX = [55, 180, 620, 745];
+      treeX.forEach(tx => {
+        const trunk = svgEl('rect', { x: tx-10, y: 210, width: 20, height: 160, fill: '#4A3010' });
+        biomeDecos.appendChild(trunk);
+        const canopy = svgEl('ellipse', { cx: tx, cy: 175, rx: 68, ry: 78, fill: '#1E6E18' });
+        biomeDecos.appendChild(canopy);
+        const canopy2 = svgEl('ellipse', { cx: tx+35, cy: 195, rx: 50, ry: 58, fill: '#288A22' });
+        biomeDecos.appendChild(canopy2);
+        const canopy3 = svgEl('ellipse', { cx: tx-30, cy: 200, rx: 45, ry: 52, fill: '#1E7A18' });
+        biomeDecos.appendChild(canopy3);
+      });
+      // Vines
+      const vine = svgEl('path', {
+        d: 'M0 0 Q40 60 0 120 Q-40 180 0 240 Q40 300 0 360',
+        stroke: '#2A7A10', 'stroke-width': '4', fill: 'none'
+      });
+      vine.setAttribute('transform', 'translate(750,0)');
+      biomeDecos.appendChild(vine);
+    } else if (name === 'desert') {
+      const dune = svgEl('path', {
+        d: 'M0 400 Q150 340 300 375 Q450 410 600 355 Q700 320 800 370 L800 480 L0 480 Z',
+        fill: '#E8B040'
+      });
+      biomeDecos.appendChild(dune);
+      const dune2 = svgEl('path', {
+        d: 'M0 440 Q100 410 250 430 Q400 450 550 420 Q680 395 800 430 L800 480 L0 480 Z',
+        fill: '#D49A30'
+      });
+      biomeDecos.appendChild(dune2);
+      // Cacti
+      [100, 370, 680].forEach(cx => {
+        const stalk = svgEl('rect', { x: cx-9, y: 285, width: 18, height: 80, rx: 9, fill: '#2A7A20' });
+        biomeDecos.appendChild(stalk);
+        const arm1 = svgEl('rect', { x: cx+9, y: 305, width: 32, height: 10, rx: 5, fill: '#2A7A20' });
+        biomeDecos.appendChild(arm1);
+        const arm1up = svgEl('rect', { x: cx+33, y: 290, width: 10, height: 25, rx: 5, fill: '#2A7A20' });
+        biomeDecos.appendChild(arm1up);
+        const arm2 = svgEl('rect', { x: cx-41, y: 318, width: 32, height: 10, rx: 5, fill: '#2A7A20' });
+        biomeDecos.appendChild(arm2);
+        const arm2up = svgEl('rect', { x: cx-41, y: 298, width: 10, height: 30, rx: 5, fill: '#2A7A20' });
+        biomeDecos.appendChild(arm2up);
+      });
+    } else if (name === 'mountain') {
+      const peaks = [
+        { pts: '0,480 200,155 400,480',   fill: '#556677' },
+        { pts: '200,480 480,90  760,480',  fill: '#6A7D8E' },
+        { pts: '450,480 680,180 800,480',  fill: '#4E5F6E' },
+        { pts: '500,480 750,480 800,380',  fill: '#607080' },
+      ];
+      peaks.forEach(p => {
+        biomeDecos.appendChild(svgEl('polygon', { points: p.pts, fill: p.fill }));
+      });
+      // Snow caps
+      const snows = [
+        { pts: '200,155 165,225 235,225', fill: 'white' },
+        { pts: '480,90  440,175 520,175', fill: 'white' },
+        { pts: '680,180 648,248 712,248', fill: 'white' },
+      ];
+      snows.forEach(s => {
+        biomeDecos.appendChild(svgEl('polygon', { points: s.pts, fill: s.fill }));
+      });
+    } else { // madagascar
+      // Palm trees
+      [75, 720].forEach(tx => {
+        const trunk = svgEl('path', {
+          d: `M${tx} 375 Q${tx+18} 300 ${tx+8} 215`,
+          stroke: '#5A3A10', 'stroke-width': '16', fill: 'none',
+          'stroke-linecap': 'round'
+        });
+        biomeDecos.appendChild(trunk);
+        for (let a = 0; a < 6; a++) {
+          const ang = (a / 6) * Math.PI * 2;
+          const lx  = tx + 8 + Math.cos(ang) * 78;
+          const ly  = 215  + Math.sin(ang) * 42;
+          const leaf = svgEl('path', {
+            d: `M${tx+8} 215 Q${(tx+8+lx)/2} ${(215+ly)/2 - 22} ${lx} ${ly}`,
+            stroke: '#2E7D20', 'stroke-width': '9', fill: 'none', 'stroke-linecap': 'round'
+          });
+          biomeDecos.appendChild(leaf);
+        }
+        // Coconuts
+        const coc = svgEl('circle', { cx: tx+8, cy: 225, r: 8, fill: '#8B5E3C' });
+        biomeDecos.appendChild(coc);
+      });
+      // Baobab silhouette at horizon
+      const bao = svgEl('path', {
+        d: 'M390 360 L390 260 Q400 200 420 260 L420 360 Z',
+        fill: '#6B4810'
+      });
+      biomeDecos.appendChild(bao);
+      const baoCrown = svgEl('ellipse', { cx: 405, cy: 235, rx: 38, ry: 28, fill: '#2E6A18' });
+      biomeDecos.appendChild(baoCrown);
+    }
+    biomeDecos.style.opacity = '1';
+  }, 200);
+}
+
+function spawnNote(x, y) {
+  const notes = ['♪','♫','🎵','♩'];
+  const n = svgEl('text', {
+    x, y,
+    'text-anchor': 'middle',
+    'font-size': '22',
+    fill: '#FFD700',
+    'pointer-events': 'none'
+  });
+  n.textContent = notes[Math.floor(Math.random() * notes.length)];
+  n.style.animation = 'float-note 1.8s ease-out forwards';
+  notesLayer.appendChild(n);
+  setTimeout(() => n.remove(), 1900);
+}
+
+// ─────────────────────────────────────────────
+//  SCENE DATA
+// ─────────────────────────────────────────────
+const MK_DATA = [
+  { id: 'mk1', cx: 118, cy: 322, color: '#C8A86A', belly: '#E8D09A' },
+  { id: 'mk2', cx: 258, cy: 318, color: '#BFA05C', belly: '#E0CA90' },
+  { id: 'mk3', cx: 400, cy: 306, color: '#D4B578', belly: '#EDDA9C', isCenter: true },
+  { id: 'mk4', cx: 542, cy: 318, color: '#B89650', belly: '#DBC880' },
+  { id: 'mk5', cx: 682, cy: 322, color: '#C2A462', belly: '#E6CC90' },
+];
+
+const CHAR_DATA = [
+  { type: 'alex',   cx: 145, cy: 388 },
+  { type: 'marty',  cx: 295, cy: 400 },
+  { type: 'melman', cx: 510, cy: 388 },
+  { type: 'gloria', cx: 660, cy: 395 },
+];
+
+// Internal state
+const mkEls  = {};  // id -> SVG g element
+const charEls = {}; // type -> SVG g element
+
+function spawnMeerkats(pose = 'lounge') {
+  mkGroup.innerHTML = '';
+  MK_DATA.forEach(d => {
+    const el = mkSVG(d.id, d.cx, d.cy, {
+      color: d.color, belly: d.belly,
+      pose, isCenter: !!d.isCenter
+    });
+    mkGroup.appendChild(el);
+    mkEls[d.id] = el;
+  });
+}
+
+function setPose(id, pose) {
+  const d = MK_DATA.find(m => m.id === id);
+  const old = $(id);
+  if (!old || !d) return null;
+  const newEl = mkSVG(id, d.cx, d.cy, {
+    color: d.color, belly: d.belly,
+    pose, isCenter: !!d.isCenter
+  });
+  if (old.style.transform) newEl.style.transform = old.style.transform;
+  old.replaceWith(newEl);
+  mkEls[id] = newEl;
+  return newEl;
+}
+
+// ─────────────────────────────────────────────
+//  MAIN ANIMATION SEQUENCE
+// ─────────────────────────────────────────────
+async function run() {
+
+  // ── SCENE 0: Setup ──────────────────────────
+  setBiome('madagascar');
+  setSceneLabel('🌴 Madagascar 🌴', 2500);
+  spawnMeerkats('lounge');
+  await caption('A lazy, sun-drenched afternoon in Madagascar...', 2800);
+  await delay(600);
+
+  // ── SCENE 1: Center meerkat slowly wakes ────
+  await caption('The center meerkat opens one eye... very slowly...', 2200);
+
+  // Tilt center meerkat slightly, simulate looking up
+  const mk3 = mkEls['mk3'];
+  mk3.style.transition = 'transform 1.8s ease';
+  mk3.style.transform  = 'rotate(12deg) translateY(-8px)';
+  await delay(1800);
+
+  // Blink caption
+  await caption('*blink* ... *blink* ... *squint*', 1600);
+
+  // Look around (left/right)
+  mk3.style.transition = 'transform .6s ease';
+  mk3.style.transform  = 'rotate(10deg) translateX(-16px) translateY(-8px)';
+  await delay(600);
+  mk3.style.transform  = 'rotate(10deg) translateX(16px)  translateY(-8px)';
+  await delay(600);
+  mk3.style.transform  = 'rotate(10deg) translateX(-8px)  translateY(-8px)';
+  await delay(500);
+
+  // Expression: annoyed face (speech)
+  const bAnnoyed = bubble('😒 ...seriously?', 400, 195);
+  await delay(1400);
+  hideBubble(bAnnoyed);
+
+  // ── SCENE 2: SLAM ───────────────────────────
+  await delay(300);
+  // Transition to standing
+  const mk3s = setPose('mk3', 'stand');
+  mk3s.style.transform = 'translateY(-10px)';
+  anim(mk3s, 'mk-slam', '.55s', '1');
+  shake();
+  await delay(200);
+
+  // Other meerkats startle
+  ['mk1','mk2','mk4','mk5'].forEach((id, i) => {
+    setTimeout(() => {
+      const el = setPose(id, 'dazed');
+      if (el) anim(el, 'mk-startle', '.6s', '2');
+    }, i * 80);
+  });
+
+  await delay(700);
+
+  // Confused bubbles on side meerkats
+  const confBubbles = [
+    bubble('😵 Wha—?!',    118, 195),
+    bubble('🤔 ???',       258, 200),
+    bubble('😦 !!',        542, 200),
+    bubble('😵‍💫 HUH?!',    682, 195),
+  ];
+  await delay(900);
+
+  // ── SCENE 3: "I can't take this anymore" ────
+  clearAnim(mk3s);
+  const bCant = bubble("I need...\nI can't take this anymore!!", 400, 140, 'yellow');
+  bCant.style.maxWidth = '230px';
+  await delay(2600);
+
+  hideBubble(bCant);
+  confBubbles.forEach(hideBubble);
+  await delay(350);
+
+  // ── SCENE 4: Dramatic pause ──────────────────
+  await caption('...', 1200);
+
+  // ── SCENE 5: "I need to move it" ────────────
+  const bMove1 = bubble('I need to...\nmove it.', 400, 138, 'yellow');
+  bMove1.style.maxWidth = '200px';
+  await delay(2200);
+  hideBubble(bMove1);
+
+  // Others: huh / what?
+  const hudBubbles = [
+    bubble('Huh?',           118, 200),
+    bubble('What?',          258, 205),
+    bubble('Did he just...', 542, 198),
+    bubble('What?!',         682, 200),
+  ];
+  await delay(1600);
+  hudBubbles.forEach(hideBubble);
+  await delay(300);
+
+  // ── SCENE 6: "I NEED TO MOVE IT MOVE IT" ────
+  const bBig = bubble('🎵 I NEED TO MOVE IT\n          MOVE IT! 🎵', 400, 128, 'orange');
+  bBig.style.maxWidth  = '260px';
+  bBig.style.fontSize  = 'clamp(14px, 2.1vw, 20px)';
+  anim(mk3s, 'mk-bounce', '.5s', 'infinite');
+  await delay(400);
+  spawnNote(360, 240); spawnNote(440, 220);
+  await delay(600);
+  spawnNote(380, 200); spawnNote(430, 260);
+  await delay(1200);
+  hideBubble(bBig);
+  clearAnim(mk3s);
+
+  // ── SCENE 7: 5-second silence ───────────────
+  await caption('*5 seconds of pure silence*', 800);
+  // Side meerkats stare
+  const stareBubs = [
+    bubble('👀', 118, 200),
+    bubble('👁️', 258, 205),
+    bubble('👁️', 542, 205),
+    bubble('👀', 682, 200),
+  ];
+  await delay(5000);
+  stareBubs.forEach(hideBubble);
+  hideCaption();
+  clearAllBubbles();
+
+  // ── SCENE 8: Music starts — center mk dances ─
+  showMusic();
+  await caption('🎵 da-da-DUN... I like to move it, move it! 🎵', 2000);
+
+  anim(mk3s, 'mk-dance', '.52s', 'infinite');
+  // Spawn notes every 700ms
+  const noteTimer = setInterval(() => {
+    const x = 340 + Math.random() * 120;
+    const y = 220 + Math.random() * 40;
+    spawnNote(x, y);
+  }, 700);
+
+  await delay(2000);
+  hideCaption();
+
+  // ── SCENE 9: 3-second pause — others stare ──
+  const bug1 = bubble('...', 118, 205, '', 3500);
+  const bug2 = bubble('...', 258, 210, '', 3500);
+  const bug3 = bubble('...', 542, 210, '', 3500);
+  const bug4 = bubble('...', 682, 205, '', 3500);
+  await delay(3200);
+
+  // ── SCENE 10: ALL meerkats jump up and dance ─
+  await caption('🎉 EVERYBODY DANCE! 🎉', 1400);
+
+  // Stand up all meerkats one by one
+  MK_DATA.forEach((d, i) => {
+    setTimeout(() => {
+      const el = setPose(d.id, 'stand');
+      if (el) {
+        el.style.transform = 'translateY(-15px)';
+        setTimeout(() => {
+          el.style.transform = '';
+          anim(el, 'mk-goofy', `${.48 + i*.055}s`, 'infinite');
+        }, 350);
+      }
+    }, i * 130);
+  });
+
+  await delay(2000);
+  hideCaption();
+  await delay(600);
+
+  // ── SCENE 11: Line up and dance through biomes ─
+  await caption('They form a line and head into the wild!', 1400);
+
+  // Move meerkats into a line
+  const lineX = [140, 240, 370, 490, 630];
+  MK_DATA.forEach((d, i) => {
+    const el = mkEls[d.id];
+    if (!el) return;
+    const dx = lineX[i] - d.cx;
+    el.style.transition = 'transform .7s ease';
+    el.style.transform  = (el.style.animation
+      ? el.style.transform + ` translateX(${dx}px)`
+      : `translateX(${dx}px)`);
+  });
+  await delay(800);
+  hideCaption();
+
+  // Biome journey
+  const journey = ['jungle','desert','mountain','desert','jungle','madagascar'];
+  const jLabels  = ['🌿 The Jungle','🏜️ The Desert','⛰️ The Mountains',
+                    '🏜️ The Desert','🌿 The Jungle','🌴 Back to Madagascar!'];
+
+  for (let i = 0; i < journey.length; i++) {
+    setBiome(journey[i]);
+    setSceneLabel(jLabels[i], 1600);
+    await caption(`Dancing through ${jLabels[i]}! 💃🕺`, 1500);
+
+    // Wiggle across screen
+    const dir = (i % 2 === 0) ? 1 : -1;
+    MK_DATA.forEach((d, j) => {
+      const el = mkEls[d.id];
+      if (!el) return;
+      const dx = lineX[j] - d.cx + dir * 50 * (i + 1) % 60;
+      el.style.transition = 'transform 1.6s linear';
+      el.style.transform  = `translateX(${dx}px)`;
+    });
+    await delay(1800);
+  }
+
+  // Return to home positions
+  MK_DATA.forEach(d => {
+    const el = mkEls[d.id];
+    if (!el) return;
+    el.style.transition = 'transform .8s ease';
+    el.style.transform  = '';
+  });
+  await delay(900);
+
+  clearInterval(noteTimer);
+
+  // ── SCENE 12: Panting ───────────────────────
+  MK_DATA.forEach(d => {
+    const el = mkEls[d.id];
+    if (!el) return;
+    clearAnim(el);
+    anim(el, 'mk-pant', '.36s', 'infinite');
+  });
+  hideMusic();
+
+  const pantBubs = [
+    bubble('😮‍💨 huff...', 118, 198),
+    bubble('pant... pant...', 258, 202),
+    bubble("I'm ready to...\n snooze it now... 😮‍💨", 400, 138, 'yellow'),
+    bubble('*wheeze*', 542, 202),
+    bubble('😮‍💨 ugh...', 682, 198),
+  ];
+  await delay(2800);
+  pantBubs.forEach(hideBubble);
+  clearAllBubbles();
+
+  // ── SCENE 13: Back onto rocks ───────────────
+  await caption('The meerkats collapse back onto their rocks... 💤', 2000);
+
+  // Lounge pose
+  MK_DATA.forEach(d => {
+    clearAnim(mkEls[d.id]);
+    setPose(d.id, 'lounge');
+  });
+  await delay(1600);
+  hideCaption();
+
+  // ── SCENE 14: 2-second pause ────────────────
+  const snzBubs = [
+    bubble('z z z...', 118, 198),
+    bubble('zzz...',   258, 200),
+    bubble('zzZZ...',  400, 178),
+    bubble('z z z...', 542, 200),
+    bubble('zzz...',   682, 198),
+  ];
+  await delay(2000);
+
+  // ── SCENE 15: Madagascar characters jump out ─
+  snzBubs.forEach(hideBubble);
+  clearAllBubbles();
+
+  await caption('*RUSTLE RUSTLE CRASH*', 900);
+  shake();
+  await delay(900);
+  hideCaption();
+
+  // Spawn characters
+  CHAR_DATA.forEach((d, i) => {
+    const el = madCharSVG(d.type, d.cx, d.cy + 100);
+    charGroup.appendChild(el);
+    charEls[d.type] = el;
+
+    setTimeout(() => {
+      el.setAttribute('transform', `translate(${d.cx}, ${d.cy})`);
+      el.style.opacity = '1';
+      el.style.transition = 'transform .65s cubic-bezier(.2,1.6,.5,1), opacity .35s ease';
+    }, i * 220 + 100);
+  });
+
+  await delay(1400);
+
+  // Characters speak
+  const cb1 = bubble('🦁 We heard you guys\nlike to MOVE IT!', 380, 60, 'yellow');
+  cb1.style.maxWidth = '250px';
+  await delay(2600);
+  hideBubble(cb1);
+  await delay(200);
+
+  const cb2 = bubble('Can we MOVE IT...\nMOVE IT... with you? 🦓🦒🦛', 380, 60, 'yellow');
+  cb2.style.maxWidth = '260px';
+  await delay(2800);
+  hideBubble(cb2);
+  await delay(200);
+
+  // ── SCENE 16: 3-second stunned pause ────────
+  // Everyone stares
+  const allStare = [
+    bubble('😐', 118, 200),
+    bubble('😐', 258, 205),
+    bubble('😐', 400, 180),
+    bubble('😐', 542, 205),
+    bubble('😐', 682, 200),
+    bubble('😐', 145, 320),
+    bubble('😐', 295, 330),
+    bubble('😐', 510, 320),
+    bubble('😐', 660, 328),
+  ];
+  await delay(3200);
+  allStare.forEach(hideBubble);
+  clearAllBubbles();
+
+  // ── SCENE 17: EVERYONE DANCES ───────────────
+  showMusic();
+  setSceneLabel('🎉 MOVE IT! MOVE IT! MOVE IT! 🎉', 3500);
+
+  // Meerkats stand and dance
+  MK_DATA.forEach((d, i) => {
+    setTimeout(() => {
+      const el = setPose(d.id, 'stand');
+      if (el) anim(el, 'mk-goofy', `${.45 + i*.06}s`, 'infinite');
+    }, i * 120);
+  });
+
+  // Madagascar chars dance
+  Object.values(charEls).forEach((el, i) => {
+    setTimeout(() => {
+      anim(el, 'mk-goofy', `${.5 + i*.07}s`, 'infinite');
+    }, i * 150 + 400);
+  });
+
+  // Notes everywhere
+  const finalNoteTimer = setInterval(() => {
+    for (let j = 0; j < 3; j++) {
+      setTimeout(() => {
+        spawnNote(100 + Math.random() * 600, 100 + Math.random() * 200);
+      }, j * 220);
+    }
+  }, 800);
+
+  await caption('🎵 EVERYBODY MOVE IT MOVE IT! 🎵', 2000);
+  await delay(1800);
+  hideCaption();
+
+  // Grand finale text
+  const finaleDiv = document.createElement('div');
+  finaleDiv.style.cssText = `
+    position:absolute; top:30%; left:50%;
+    transform:translateX(-50%) scale(.4);
+    font-size:clamp(24px,5vw,52px);
+    font-weight:bold; color:#FF4400;
+    text-shadow:3px 3px 0 #FFD700, 6px 6px 0 #FF880088;
+    z-index:200; animation:bigtext-pop .6s ease forwards;
+    text-align:center; white-space:nowrap;
+    pointer-events:none;
+  `;
+  finaleDiv.textContent = '🎉 MOVE IT! 🎉';
+  document.getElementById('stage').appendChild(finaleDiv);
+
+  await delay(3500);
+
+  clearInterval(finalNoteTimer);
+  finaleDiv.remove();
+  hideMusic();
+
+  await caption('🎬  THE END  🎬', 2500);
+  await delay(2000);
+  hideCaption();
+
+  // Restart button
+  $('restart-btn').style.display = 'block';
+}
+
+// ─────────────────────────────────────────────
+//  GO!
+// ─────────────────────────────────────────────
+window.addEventListener('load', () => setTimeout(run, 600));
+</script>
+</body>
+</html>
