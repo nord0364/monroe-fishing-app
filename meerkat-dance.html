@@ -3,1957 +3,1206 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meerkat Dance!</title>
+<title>Meerkat Dance</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-  width: 100vw; height: 100vh;
-  overflow: hidden;
-  background: #000;
-  font-family: 'Comic Sans MS', 'Chalkboard SE', cursive;
-  display: flex; align-items: center; justify-content: center;
-}
-
-#stage {
-  width: 800px; height: 480px;
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-/* ── BACKGROUNDS ── */
-.bg {
-  position: absolute; inset: 0;
-  opacity: 0;
-  transition: opacity 1.2s ease;
-}
+body { background: #111; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: sans-serif; overflow: hidden; }
+#container { position: relative; width: 800px; height: 480px; overflow: hidden; }
+#start-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; color: #fff; cursor: pointer; }
+#start-screen h1 { font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 0 0 20px #f90; }
+#start-screen p { font-size: 1.2em; color: #ccc; }
+#start-btn { margin-top: 1.5em; padding: 0.7em 2em; font-size: 1.3em; border-radius: 30px; border: none; background: linear-gradient(135deg, #f90, #f60); color: #fff; cursor: pointer; box-shadow: 0 4px 20px rgba(255,150,0,0.5); }
+#start-btn:hover { background: linear-gradient(135deg, #ffb300, #f70); }
+#stage { position: relative; width: 800px; height: 480px; }
+.bg { position: absolute; inset: 0; opacity: 0; transition: opacity 1s; pointer-events: none; }
 .bg.active { opacity: 1; }
-
-#bg-madagascar {
-  background: linear-gradient(180deg,
-    #5BB8E0 0%, #9ED4F5 40%,
-    #D4C468 40%, #C2AA44 50%,
-    #6AA040 50%, #4A8030 100%);
-}
-#bg-madagascar::before {
-  content: '';
-  position: absolute;
-  width: 90px; height: 90px;
-  background: radial-gradient(circle at 40% 35%, #FFF59D, #FFD600 50%, #FFB300);
-  border-radius: 50%;
-  top: 6%; right: 16%;
-  box-shadow: 0 0 60px #FFD70060;
-}
-#bg-madagascar::after {
-  content: '';
-  position: absolute;
-  width: 160px; height: 36px;
-  background: radial-gradient(ellipse, #fff 0%, #e8f4ff 60%, transparent 100%);
-  border-radius: 50%;
-  top: 12%; left: 10%;
-  box-shadow: 80px -10px 0 20px #ffffffaa, 160px 5px 0 10px #ffffffcc;
-}
-
-#bg-jungle {
-  background: linear-gradient(180deg,
-    #1A4A1A 0%, #2A6A2A 30%,
-    #1E5020 30%, #163A10 70%,
-    #3A6020 70%, #2A4A10 100%);
-}
-#bg-desert {
-  background: linear-gradient(180deg,
-    #87CEEB 0%, #C9E8F5 35%,
-    #E8C86A 35%, #D4A840 60%,
-    #C09030 60%, #A07020 100%);
-}
-#bg-mountains {
-  background: linear-gradient(180deg,
-    #4A6AA0 0%, #7A9AC8 40%,
-    #8090A0 40%, #607080 65%,
-    #809060 65%, #607040 100%);
-}
-
-/* Ground always on top */
-#ground-rect {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 90px;
-  background: linear-gradient(180deg, #8B6914 0%, #6B4E0A 30%, #5A3E08 100%);
-  border-top: 3px solid #A0782A;
-  z-index: 5;
-}
-
-#svg-stage {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-}
-
-/* ── ROCKS GROUP ── */
-#rocks-group {
-  transition: transform 0.7s cubic-bezier(.4,0,.2,1), opacity 0.7s ease;
-}
-#rocks-group.hidden {
-  transform: translateY(100px);
-  opacity: 0;
-}
-
-/* ── SHAKE ── */
+#bg-madagascar { background: linear-gradient(180deg, #87CEEB 0%, #b0e0ff 55%, #6ab04c 55%, #5a9640 100%); }
+#bg-jungle { background: linear-gradient(180deg, #1a472a 0%, #2d6a4f 40%, #1a3a1a 40%, #145214 100%); }
+#bg-desert { background: linear-gradient(180deg, #f0c040 0%, #e8a020 50%, #c8802a 50%, #a06010 100%); }
+#bg-mountains { background: linear-gradient(180deg, #b0c8e0 0%, #8090a8 50%, #606878 50%, #404858 100%); }
+svg#main { position: absolute; top: 0; left: 0; width: 800px; height: 480px; }
+#biome-decorations { position: absolute; top: 0; left: 0; width: 800px; height: 480px; pointer-events: none; }
+#music-notes-layer { position: absolute; top: 0; left: 0; width: 800px; height: 480px; pointer-events: none; z-index: 20; }
+#finale-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; z-index: 30; }
+#finale-text span { font-size: 3.5em; font-weight: 900; color: #fff; text-shadow: 0 0 30px #f90, 0 0 60px #f60; transform: scale(0); display: inline-block; }
+#end-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.8); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 50; color: #fff; }
+#end-screen h2 { font-size: 3em; margin-bottom: 0.5em; }
+#watch-again { padding: 0.7em 2em; font-size: 1.2em; border-radius: 20px; border: none; background: linear-gradient(135deg, #f90, #f60); color: #fff; cursor: pointer; }
+.shake { animation: shake 0.4s ease; }
 @keyframes shake {
-  0%,100% { transform: translate(0,0); }
-  10% { transform: translate(-8px, -5px); }
-  20% { transform: translate(8px, 5px); }
-  30% { transform: translate(-6px, 4px); }
-  40% { transform: translate(6px, -4px); }
-  50% { transform: translate(-4px, 3px); }
-  60% { transform: translate(4px, -3px); }
-  70% { transform: translate(-3px, 2px); }
-  80% { transform: translate(3px, -2px); }
-  90% { transform: translate(-2px, 1px); }
+  0%,100% { transform: translateX(0) translateY(0); }
+  15% { transform: translateX(-6px) translateY(3px); }
+  30% { transform: translateX(5px) translateY(-4px); }
+  45% { transform: translateX(-4px) translateY(5px); }
+  60% { transform: translateX(6px) translateY(-3px); }
+  75% { transform: translateX(-3px) translateY(4px); }
+  90% { transform: translateX(4px) translateY(-2px); }
 }
-.shake { animation: shake 0.5s ease; }
-
-/* ── MEERKAT ANIMATIONS ── */
 @keyframes mk-dance {
-  0%   { transform: rotate(-15deg) translateY(0px); }
-  15%  { transform: rotate(15deg) translateY(-12px); }
-  30%  { transform: rotate(-10deg) translateY(0px); }
-  45%  { transform: rotate(12deg) translateY(-10px); }
-  60%  { transform: rotate(-8deg) translateY(0px); }
-  75%  { transform: rotate(10deg) translateY(-8px); }
-  100% { transform: rotate(-15deg) translateY(0px); }
+  0%   { transform: rotate(-8deg) translateY(0px); }
+  25%  { transform: rotate(8deg) translateY(-10px); }
+  50%  { transform: rotate(-6deg) translateY(-4px); }
+  75%  { transform: rotate(6deg) translateY(-12px); }
+  100% { transform: rotate(-8deg) translateY(0px); }
 }
-
 @keyframes mk-goofy {
-  0%   { transform: rotate(-20deg) scaleX(0.85) translateY(0); }
-  12%  { transform: rotate(20deg) scaleX(1.15) translateY(-14px); }
-  25%  { transform: rotate(-15deg) scaleX(0.9) translateY(0); }
-  37%  { transform: rotate(18deg) scaleX(1.1) translateY(-12px); }
-  50%  { transform: rotate(-12deg) scaleX(0.88) translateY(0); }
-  62%  { transform: rotate(16deg) scaleX(1.08) translateY(-10px); }
-  75%  { transform: rotate(-10deg) scaleX(0.92) translateY(0); }
-  88%  { transform: rotate(14deg) scaleX(1.06) translateY(-8px); }
-  100% { transform: rotate(-20deg) scaleX(0.85) translateY(0); }
+  0%   { transform: rotate(-12deg) scaleX(1) translateY(0); }
+  20%  { transform: rotate(15deg) scaleX(1.1) translateY(-8px); }
+  40%  { transform: rotate(-10deg) scaleX(0.9) translateY(-2px); }
+  60%  { transform: rotate(18deg) scaleX(1.15) translateY(-10px); }
+  80%  { transform: rotate(-8deg) scaleX(0.95) translateY(-3px); }
+  100% { transform: rotate(-12deg) scaleX(1) translateY(0); }
 }
-
 @keyframes mk-walk {
   0%,100% { transform: translateY(0px); }
-  50%      { transform: translateY(-5px); }
+  50%     { transform: translateY(-4px); }
 }
-
-@keyframes leg-swing-near {
-  0%,100% { transform: rotate(20deg); }
-  50%      { transform: rotate(-20deg); }
-}
-@keyframes leg-swing-far {
-  0%,100% { transform: rotate(-20deg); }
-  50%      { transform: rotate(20deg); }
-}
-@keyframes arm-swing-near {
-  0%,100% { transform: rotate(25deg); }
-  50%      { transform: rotate(-25deg); }
-}
-@keyframes arm-swing-far {
-  0%,100% { transform: rotate(-25deg); }
-  50%      { transform: rotate(25deg); }
-}
-
 @keyframes mk-pant {
   0%,100% { transform: scale(1,1); }
-  50%      { transform: scale(1.04,0.97); }
+  50%     { transform: scale(1.06,0.97); }
 }
 @keyframes mk-bounce {
   0%,100% { transform: translateY(0); }
-  50%      { transform: translateY(-14px); }
+  50%     { transform: translateY(-12px); }
 }
 @keyframes mk-slam {
-  0%   { transform: translateY(0) rotate(0deg); }
-  30%  { transform: translateY(-8px) rotate(-5deg); }
-  55%  { transform: translateY(8px) rotate(3deg); }
-  75%  { transform: translateY(-4px) rotate(-2deg); }
-  100% { transform: translateY(0) rotate(0deg); }
+  0%   { transform: rotate(0deg) translateY(0); }
+  30%  { transform: rotate(20deg) translateY(8px); }
+  50%  { transform: rotate(20deg) translateY(8px); }
+  70%  { transform: rotate(-5deg) translateY(-4px); }
+  100% { transform: rotate(0deg) translateY(0); }
 }
 @keyframes mk-startle {
-  0%,100% { transform: translateY(0) rotate(0deg); }
-  20% { transform: translateY(-20px) rotate(-8deg); }
-  40% { transform: translateY(-18px) rotate(8deg); }
-  60% { transform: translateY(-10px) rotate(-4deg); }
-  80% { transform: translateY(-5px) rotate(4deg); }
+  0%   { transform: translateY(0) rotate(0); }
+  25%  { transform: translateY(-15px) rotate(-10deg); }
+  50%  { transform: translateY(-8px) rotate(8deg); }
+  75%  { transform: translateY(-4px) rotate(-4deg); }
+  100% { transform: translateY(0) rotate(0); }
 }
 @keyframes char-pop {
-  0%   { transform: scale(0) translateY(60px); opacity:0; }
-  70%  { transform: scale(1.15) translateY(-8px); opacity:1; }
+  0%   { transform: scale(0) translateY(40px); opacity:0; }
+  60%  { transform: scale(1.15) translateY(-8px); opacity:1; }
+  80%  { transform: scale(0.95) translateY(2px); opacity:1; }
   100% { transform: scale(1) translateY(0); opacity:1; }
 }
 @keyframes note-float {
-  0%   { transform: translateY(0) rotate(-10deg); opacity:1; }
-  100% { transform: translateY(-120px) rotate(20deg); opacity:0; }
+  0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(-120px) rotate(30deg); opacity: 0; }
 }
 @keyframes big-pop {
-  0%   { transform: scale(0); opacity:0; }
-  60%  { transform: scale(1.2); opacity:1; }
-  80%  { transform: scale(0.95); }
-  100% { transform: scale(1); opacity:1; }
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.2); opacity: 1; }
+  80%  { transform: scale(0.95); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
-@keyframes lounge-sway {
-  0%,100% { transform: rotate(-3deg); }
-  50%      { transform: rotate(3deg); }
+@keyframes leg-near {
+  0%,100% { transform: rotate(-20deg); }
+  50%     { transform: rotate(20deg); }
 }
-@keyframes blink-close {
-  0%,90%,100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.05); }
+@keyframes leg-far {
+  0%,100% { transform: rotate(20deg); }
+  50%     { transform: rotate(-20deg); }
 }
-@keyframes mk-look-around {
-  0%,100% { transform: translateX(0); }
-  30% { transform: translateX(-6px); }
-  70% { transform: translateX(6px); }
+@keyframes arm-near {
+  0%,100% { transform: rotate(20deg); }
+  50%     { transform: rotate(-20deg); }
 }
-
-/* ── BIOME DECORATIONS ── */
-.biome-deco {
-  position: absolute;
-  bottom: 90px;
-  pointer-events: none;
-}
-
-/* ── MUSIC NOTES ── */
-.music-note {
-  position: absolute;
-  font-size: 28px;
-  color: #FFD700;
-  text-shadow: 0 0 8px #FF8C00;
-  pointer-events: none;
-  animation: note-float 2s ease-out forwards;
-  z-index: 50;
-}
-
-/* ── FINALE TEXT ── */
-#finale-text {
-  position: absolute;
-  left: 50%; top: 30%;
-  transform: translate(-50%,-50%) scale(0);
-  font-size: 52px;
-  font-weight: 900;
-  color: #FFD700;
-  text-shadow: 3px 3px 0 #FF4500, 6px 6px 10px #000, 0 0 30px #FFD700;
-  letter-spacing: 3px;
-  text-align: center;
-  z-index: 60;
-  white-space: nowrap;
-  display: none;
-}
-#finale-text.visible {
-  display: block;
-  animation: big-pop 0.8s cubic-bezier(.34,1.56,.64,1) forwards;
-}
-
-/* ── THE END ── */
-#the-end {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-#the-end.visible { display: flex; }
-#the-end h1 {
-  font-size: 80px;
-  color: #FFD700;
-  text-shadow: 4px 4px 0 #FF4500, 0 0 40px #FFD700;
-  margin-bottom: 30px;
-  animation: big-pop 1s cubic-bezier(.34,1.56,.64,1) forwards;
-}
-#watch-again {
-  padding: 16px 40px;
-  font-size: 26px;
-  background: linear-gradient(135deg, #FFD700, #FF8C00);
-  border: none; border-radius: 40px;
-  color: #fff; font-family: inherit;
-  font-weight: 900;
-  cursor: pointer;
-  box-shadow: 0 4px 20px #FF450080;
-  transform: scale(0);
-  animation: char-pop 0.6s 0.8s cubic-bezier(.34,1.56,.64,1) forwards;
-}
-#watch-again:hover { transform: scale(1.08); }
-
-/* ── START SCREEN ── */
-#start-screen {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center, #1A3A5A, #000814);
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  z-index: 200;
-  cursor: pointer;
-}
-#start-screen h1 {
-  font-size: 52px;
-  color: #FFD700;
-  text-shadow: 3px 3px 0 #FF4500, 0 0 30px #FFD700aa;
-  margin-bottom: 16px;
-  text-align: center;
-}
-#start-screen p {
-  font-size: 22px;
-  color: #fff;
-  text-shadow: 0 2px 6px #000;
-  margin-bottom: 40px;
-}
-#start-btn {
-  padding: 18px 50px;
-  font-size: 30px;
-  background: linear-gradient(135deg, #FFD700, #FF8C00);
-  border: none; border-radius: 50px;
-  color: #fff; font-family: inherit; font-weight: 900;
-  cursor: pointer;
-  box-shadow: 0 6px 25px #FF450080;
-  animation: mk-bounce 1.5s infinite;
+@keyframes arm-far {
+  0%,100% { transform: rotate(-20deg); }
+  50%     { transform: rotate(20deg); }
 }
 </style>
 </head>
 <body>
-<div id="stage">
-
-  <!-- BACKGROUNDS -->
-  <div class="bg active" id="bg-madagascar"></div>
-  <div class="bg" id="bg-jungle"></div>
-  <div class="bg" id="bg-desert"></div>
-  <div class="bg" id="bg-mountains"></div>
-
-  <!-- GROUND -->
-  <div id="ground-rect"></div>
-
-  <!-- BIOME DECORATIONS (SVG overlay) -->
-  <svg id="biome-svg" style="position:absolute;inset:0;z-index:6;pointer-events:none;" viewBox="0 0 800 480" width="800" height="480">
-    <!-- jungle trees -->
-    <g id="deco-jungle" display="none">
-      <!-- Tree 1 -->
-      <rect x="60" y="260" width="18" height="130" fill="#5A3010" rx="4"/>
-      <ellipse cx="69" cy="250" rx="38" ry="28" fill="#1A6A10"/>
-      <ellipse cx="69" cy="235" rx="30" ry="22" fill="#2A8020"/>
-      <ellipse cx="69" cy="222" rx="22" ry="16" fill="#3A9A30"/>
-      <!-- Tree 2 -->
-      <rect x="160" y="270" width="15" height="120" fill="#4A2808" rx="4"/>
-      <ellipse cx="168" cy="260" rx="33" ry="25" fill="#186010"/>
-      <ellipse cx="168" cy="246" rx="26" ry="19" fill="#28781A"/>
-      <ellipse cx="168" cy="234" rx="19" ry="14" fill="#38902A"/>
-      <!-- Tree 3 -->
-      <rect x="600" y="255" width="18" height="135" fill="#5A3010" rx="4"/>
-      <ellipse cx="609" cy="244" rx="40" ry="30" fill="#1A6A10"/>
-      <ellipse cx="609" cy="228" rx="32" ry="24" fill="#2A8020"/>
-      <ellipse cx="609" cy="215" rx="24" ry="17" fill="#3A9A30"/>
-      <!-- Tree 4 -->
-      <rect x="700" y="265" width="16" height="125" fill="#4A2808" rx="4"/>
-      <ellipse cx="708" cy="255" rx="35" ry="27" fill="#186010"/>
-      <ellipse cx="708" cy="240" rx="28" ry="20" fill="#28781A"/>
-      <ellipse cx="708" cy="228" rx="20" ry="15" fill="#38902A"/>
-      <!-- Vines -->
-      <path d="M69,270 Q90,290 80,320" stroke="#2A7A10" stroke-width="3" fill="none" stroke-dasharray="6,3"/>
-      <path d="M609,270 Q630,295 618,325" stroke="#2A7A10" stroke-width="3" fill="none" stroke-dasharray="6,3"/>
-    </g>
-    <!-- desert dunes + cacti -->
-    <g id="deco-desert" display="none">
-      <!-- Dunes -->
-      <ellipse cx="150" cy="395" rx="140" ry="45" fill="#D4A840" opacity="0.7"/>
-      <ellipse cx="650" cy="400" rx="130" ry="40" fill="#C89830" opacity="0.7"/>
-      <!-- Cactus 1 -->
-      <rect x="95" y="290" width="14" height="100" rx="6" fill="#4A8A20"/>
-      <rect x="79" y="320" width="30" height="12" rx="5" fill="#4A8A20"/>
-      <rect x="65" y="308" width="16" height="34" rx="6" fill="#4A8A20"/>
-      <!-- Cactus 2 -->
-      <rect x="690" y="295" width="13" height="95" rx="6" fill="#4A8A20"/>
-      <rect x="674" y="322" width="30" height="11" rx="5" fill="#4A8A20"/>
-      <rect x="701" y="310" width="14" height="32" rx="6" fill="#4A8A20"/>
-    </g>
-    <!-- mountains -->
-    <g id="deco-mountains" display="none">
-      <!-- mountain shapes -->
-      <polygon points="0,390 120,200 240,390" fill="#5A6A78"/>
-      <polygon points="60,390 200,170 340,390" fill="#4A5A68"/>
-      <polygon points="140,390 280,190 420,390" fill="#5A6878"/>
-      <polygon points="450,390 590,160 730,390" fill="#4A5A68"/>
-      <polygon points="560,390 700,180 800,390" fill="#5A6A78"/>
-      <polygon points="800,390 700,220 800,200" fill="#4A5A68"/>
-      <!-- snow caps -->
-      <polygon points="90,220 120,200 150,220 130,215 120,205 110,215" fill="#fff" opacity="0.9"/>
-      <polygon points="170,190 200,170 230,190 210,186 200,175 190,186" fill="#fff" opacity="0.9"/>
-      <polygon points="560,180 590,160 620,180 600,176 590,165 580,176" fill="#fff" opacity="0.9"/>
-    </g>
-  </svg>
-
-  <!-- MAIN SVG STAGE -->
-  <svg id="svg-stage" viewBox="0 0 800 480" width="800" height="480">
-    <defs>
-      <!-- Radial gradients for Pixar quality -->
-      <radialGradient id="rg-body" cx="35%" cy="28%" r="65%">
-        <stop offset="0%" stop-color="#E8D09A"/>
-        <stop offset="45%" stop-color="#C8A86A"/>
-        <stop offset="100%" stop-color="#7A5228"/>
-      </radialGradient>
-      <radialGradient id="rg-body2" cx="35%" cy="28%" r="65%">
-        <stop offset="0%" stop-color="#E0CA90"/>
-        <stop offset="45%" stop-color="#BFA05C"/>
-        <stop offset="100%" stop-color="#6A4820"/>
-      </radialGradient>
-      <radialGradient id="rg-body3" cx="35%" cy="28%" r="65%">
-        <stop offset="0%" stop-color="#EDDA9C"/>
-        <stop offset="45%" stop-color="#D4B578"/>
-        <stop offset="100%" stop-color="#7A5228"/>
-      </radialGradient>
-      <radialGradient id="rg-body4" cx="35%" cy="28%" r="65%">
-        <stop offset="0%" stop-color="#DBC880"/>
-        <stop offset="45%" stop-color="#B89650"/>
-        <stop offset="100%" stop-color="#6A4418"/>
-      </radialGradient>
-      <radialGradient id="rg-body5" cx="35%" cy="28%" r="65%">
-        <stop offset="0%" stop-color="#E6CC90"/>
-        <stop offset="45%" stop-color="#C2A462"/>
-        <stop offset="100%" stop-color="#704E1A"/>
-      </radialGradient>
-      <radialGradient id="rg-head" cx="38%" cy="30%" r="62%">
-        <stop offset="0%" stop-color="#EDDA9C"/>
-        <stop offset="40%" stop-color="#D0AC70"/>
-        <stop offset="100%" stop-color="#7A5430"/>
-      </radialGradient>
-      <radialGradient id="rg-belly" cx="50%" cy="40%" r="60%">
-        <stop offset="0%" stop-color="#FFF8E8"/>
-        <stop offset="55%" stop-color="#EDDA9C"/>
-        <stop offset="100%" stop-color="#C8A86A"/>
-      </radialGradient>
-      <radialGradient id="rg-iris" cx="35%" cy="32%" r="68%">
-        <stop offset="0%" stop-color="#C8921A"/>
-        <stop offset="50%" stop-color="#9A6810"/>
-        <stop offset="100%" stop-color="#4A2A00"/>
-      </radialGradient>
-      <radialGradient id="rg-rock" cx="35%" cy="28%" r="65%">
-        <stop offset="0%" stop-color="#CCCCCC"/>
-        <stop offset="50%" stop-color="#909090"/>
-        <stop offset="100%" stop-color="#505050"/>
-      </radialGradient>
-      <radialGradient id="rg-lion" cx="38%" cy="30%" r="62%">
-        <stop offset="0%" stop-color="#FFE090"/>
-        <stop offset="45%" stop-color="#D4902A"/>
-        <stop offset="100%" stop-color="#8A5010"/>
-      </radialGradient>
-      <radialGradient id="rg-zebra" cx="38%" cy="30%" r="62%">
-        <stop offset="0%" stop-color="#f5f5f5"/>
-        <stop offset="50%" stop-color="#d8d8d8"/>
-        <stop offset="100%" stop-color="#aaaaaa"/>
-      </radialGradient>
-      <radialGradient id="rg-hippo" cx="38%" cy="30%" r="62%">
-        <stop offset="0%" stop-color="#c8a8d0"/>
-        <stop offset="50%" stop-color="#9878a8"/>
-        <stop offset="100%" stop-color="#604870"/>
-      </radialGradient>
-      <radialGradient id="rg-giraffe" cx="38%" cy="30%" r="62%">
-        <stop offset="0%" stop-color="#FFE8A0"/>
-        <stop offset="50%" stop-color="#D4A840"/>
-        <stop offset="100%" stop-color="#8A6010"/>
-      </radialGradient>
-      <!-- Spiral eye gradient -->
-      <radialGradient id="rg-spiral" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#fff"/>
-        <stop offset="40%" stop-color="#dddddd"/>
-        <stop offset="100%" stop-color="#aaaaaa"/>
-      </radialGradient>
-      <filter id="shadow-drop">
-        <feDropShadow dx="2" dy="3" stdDeviation="3" flood-color="#00000055"/>
-      </filter>
-    </defs>
-
-    <!-- ROCKS GROUP -->
-    <g id="rocks-group">
-      <ellipse cx="170" cy="372" rx="60" ry="32" fill="url(#rg-rock)" filter="url(#shadow-drop)"/>
-      <ellipse cx="170" cy="372" rx="60" ry="32" fill="none" stroke="#707070" stroke-width="1.5" opacity="0.4"/>
-      <ellipse cx="170" cy="368" rx="50" ry="18" fill="#A0A0A0" opacity="0.25"/>
-
-      <ellipse cx="285" cy="368" rx="56" ry="29" fill="url(#rg-rock)" filter="url(#shadow-drop)"/>
-      <ellipse cx="285" cy="368" rx="56" ry="29" fill="none" stroke="#707070" stroke-width="1.5" opacity="0.4"/>
-      <ellipse cx="285" cy="364" rx="46" ry="16" fill="#A0A0A0" opacity="0.25"/>
-
-      <ellipse cx="400" cy="362" rx="68" ry="36" fill="url(#rg-rock)" filter="url(#shadow-drop)"/>
-      <ellipse cx="400" cy="362" rx="68" ry="36" fill="none" stroke="#707070" stroke-width="1.5" opacity="0.4"/>
-      <ellipse cx="400" cy="357" rx="56" ry="20" fill="#A0A0A0" opacity="0.25"/>
-
-      <ellipse cx="515" cy="368" rx="56" ry="29" fill="url(#rg-rock)" filter="url(#shadow-drop)"/>
-      <ellipse cx="515" cy="368" rx="56" ry="29" fill="none" stroke="#707070" stroke-width="1.5" opacity="0.4"/>
-      <ellipse cx="515" cy="364" rx="46" ry="16" fill="#A0A0A0" opacity="0.25"/>
-
-      <ellipse cx="630" cy="372" rx="60" ry="32" fill="url(#rg-rock)" filter="url(#shadow-drop)"/>
-      <ellipse cx="630" cy="372" rx="60" ry="32" fill="none" stroke="#707070" stroke-width="1.5" opacity="0.4"/>
-      <ellipse cx="630" cy="368" rx="50" ry="18" fill="#A0A0A0" opacity="0.25"/>
-    </g>
-
-    <!-- MEERKAT GROUP -->
-    <g id="mk-group">
-      <!-- mk1 -->
-      <g id="mk1" transform="translate(170,322)"></g>
-      <!-- mk2 -->
-      <g id="mk2" transform="translate(285,318)"></g>
-      <!-- mk3 center -->
-      <g id="mk3" transform="translate(400,310)"></g>
-      <!-- mk4 -->
-      <g id="mk4" transform="translate(515,318)"></g>
-      <!-- mk5 -->
-      <g id="mk5" transform="translate(630,322)"></g>
-    </g>
-
-    <!-- MADAGASCAR CHARACTERS (hidden initially) -->
-    <g id="mad-chars" display="none">
-      <!-- Alex lion cx~140 -->
-      <g id="ch-alex" transform="translate(100,360)" style="transform-origin:100px 360px;"></g>
-      <!-- Marty zebra cx~240 -->
-      <g id="ch-marty" transform="translate(220,358)" style="transform-origin:220px 358px;"></g>
-      <!-- Melman giraffe cx~560 -->
-      <g id="ch-melman" transform="translate(560,340)" style="transform-origin:560px 340px;"></g>
-      <!-- Gloria hippo cx~680 -->
-      <g id="ch-gloria" transform="translate(660,355)" style="transform-origin:660px 355px;"></g>
-    </g>
-
-    <!-- WALKING PROFILE GROUP -->
-    <g id="walk-group" display="none"></g>
-
-    <!-- FINALE TEXT -->
-    <text id="finale-text" x="400" y="160" text-anchor="middle"
-      font-size="52" font-weight="900" fill="#FFD700"
-      filter="url(#shadow-drop)"
-      style="font-family:'Comic Sans MS',cursive;display:none;letter-spacing:3px;
-      text-shadow:3px 3px 0 #FF4500,0 0 30px #FFD700;">
-      MOVE IT! MOVE IT!
-    </text>
-  </svg>
-
-  <!-- START SCREEN -->
+<div id="container">
   <div id="start-screen">
-    <h1>🐾 MEERKAT DANCE! 🐾</h1>
-    <p>A Pixar-quality adventure in Madagascar</p>
-    <button id="start-btn">▶ LET'S GO!</button>
+    <h1>MEERKAT DANCE</h1>
+    <p>A Pixar-Quality Animation</p>
+    <button id="start-btn">CLICK TO START</button>
   </div>
+  <div id="stage">
+    <div class="bg active" id="bg-madagascar"></div>
+    <div class="bg" id="bg-jungle"></div>
+    <div class="bg" id="bg-desert"></div>
+    <div class="bg" id="bg-mountains"></div>
+    <div id="biome-decorations"></div>
+    <svg id="main" viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="rg-body" cx="35%" cy="28%" r="65%">
+          <stop offset="0%" stop-color="#E8C882"/>
+          <stop offset="50%" stop-color="#C8A060"/>
+          <stop offset="100%" stop-color="#7A5028"/>
+        </radialGradient>
+        <radialGradient id="rg-head" cx="38%" cy="30%" r="62%">
+          <stop offset="0%" stop-color="#EDD090"/>
+          <stop offset="55%" stop-color="#C8A060"/>
+          <stop offset="100%" stop-color="#7A5028"/>
+        </radialGradient>
+        <radialGradient id="rg-belly" cx="50%" cy="40%" r="55%">
+          <stop offset="0%" stop-color="#FFF0C8"/>
+          <stop offset="70%" stop-color="#E8D09A"/>
+          <stop offset="100%" stop-color="#C8B070"/>
+        </radialGradient>
+        <radialGradient id="rg-iris" cx="35%" cy="32%" r="60%">
+          <stop offset="0%" stop-color="#D49030"/>
+          <stop offset="60%" stop-color="#8B5A10"/>
+          <stop offset="100%" stop-color="#3A2000"/>
+        </radialGradient>
+        <radialGradient id="rg-rock" cx="35%" cy="28%" r="65%">
+          <stop offset="0%" stop-color="#C0C0C0"/>
+          <stop offset="55%" stop-color="#909090"/>
+          <stop offset="100%" stop-color="#505050"/>
+        </radialGradient>
+        <radialGradient id="rg-lion" cx="35%" cy="30%" r="62%">
+          <stop offset="0%" stop-color="#F0C060"/>
+          <stop offset="60%" stop-color="#C89030"/>
+          <stop offset="100%" stop-color="#7A5010"/>
+        </radialGradient>
+        <radialGradient id="rg-zebra" cx="35%" cy="30%" r="62%">
+          <stop offset="0%" stop-color="#FFFFFF"/>
+          <stop offset="60%" stop-color="#DDDDDD"/>
+          <stop offset="100%" stop-color="#888888"/>
+        </radialGradient>
+        <radialGradient id="rg-giraffe" cx="35%" cy="30%" r="62%">
+          <stop offset="0%" stop-color="#F0D080"/>
+          <stop offset="60%" stop-color="#C8A040"/>
+          <stop offset="100%" stop-color="#806020"/>
+        </radialGradient>
+        <radialGradient id="rg-hippo" cx="35%" cy="30%" r="62%">
+          <stop offset="0%" stop-color="#A090C8"/>
+          <stop offset="60%" stop-color="#7060A0"/>
+          <stop offset="100%" stop-color="#403060"/>
+        </radialGradient>
+        <radialGradient id="sky-grad" cx="50%" cy="0%" r="100%">
+          <stop offset="0%" stop-color="#5BC8F5"/>
+          <stop offset="100%" stop-color="#87CEEB"/>
+        </radialGradient>
+      </defs>
 
-  <!-- THE END -->
-  <div id="the-end">
-    <h1>THE END</h1>
-    <button id="watch-again">Watch Again!</button>
+      <!-- Sky and ground always visible -->
+      <rect x="0" y="0" width="800" height="480" fill="url(#sky-grad)"/>
+      <!-- Ground -->
+      <rect id="ground-rect" x="0" y="390" width="800" height="90" fill="#8B7355"/>
+      <rect x="0" y="390" width="800" height="8" fill="#A08B60"/>
+      <!-- Sun -->
+      <circle cx="700" cy="60" r="45" fill="#FFE060" opacity="0.9"/>
+      <circle cx="700" cy="60" r="38" fill="#FFF080"/>
+      <!-- Distant hills -->
+      <ellipse cx="150" cy="420" rx="200" ry="60" fill="#6ab04c" opacity="0.5"/>
+      <ellipse cx="650" cy="425" rx="180" ry="55" fill="#6ab04c" opacity="0.5"/>
+
+      <g id="rocks-group" style="transition: transform 0.8s ease, opacity 0.8s ease;">
+        <ellipse cx="170" cy="372" rx="60" ry="32" fill="url(#rg-rock)" stroke="#404040" stroke-width="1"/>
+        <ellipse cx="155" cy="362" rx="18" ry="8" fill="rgba(255,255,255,0.15)"/>
+        <ellipse cx="285" cy="368" rx="56" ry="29" fill="url(#rg-rock)" stroke="#404040" stroke-width="1"/>
+        <ellipse cx="272" cy="359" rx="16" ry="7" fill="rgba(255,255,255,0.15)"/>
+        <ellipse cx="400" cy="362" rx="68" ry="36" fill="url(#rg-rock)" stroke="#404040" stroke-width="1"/>
+        <ellipse cx="382" cy="350" rx="22" ry="9" fill="rgba(255,255,255,0.15)"/>
+        <ellipse cx="515" cy="368" rx="56" ry="29" fill="url(#rg-rock)" stroke="#404040" stroke-width="1"/>
+        <ellipse cx="502" cy="359" rx="16" ry="7" fill="rgba(255,255,255,0.15)"/>
+        <ellipse cx="630" cy="372" rx="60" ry="32" fill="url(#rg-rock)" stroke="#404040" stroke-width="1"/>
+        <ellipse cx="616" cy="362" rx="18" ry="8" fill="rgba(255,255,255,0.15)"/>
+      </g>
+
+      <g id="mk-group"></g>
+      <g id="walk-group" display="none"></g>
+      <g id="mad-chars-group"></g>
+    </svg>
+    <div id="music-notes-layer"></div>
+    <div id="finale-text"><span id="finale-span">EVERYBODY MOVE IT MOVE IT!</span></div>
   </div>
-
+  <div id="end-screen">
+    <h2>THE END</h2>
+    <button id="watch-again">Watch Again</button>
+  </div>
 </div>
 
 <script>
-// ─────────────────────────────────────────────
-//  CONSTANTS
-// ─────────────────────────────────────────────
-const GROUND_Y    = 390;
+const GROUND_Y = 390;
 const FEET_OFFSET = 47;
-const STAND_Y     = GROUND_Y - FEET_OFFSET; // 343
+const STAND_Y = GROUND_Y - FEET_OFFSET; // 343
 
 const MK_DATA = [
-  { id:'mk1', cx:170, cy:322, grad:'rg-body',  belly:'#E8D09A', isCenter:false },
-  { id:'mk2', cx:285, cy:318, grad:'rg-body2', belly:'#E0CA90', isCenter:false },
-  { id:'mk3', cx:400, cy:310, grad:'rg-body3', belly:'#EDDA9C', isCenter:true  },
-  { id:'mk4', cx:515, cy:318, grad:'rg-body4', belly:'#DBC880', isCenter:false },
-  { id:'mk5', cx:630, cy:322, grad:'rg-body5', belly:'#E6CC90', isCenter:false },
+  { id:'mk1', cx:170, cy:322, c1:'#C8A86A', c2:'#8A6030', belly:'#E8D09A' },
+  { id:'mk2', cx:285, cy:318, c1:'#BFA05C', c2:'#7A5825', belly:'#E0CA90' },
+  { id:'mk3', cx:400, cy:310, c1:'#D4B578', c2:'#8A6038', belly:'#EDDA9C', isCenter:true },
+  { id:'mk4', cx:515, cy:318, c1:'#B89650', c2:'#7A5420', belly:'#DBC880' },
+  { id:'mk5', cx:630, cy:322, c1:'#C2A462', c2:'#806022', belly:'#E6CC90' },
 ];
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-// ─────────────────────────────────────────────
-//  STATE
-// ─────────────────────────────────────────────
 let audioCtx = null;
-let mkEls    = {}; // id -> SVG g element
-let rockHidden = false;
+let mkEls = {};
+let animationRunning = false;
+let musicStopFlag = false;
+let noteInterval = null;
 
-// ─────────────────────────────────────────────
-//  UTILITY: sleep
-// ─────────────────────────────────────────────
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// ─────────────────────────────────────────────
-//  UTILITY: say (SpeechSynthesis)
-// ─────────────────────────────────────────────
-function say(text, opts={}) {
-  return new Promise(resolve => {
-    if (!window.speechSynthesis) { resolve(); return; }
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate  = opts.rate  ?? 1.0;
-    u.pitch = opts.pitch ?? 1.4;
-    u.volume = 1;
-    // Pick a fun voice if available
-    const voices = speechSynthesis.getVoices();
-    if (voices.length) {
-      const pref = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('uk'))
-                || voices.find(v => v.lang.startsWith('en'))
-                || voices[0];
-      u.voice = pref;
-    }
-    u.onend = () => resolve();
-    u.onerror = () => resolve();
-    speechSynthesis.speak(u);
-    // Safety timeout (5s per word + 3s base)
-    setTimeout(resolve, Math.max(3000, text.split(' ').length * 500 + 1500));
-  });
+// ─── Audio ─────────────────────────────────────────────────────────────────
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 }
 
-function sayAll(speeches) {
-  // speeches: [{text, opts}]
-  return speeches.reduce((p, s) => p.then(() => say(s.text, s.opts||{})), Promise.resolve());
+function playTone(freq, type, dur, vol, startTime) {
+  if (!audioCtx) return;
+  const t = (startTime !== undefined) ? startTime : audioCtx.currentTime;
+  const v = (vol !== undefined) ? vol : 0.3;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(v, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.05);
 }
 
-// ─────────────────────────────────────────────
-//  AUDIO: Web Audio API
-// ─────────────────────────────────────────────
-let musicNodes = [];
-let musicPlaying = false;
+function playKick(t) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.frequency.setValueAtTime(150, t);
+  osc.frequency.exponentialRampToValueAtTime(40, t+0.08);
+  gain.gain.setValueAtTime(1.0, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t+0.15);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t+0.2);
+}
+
+function playSnare(t) {
+  if (!audioCtx) return;
+  const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*0.1), audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*0.8;
+  const src = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass'; filter.frequency.value = 3000; filter.Q.value = 0.5;
+  src.buffer = buf;
+  gain.gain.setValueAtTime(0.5, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t+0.1);
+  src.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+  src.start(t); src.stop(t+0.15);
+}
+
+function playHihat(t, vol) {
+  if (!audioCtx) return;
+  const v = (vol !== undefined) ? vol : 0.18;
+  const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*0.05), audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1);
+  const src = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'highpass'; filter.frequency.value = 8000;
+  src.buffer = buf;
+  gain.gain.setValueAtTime(v, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t+0.05);
+  src.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+  src.start(t); src.stop(t+0.08);
+}
 
 function stopMusic() {
-  musicPlaying = false;
-  musicNodes.forEach(n => { try { n.stop(); } catch(e){} });
-  musicNodes = [];
+  musicStopFlag = true;
+}
+
+function startMusic() {
+  if (!audioCtx) return;
+  musicStopFlag = false;
+  const BPM = 130;
+  const beat = 60 / BPM;
+  const eighth = beat / 2;
+  const melody = [392, 392, 440, 392, 330, 294, 392, 392, 440, 392, 349, 330];
+  const melodyDurs = [0.25,0.25,0.25,0.25,0.5,0.75, 0.25,0.25,0.25,0.25,0.5,0.75];
+  const loopBars = 8;
+
+  function scheduleLoop(startT) {
+    if (musicStopFlag) return;
+    const loopDur = loopBars * beat * 4;
+    for(let bar=0; bar<loopBars; bar++) {
+      for(let b=0; b<4; b++) {
+        const t = startT + bar*beat*4 + b*beat;
+        if(b===0||b===2) playKick(t);
+        if(b===1||b===3) playSnare(t);
+        playHihat(t, 0.18);
+        playHihat(t+eighth, 0.12);
+      }
+    }
+    for(let bar=0; bar<loopBars; bar++) {
+      for(let b=0;b<4;b++) {
+        const t = startT + bar*beat*4 + b*beat;
+        playTone(98, 'sine', beat*0.8, 0.35, t);
+      }
+    }
+    let mt = startT;
+    const totalMelDur = melodyDurs.reduce((a,b)=>a+b,0)*beat;
+    const melRep = Math.ceil((loopDur+2) / totalMelDur);
+    for(let r=0;r<melRep;r++) {
+      for(let i=0;i<melody.length;i++) {
+        if(mt >= startT+loopDur) break;
+        playTone(melody[i], 'triangle', melodyDurs[i]*beat*0.85, 0.18, mt);
+        mt += melodyDurs[i]*beat;
+      }
+    }
+    if(!musicStopFlag) {
+      setTimeout(() => {
+        if(!musicStopFlag) scheduleLoop(audioCtx.currentTime + 0.05);
+      }, (loopDur - 0.2)*1000);
+    }
+  }
+  scheduleLoop(audioCtx.currentTime + 0.1);
 }
 
 function playJumpSound() {
   if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const g   = audioCtx.createGain();
-  osc.connect(g); g.connect(audioCtx.destination);
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(200, audioCtx.currentTime);
-  osc.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.2);
-  g.gain.setValueAtTime(0.3, audioCtx.currentTime);
-  g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.25);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.3);
+  const t = audioCtx.currentTime;
+  playTone(200, 'sine', 0.1, 0.4, t);
+  playTone(400, 'sine', 0.1, 0.4, t+0.08);
+  playTone(600, 'sine', 0.12, 0.35, t+0.16);
 }
 
-function playThudSound() {
+function playThud() {
   if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const g   = audioCtx.createGain();
-  osc.connect(g); g.connect(audioCtx.destination);
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(180, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.18);
-  g.gain.setValueAtTime(0.5, audioCtx.currentTime);
-  g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.25);
-}
-
-function playSlamSound() {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const g   = audioCtx.createGain();
-  osc.connect(g); g.connect(audioCtx.destination);
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.1);
-  g.gain.setValueAtTime(0.6, audioCtx.currentTime);
-  g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.15);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.2);
-}
-
-function playCrashSound() {
-  if (!audioCtx) return;
-  // white noise burst
-  const bufSize = audioCtx.sampleRate * 0.4;
-  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < bufSize; i++) data[i] = (Math.random()*2-1);
+  const t = audioCtx.currentTime;
+  playTone(80, 'sine', 0.15, 0.8, t);
+  playTone(60, 'sine', 0.2, 0.6, t+0.03);
+  const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*0.08), audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*0.5;
   const src = audioCtx.createBufferSource();
-  const g   = audioCtx.createGain();
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.5, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t+0.08);
   src.buffer = buf;
-  src.connect(g); g.connect(audioCtx.destination);
-  g.gain.setValueAtTime(0.7, audioCtx.currentTime);
-  g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
-  src.start(audioCtx.currentTime);
-  musicNodes.push(src);
+  src.connect(gain); gain.connect(audioCtx.destination);
+  src.start(t); src.stop(t+0.1);
 }
 
-function startMusic() {
-  if (!audioCtx || musicPlaying) return;
-  musicPlaying = true;
-  const BPM = 130;
-  const beat = 60 / BPM;       // seconds per beat
-  const bar  = beat * 4;
-  const eighth = beat / 2;
+function playCrash() {
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  playTone(300, 'sawtooth', 0.05, 0.8, t);
+  playTone(180, 'sawtooth', 0.08, 0.7, t+0.02);
+  const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*0.3), audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(audioCtx.sampleRate*0.15));
+  const src = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(1.0, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t+0.3);
+  src.buffer = buf;
+  src.connect(gain); gain.connect(audioCtx.destination);
+  src.start(t); src.stop(t+0.35);
+}
 
-  // "I Like to Move It" melody approximation
-  // G4=392, A4=440, E4=330, D4=294, C4=262, B3=247
-  const melodyNotes = [
-    [392,0],[392,eighth*0.5],[440,eighth],[392,eighth*2],[330,eighth*3],[294,eighth*4],
-    [392,beat*2],[392,beat*2+eighth*0.5],[440,beat*2+eighth],[392,beat*2+eighth*2],
-    [330,beat*2+eighth*3],[294,beat*2+eighth*4],
-    [392,beat*4],[440,beat*4+eighth],[392,beat*4+eighth*2],[330,beat*4+beat],
-    [262,beat*5+eighth],[294,beat*5+eighth*2],[262,beat*6],[262,beat*6+eighth*0.5],
-    [294,beat*6+eighth],[262,beat*6+eighth*2],[247,beat*6+eighth*3],
-    [262,beat*7],[392,beat*7+beat*0.5],
-  ];
-  const loopLen = bar * 3.5;
+function playSlam() {
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  playTone(120, 'sawtooth', 0.12, 1.0, t);
+  playTone(80, 'sine', 0.2, 0.8, t+0.05);
+}
 
-  function scheduleMusic(startTime) {
-    if (!musicPlaying) return;
-    const totalBars = Math.ceil(loopLen / bar);
+// ─── Speech ────────────────────────────────────────────────────────────────
+function say(text, opts) {
+  return new Promise(function(resolve) {
+    if(!window.speechSynthesis) { setTimeout(resolve, 1500); return; }
+    window.speechSynthesis.cancel();
+    const o = opts || {};
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = o.rate || 1.0;
+    utt.pitch = o.pitch || 1.4;
+    utt.volume = 1.0;
+    const timeout = setTimeout(resolve, Math.max(2000, text.length*80));
+    utt.onend = function() { clearTimeout(timeout); setTimeout(resolve, 200); };
+    utt.onerror = function() { clearTimeout(timeout); resolve(); };
+    window.speechSynthesis.speak(utt);
+  });
+}
 
-    for (let i = 0; i < totalBars * 4; i++) {
-      const t = startTime + i * beat;
-      if (t - audioCtx.currentTime > loopLen + 1) break;
+// ─── Utilities ─────────────────────────────────────────────────────────────
+function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-      // Kick on 1 & 3
-      if (i % 4 === 0 || i % 4 === 2) {
-        const k = audioCtx.createOscillator();
-        const kg = audioCtx.createGain();
-        k.connect(kg); kg.connect(audioCtx.destination);
-        k.type = 'sine';
-        k.frequency.setValueAtTime(180, t);
-        k.frequency.exponentialRampToValueAtTime(50, t + 0.08);
-        kg.gain.setValueAtTime(0.6, t);
-        kg.gain.linearRampToValueAtTime(0, t + 0.1);
-        k.start(t); k.stop(t + 0.15);
-        musicNodes.push(k);
-      }
-      // Snare on 2 & 4
-      if (i % 4 === 1 || i % 4 === 3) {
-        const bufSize = Math.floor(audioCtx.sampleRate * 0.12);
-        const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-        const d = buf.getChannelData(0);
-        for (let j = 0; j < bufSize; j++) d[j] = (Math.random()*2-1) * (1 - j/bufSize);
-        const sn = audioCtx.createBufferSource();
-        const sg = audioCtx.createGain();
-        sn.buffer = buf; sn.connect(sg); sg.connect(audioCtx.destination);
-        sg.gain.setValueAtTime(0.35, t);
-        sg.gain.linearRampToValueAtTime(0, t + 0.12);
-        sn.start(t);
-        musicNodes.push(sn);
-      }
-    }
-
-    // Hihat every eighth
-    const numEighths = Math.floor(loopLen / eighth);
-    for (let i = 0; i < numEighths; i++) {
-      const t = startTime + i * eighth;
-      const bufSize = Math.floor(audioCtx.sampleRate * 0.06);
-      const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let j = 0; j < bufSize; j++) d[j] = (Math.random()*2-1) * (1 - j/bufSize);
-      const hh = audioCtx.createBufferSource();
-      const hg = audioCtx.createGain();
-      const hf = audioCtx.createBiquadFilter();
-      hh.buffer = buf; hh.connect(hf); hf.connect(hg); hg.connect(audioCtx.destination);
-      hf.type = 'highpass'; hf.frequency.value = 8000;
-      hg.gain.setValueAtTime(0.15, t);
-      hg.gain.linearRampToValueAtTime(0, t + 0.06);
-      hh.start(t);
-      musicNodes.push(hh);
-    }
-
-    // Melody (triangle oscillators)
-    melodyNotes.forEach(([freq, offset]) => {
-      const t = startTime + offset;
-      if (t < audioCtx.currentTime - 0.05) return;
-      const osc = audioCtx.createOscillator();
-      const og  = audioCtx.createGain();
-      osc.connect(og); og.connect(audioCtx.destination);
-      osc.type = 'triangle';
-      osc.frequency.value = freq;
-      og.gain.setValueAtTime(0, t);
-      og.gain.linearRampToValueAtTime(0.22, t + 0.02);
-      og.gain.linearRampToValueAtTime(0.18, t + 0.1);
-      og.gain.linearRampToValueAtTime(0, t + 0.22);
-      osc.start(t); osc.stop(t + 0.25);
-      musicNodes.push(osc);
-    });
-
-    // Bass (G2=98 on every beat)
-    for (let i = 0; i < Math.floor(loopLen / beat); i++) {
-      const t = startTime + i * beat;
-      const b = audioCtx.createOscillator();
-      const bg = audioCtx.createGain();
-      b.connect(bg); bg.connect(audioCtx.destination);
-      b.type = 'sine';
-      b.frequency.value = 98;
-      bg.gain.setValueAtTime(0, t);
-      bg.gain.linearRampToValueAtTime(0.3, t + 0.02);
-      bg.gain.linearRampToValueAtTime(0.2, t + 0.1);
-      bg.gain.linearRampToValueAtTime(0, t + beat * 0.8);
-      b.start(t); b.stop(t + beat);
-      musicNodes.push(b);
-    }
-
-    // Schedule next loop
-    if (musicPlaying) {
-      setTimeout(() => scheduleMusic(startTime + loopLen), (loopLen - 0.5) * 1000);
-    }
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if(attrs) {
+    for(const k in attrs) el.setAttribute(k, attrs[k]);
   }
-
-  scheduleMusic(audioCtx.currentTime + 0.05);
-}
-
-// ─────────────────────────────────────────────
-//  SVG HELPERS
-// ─────────────────────────────────────────────
-function svgEl(tag, attrs={}) {
-  const el = document.createElementNS(SVG_NS, tag);
-  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v);
   return el;
 }
-function svgG(attrs={}) { return svgEl('g', attrs); }
 
-// ─────────────────────────────────────────────
-//  DRAW: Pixar Meerkat (front view, standing)
-//  Returns an SVG <g> with origin at "feet" bottom center
-//  (transform translate will place them correctly)
-// ─────────────────────────────────────────────
-function drawMeerkat(grad, belly, opts={}) {
-  // opts: {lounge, startle, slam, bounce, dance, spiral, pant}
-  const g = svgEl('g');
-  const isDark = opts.darkStripe !== false;
+// ─── Eye Drawing ───────────────────────────────────────────────────────────
+function drawEye(parent, x, y, r) {
+  const radius = r || 6;
+  const sclera = svgEl('ellipse', { cx:String(x), cy:String(y), rx:String(radius), ry:String(radius+0.5), fill:'white' });
+  parent.appendChild(sclera);
+  const iris = svgEl('circle', { cx:String(x), cy:String(y), r:String(radius*0.75), fill:'url(#rg-iris)' });
+  parent.appendChild(iris);
+  const pupil = svgEl('circle', { cx:String(x), cy:String(y), r:String(radius*0.42), fill:'#111' });
+  parent.appendChild(pupil);
+  const hl1 = svgEl('circle', { cx:String(x-radius*0.25), cy:String(y-radius*0.25), r:String(radius*0.2), fill:'white' });
+  parent.appendChild(hl1);
+  const hl2 = svgEl('circle', { cx:String(x+radius*0.3), cy:String(y+radius*0.17), r:String(radius*0.12), fill:'rgba(255,255,255,0.8)' });
+  parent.appendChild(hl2);
+}
 
-  // Cast shadow
-  const shadow = svgEl('ellipse', {
-    cx:'0', cy:'44', rx:'26', ry:'7',
-    fill:'#00000040'
-  });
-  g.appendChild(shadow);
+function drawSpiralEye(parent, x, y) {
+  parent.appendChild(svgEl('ellipse', { cx:String(x), cy:String(y), rx:'6', ry:'6.5', fill:'white' }));
+  parent.appendChild(svgEl('path', { d:`M ${x},${y} Q ${x+3},${y-3} ${x+4},${y} Q ${x+3},${y+3} ${x},${y+4} Q ${x-3},${y+3} ${x-4},${y} Q ${x-3},${y-3} ${x},${y-4} Q ${x+1},${y-2} ${x},${y}`, stroke:'#333', 'stroke-width':'1.2', fill:'none' }));
+  parent.appendChild(svgEl('circle', { cx:String(x), cy:String(y), r:'1', fill:'#333' }));
+}
 
-  // Tail
-  const tail = svgEl('path', {
-    d: opts.lounge
-      ? 'M -8,20 Q -40,30 -48,8 Q -52,-5 -40,-10 Q -32,-12 -25,0'
-      : 'M 0,30 Q 30,20 38,0 Q 42,-12 32,-18',
-    fill:'none',
-    stroke:`url(#${grad})`,
-    'stroke-width':'9',
-    'stroke-linecap':'round'
-  });
-  // Tail tip stripes
-  const tailTip = svgEl('path', {
-    d: opts.lounge
-      ? 'M -38,-8 Q -44,-4 -48,8'
-      : 'M 34,-16 Q 40,-10 38,0',
-    fill:'none',
-    stroke:'#3A2010',
-    'stroke-width':'9',
-    'stroke-linecap':'round',
-    opacity:'0.6'
-  });
-  g.appendChild(tail);
-  g.appendChild(tailTip);
+// ─── Meerkat Front View ─────────────────────────────────────────────────────
+function drawMeerkatFront(mk, options) {
+  const opts = options || {};
+  const lounging = (opts.lounging !== false);
+  const dancing = !!opts.dancing;
+  const slamming = !!opts.slamming;
+  const panting = !!opts.panting;
+  const spiralEyes = !!opts.spiralEyes;
+  const { cx, cy, c1, c2, belly, id, isCenter } = mk;
+  const g = svgEl('g', { id: id, transform: `translate(${cx},${cy})` });
 
-  if (opts.lounge) {
-    // LOUNGE MODE: reclining shape
-    // Body (horizontal)
-    const body = svgEl('ellipse', {
-      cx:'0', cy:'8', rx:'30', ry:'18',
-      fill:`url(#${grad})`
-    });
-    g.appendChild(body);
-    // Belly
-    const bel = svgEl('ellipse', {
-      cx:'2', cy:'10', rx:'18', ry:'11',
-      fill:'url(#rg-belly)'
-    });
-    g.appendChild(bel);
-    // Head
-    const head = svgEl('ellipse', {
-      cx:'24', cy:'-5', rx:'19', ry:'17',
-      fill:'url(#rg-head)'
-    });
-    g.appendChild(head);
-    // Eye mask
-    const mask = svgEl('ellipse', {
-      cx:'28', cy:'-7', rx:'14', ry:'10',
-      fill:'#6A3808', opacity:'0.35'
-    });
-    g.appendChild(mask);
-    // Eye
-    const eyeG = svgEl('g', { transform:'translate(28,-8)' });
-    eyeG.appendChild(mkEye(opts));
-    g.appendChild(eyeG);
-    // Nose
-    const nose = svgEl('ellipse', {
-      cx:'40', cy:'-2', rx:'5', ry:'3.5',
-      fill:'#3A1A0A'
-    });
-    const noseHL = svgEl('ellipse', {
-      cx:'38', cy:'-3.5', rx:'2', ry:'1.5',
-      fill:'#6A3810', opacity:'0.7'
-    });
-    g.appendChild(nose); g.appendChild(noseHL);
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'42', rx:'28', ry:'8', fill:'rgba(0,0,0,0.25)' }));
+
+  if(lounging) {
+    // Tail
+    g.appendChild(svgEl('path', { d:'M 0,15 Q 20,30 18,50 Q 16,60 8,58 Q 0,56 2,48 Q 4,38 -2,28 Z', fill:c2, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('ellipse', { cx:'8', cy:'57', rx:'7', ry:'5', fill:'#2A1A00' }));
+    g.appendChild(svgEl('ellipse', { cx:'8', cy:'57', rx:'4', ry:'3', fill:c2 }));
+    // Body
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'20', rx:'22', ry:'28', fill:'url(#rg-body)', stroke:c2, 'stroke-width':'1.5' }));
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'22', rx:'14', ry:'19', fill:'url(#rg-belly)' }));
+    g.appendChild(svgEl('ellipse', { cx:'-6', cy:'8', rx:'10', ry:'14', fill:'rgba(255,255,255,0.12)' }));
+    // Arms
+    g.appendChild(svgEl('path', { d:'M -16,4 Q -26,-2 -24,10 Q -22,18 -12,16', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('path', { d:'M 16,4 Q 26,-2 24,10 Q 22,18 12,16', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    // Legs
+    g.appendChild(svgEl('path', { d:'M -10,38 Q -16,46 -14,54 Q -12,58 -6,56', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('path', { d:'M 10,38 Q 16,46 14,54 Q 12,58 6,56', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('ellipse', { cx:'-10', cy:'56', rx:'9', ry:'5', fill:c2 }));
+    g.appendChild(svgEl('ellipse', { cx:'10', cy:'56', rx:'9', ry:'5', fill:c2 }));
+    // Neck & Head
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-10', rx:'10', ry:'8', fill:'url(#rg-head)' }));
+    g.appendChild(svgEl('circle', { cx:'0', cy:'-28', r:'22', fill:'url(#rg-head)', stroke:c2, 'stroke-width':'1.5' }));
+    g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-36', rx:'9', ry:'7', fill:'rgba(255,255,255,0.15)' }));
     // Ears
-    const ear = svgEl('ellipse', {
-      cx:'16', cy:'-21', rx:'7', ry:'5.5',
-      fill:`url(#${grad})`
-    });
-    const earIn = svgEl('ellipse', {
-      cx:'16', cy:'-21', rx:'4', ry:'3',
-      fill:'#C87840', opacity:'0.7'
-    });
-    g.appendChild(ear); g.appendChild(earIn);
-    // Ambient highlight
-    const hl = svgEl('ellipse', {
-      cx:'18', cy:'-2', rx:'14', ry:'8',
-      fill:'#ffffff18'
-    });
-    g.appendChild(hl);
-    // Arms/legs hidden in lounge
-    const limb1 = svgEl('ellipse', {
-      cx:'-10', cy:'18', rx:'9', ry:'5',
-      fill:`url(#${grad})`
-    });
-    g.appendChild(limb1);
-    return g;
+    g.appendChild(svgEl('ellipse', { cx:'-18', cy:'-40', rx:'8', ry:'10', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('ellipse', { cx:'-18', cy:'-40', rx:'4', ry:'6', fill:'#E87080' }));
+    g.appendChild(svgEl('ellipse', { cx:'18', cy:'-40', rx:'8', ry:'10', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('ellipse', { cx:'18', cy:'-40', rx:'4', ry:'6', fill:'#E87080' }));
+    // Muzzle
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-20', rx:'10', ry:'8', fill:c1 }));
+    // Nose
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-26', rx:'5', ry:'3.5', fill:'#3A1A00' }));
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-27', rx:'3', ry:'2', fill:'#5A2A00' }));
+    g.appendChild(svgEl('ellipse', { cx:'-1', cy:'-28', rx:'1.5', ry:'1', fill:'rgba(255,255,255,0.5)' }));
+    // Eyes
+    if(spiralEyes) { drawSpiralEye(g,-10,-32); drawSpiralEye(g,10,-32); }
+    else { drawEye(g,-10,-32); drawEye(g,10,-32); }
+    // Eyebrows for center
+    if(isCenter) {
+      g.appendChild(svgEl('path', { d:'M -16,-38 Q -9,-41 -4,-37', stroke:'#3A2000', 'stroke-width':'2', fill:'none', 'stroke-linecap':'round' }));
+      g.appendChild(svgEl('path', { d:'M 4,-37 Q 9,-41 16,-38', stroke:'#3A2000', 'stroke-width':'2', fill:'none', 'stroke-linecap':'round' }));
+    }
+    // Stripes
+    g.appendChild(svgEl('path', { d:'M -8,-5 Q 0,-8 8,-5', stroke:c2, 'stroke-width':'1.5', fill:'none', opacity:'0.6' }));
+    g.appendChild(svgEl('path', { d:'M -10,5 Q 0,2 10,5', stroke:c2, 'stroke-width':'1.5', fill:'none', opacity:'0.5' }));
+  } else {
+    // Standing pose
+    // Tail
+    g.appendChild(svgEl('path', { d:'M 8,10 Q 22,0 20,-15 Q 18,-25 10,-22 Q 2,-20 6,-12 Q 10,-5 6,4 Z', fill:c2 }));
+    g.appendChild(svgEl('ellipse', { cx:'10', cy:'-23', rx:'6', ry:'4', fill:'#2A1A00' }));
+    g.appendChild(svgEl('ellipse', { cx:'10', cy:'-23', rx:'3', ry:'2', fill:c2 }));
+    // Body
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'0', rx:'20', ry:'26', fill:'url(#rg-body)', stroke:c2, 'stroke-width':'1.5' }));
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'2', rx:'12', ry:'17', fill:'url(#rg-belly)' }));
+    g.appendChild(svgEl('ellipse', { cx:'-5', cy:'-10', rx:'8', ry:'12', fill:'rgba(255,255,255,0.12)' }));
+    // Arms
+    if(dancing) {
+      g.appendChild(svgEl('path', { d:'M -16,-8 Q -30,-20 -26,-8 Q -22,2 -14,-2', fill:c1, stroke:c2, 'stroke-width':'1' }));
+      g.appendChild(svgEl('path', { d:'M 16,-8 Q 30,-20 26,-8 Q 22,2 14,-2', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    } else if(slamming) {
+      g.appendChild(svgEl('path', { d:'M -16,0 Q -28,10 -22,22 Q -16,28 -10,24', fill:c1, stroke:c2, 'stroke-width':'1' }));
+      g.appendChild(svgEl('path', { d:'M 16,0 Q 28,10 22,22 Q 16,28 10,24', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    } else {
+      g.appendChild(svgEl('path', { d:'M -16,-8 Q -24,-4 -22,6 Q -20,14 -14,12', fill:c1, stroke:c2, 'stroke-width':'1' }));
+      g.appendChild(svgEl('path', { d:'M 16,-8 Q 24,-4 22,6 Q 20,14 14,12', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    }
+    // Legs
+    g.appendChild(svgEl('path', { d:'M -8,20 Q -12,30 -10,40 Q -8,44 -4,44', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('path', { d:'M 8,20 Q 12,30 10,40 Q 8,44 4,44', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    // Feet at y+47
+    g.appendChild(svgEl('ellipse', { cx:'-7', cy:'47', rx:'9', ry:'5', fill:c2 }));
+    g.appendChild(svgEl('ellipse', { cx:'7', cy:'47', rx:'9', ry:'5', fill:c2 }));
+    // Neck & Head
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-28', rx:'9', ry:'7', fill:'url(#rg-head)' }));
+    g.appendChild(svgEl('circle', { cx:'0', cy:'-46', r:'20', fill:'url(#rg-head)', stroke:c2, 'stroke-width':'1.5' }));
+    g.appendChild(svgEl('ellipse', { cx:'-5', cy:'-54', rx:'8', ry:'6', fill:'rgba(255,255,255,0.15)' }));
+    // Ears
+    g.appendChild(svgEl('ellipse', { cx:'-16', cy:'-60', rx:'7', ry:'9', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('ellipse', { cx:'-16', cy:'-60', rx:'3.5', ry:'5', fill:'#E87080' }));
+    g.appendChild(svgEl('ellipse', { cx:'16', cy:'-60', rx:'7', ry:'9', fill:c1, stroke:c2, 'stroke-width':'1' }));
+    g.appendChild(svgEl('ellipse', { cx:'16', cy:'-60', rx:'3.5', ry:'5', fill:'#E87080' }));
+    // Muzzle
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-40', rx:'9', ry:'7', fill:c1 }));
+    // Nose
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-45', rx:'4.5', ry:'3', fill:'#3A1A00' }));
+    g.appendChild(svgEl('ellipse', { cx:'0', cy:'-46', rx:'2.5', ry:'1.8', fill:'#5A2A00' }));
+    g.appendChild(svgEl('ellipse', { cx:'-1', cy:'-47', rx:'1.2', ry:'0.8', fill:'rgba(255,255,255,0.5)' }));
+    // Eyes
+    if(spiralEyes) { drawSpiralEye(g,-9,-50); drawSpiralEye(g,9,-50); }
+    else { drawEye(g,-9,-50); drawEye(g,9,-50); }
+    // Stripes
+    g.appendChild(svgEl('path', { d:'M -8,-18 Q 0,-21 8,-18', stroke:c2, 'stroke-width':'1.5', fill:'none', opacity:'0.6' }));
+    g.appendChild(svgEl('path', { d:'M -10,-8 Q 0,-11 10,-8', stroke:c2, 'stroke-width':'1.5', fill:'none', opacity:'0.5' }));
+    // Panting mouth / tongue
+    if(panting) {
+      g.appendChild(svgEl('path', { d:'M -5,-38 Q 0,-35 5,-38', stroke:'#3A1000', 'stroke-width':'1.5', fill:'none', 'stroke-linecap':'round' }));
+      g.appendChild(svgEl('ellipse', { cx:'0', cy:'-36', rx:'4', ry:'3', fill:'#E04060' }));
+    }
   }
-
-  // STANDING MODE
-  // Legs
-  const legL = svgEl('ellipse', { cx:'-9', cy:'36', rx:'6', ry:'12', fill:`url(#${grad})` });
-  const legR = svgEl('ellipse', { cx:'9',  cy:'36', rx:'6', ry:'12', fill:`url(#${grad})` });
-  // Feet
-  const footL = svgEl('ellipse', { cx:'-10', cy:'47', rx:'8', ry:'4', fill:`url(#${grad})` });
-  const footR = svgEl('ellipse', { cx:'10',  cy:'47', rx:'8', ry:'4', fill:`url(#${grad})` });
-  g.appendChild(legL); g.appendChild(legR);
-  g.appendChild(footL); g.appendChild(footR);
-
-  // Body
-  const body = svgEl('ellipse', {
-    cx:'0', cy:'18', rx:'22', ry:'22',
-    fill:`url(#${grad})`
-  });
-  g.appendChild(body);
-
-  // Belly
-  const bel = svgEl('ellipse', {
-    cx:'0', cy:'20', rx:'13', ry:'14',
-    fill:'url(#rg-belly)'
-  });
-  g.appendChild(bel);
-
-  // Arms
-  const armL = svgEl('ellipse', {
-    cx:'-22', cy:'18', rx:'5', ry:'10',
-    fill:`url(#${grad})`, transform:'rotate(-10,-22,18)'
-  });
-  const armR = svgEl('ellipse', {
-    cx:'22', cy:'18', rx:'5', ry:'10',
-    fill:`url(#${grad})`, transform:'rotate(10,22,18)'
-  });
-  if (opts.slam) {
-    armL.setAttribute('transform', 'rotate(-50,-22,18) translate(-5,8)');
-    armR.setAttribute('transform', 'rotate(50,22,18) translate(5,8)');
-  }
-  g.appendChild(armL); g.appendChild(armR);
-
-  // Head
-  const head = svgEl('ellipse', {
-    cx:'0', cy:'-8', rx:'20', ry:'19',
-    fill:'url(#rg-head)'
-  });
-  g.appendChild(head);
-
-  // Eye mask (raccoon-style dark area)
-  const maskL = svgEl('ellipse', {
-    cx:'-7', cy:'-9', rx:'9', ry:'7',
-    fill:'#5A3208', opacity:'0.35'
-  });
-  const maskR = svgEl('ellipse', {
-    cx:'7', cy:'-9', rx:'9', ry:'7',
-    fill:'#5A3208', opacity:'0.35'
-  });
-  g.appendChild(maskL); g.appendChild(maskR);
-
-  // Eyes
-  const eyeGL = svgEl('g', { transform:'translate(-7,-10)' });
-  const eyeGR = svgEl('g', { transform:'translate(7,-10)' });
-  eyeGL.appendChild(mkEye(opts));
-  eyeGR.appendChild(mkEye(opts));
-  g.appendChild(eyeGL); g.appendChild(eyeGR);
-
-  // Ears
-  const earL = svgEl('ellipse', { cx:'-16', cy:'-24', rx:'7', ry:'8', fill:`url(#${grad})` });
-  const earR = svgEl('ellipse', { cx:'16',  cy:'-24', rx:'7', ry:'8', fill:`url(#${grad})` });
-  const earLin = svgEl('ellipse', { cx:'-16', cy:'-24', rx:'4', ry:'5', fill:'#C87840', opacity:'0.65' });
-  const earRin = svgEl('ellipse', { cx:'16',  cy:'-24', rx:'4', ry:'5', fill:'#C87840', opacity:'0.65' });
-  // Insert ears before head (behind)
-  g.insertBefore(earL, head);
-  g.insertBefore(earR, head);
-  g.insertBefore(earLin, head);
-  g.insertBefore(earRin, head);
-
-  // Nose
-  const noseBase = svgEl('ellipse', { cx:'0', cy:'2', rx:'6', ry:'4', fill:'#2A1008' });
-  const noseHL   = svgEl('ellipse', { cx:'-2', cy:'0.5', rx:'2.5', ry:'1.8', fill:'#6A3810', opacity:'0.7' });
-  g.appendChild(noseBase); g.appendChild(noseHL);
-
-  // Mouth
-  const mouth = svgEl('path', {
-    d:'M -4,6 Q 0,10 4,6',
-    fill:'none', stroke:'#2A1008', 'stroke-width':'1.5', 'stroke-linecap':'round'
-  });
-  g.appendChild(mouth);
-
-  // Ambient highlight
-  const bodyHL = svgEl('ellipse', {
-    cx:'-6', cy:'8', rx:'10', ry:'10',
-    fill:'#ffffff15'
-  });
-  g.appendChild(bodyHL);
-
   return g;
 }
 
-// Draw Pixar-quality eye (centered at 0,0)
-function mkEye(opts={}) {
-  const g = svgEl('g');
-  // Sclera (white)
-  const sclera = svgEl('ellipse', { cx:'0', cy:'0', rx:'7', ry:'7.5', fill:'#FFFFFF' });
-  g.appendChild(sclera);
+// ─── Side Profile Meerkat ────────────────────────────────────────────────────
+function drawMeerkatProfile(mk, xOff) {
+  const x = xOff || mk.cx;
+  const { c1, c2, id } = mk;
+  const g = svgEl('g', { id: id+'_walk', transform:`translate(${x},${STAND_Y})` });
+  g.style.animation = 'mk-walk 0.4s ease-in-out infinite';
 
-  if (opts.spiral) {
-    // Spiral/dizzy eyes
-    const spiral = svgEl('circle', { cx:'0', cy:'0', r:'7', fill:'url(#rg-spiral)' });
-    const sp1 = svgEl('path', {
-      d:'M 0,0 Q 4,-4 4,0 Q 4,4 0,4 Q -4,4 -4,0 Q -4,-4 0,-4',
-      fill:'none', stroke:'#888', 'stroke-width':'1.5'
-    });
-    g.appendChild(spiral); g.appendChild(sp1);
-    return g;
-  }
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'48', rx:'18', ry:'5', fill:'rgba(0,0,0,0.2)' }));
 
-  // Iris
-  const iris = svgEl('ellipse', { cx:'0', cy:'0', rx:'5', ry:'5.5', fill:'url(#rg-iris)' });
-  g.appendChild(iris);
+  // Tail sweeping up behind
+  g.appendChild(svgEl('path', { d:'M -4,5 Q -20,-5 -18,-20 Q -16,-30 -8,-28', stroke:c2, 'stroke-width':'4', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('ellipse', { cx:'-8', cy:'-28', rx:'5', ry:'3.5', fill:'#2A1A00', transform:'rotate(-20,-8,-28)' }));
+  g.appendChild(svgEl('ellipse', { cx:'-8', cy:'-28', rx:'3', ry:'2', fill:c2, transform:'rotate(-20,-8,-28)' }));
 
-  // Pupil
-  const pupil = svgEl('ellipse', { cx:'0', cy:'0', rx:'2.8', ry:'3', fill:'#0A0500' });
-  g.appendChild(pupil);
-
-  // Two specular highlights
-  const spec1 = svgEl('ellipse', { cx:'-1.5', cy:'-1.8', rx:'1.5', ry:'1.5', fill:'#FFFFFF', opacity:'0.95' });
-  const spec2 = svgEl('ellipse', { cx:'1.8',  cy:'-0.5', rx:'0.7', ry:'0.7', fill:'#FFFFFF', opacity:'0.8' });
-  g.appendChild(spec1); g.appendChild(spec2);
-
-  // Eyelid (closed for blink)
-  if (opts.blink) {
-    const lid = svgEl('ellipse', {
-      cx:'0', cy:'-1', rx:'7', ry:'6',
-      fill:`url(#rg-head)`,
-      id:`lid-${Math.random().toString(36).slice(2,8)}`
-    });
-    g.appendChild(lid);
-  }
-
-  return g;
-}
-
-// ─────────────────────────────────────────────
-//  DRAW: Side-profile meerkat for walking
-// ─────────────────────────────────────────────
-function drawMeerkatProfile(grad, opts={}) {
-  const g = svgEl('g');
-
-  // Shadow
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'44', rx:'22', ry:'5', fill:'#00000030' }));
-
-  // Tail (behind)
-  g.appendChild(svgEl('path', {
-    d:'M -8,22 Q -28,10 -30,-8 Q -28,-20 -18,-18',
-    fill:'none', stroke:`url(#${grad})`, 'stroke-width':'8',
-    'stroke-linecap':'round'
-  }));
-  g.appendChild(svgEl('path', {
-    d:'M -26,-14 Q -30,-8 -30,-8',
-    fill:'none', stroke:'#3A2010', 'stroke-width':'8',
-    'stroke-linecap':'round', opacity:'0.6'
-  }));
-
-  // Far leg (back)
-  const farLeg = svgEl('g', { id:'far-leg', style:'transform-origin:0px 28px;' });
-  farLeg.appendChild(svgEl('ellipse', { cx:'0', cy:'36', rx:'5', ry:'11', fill:`url(#${grad})`, opacity:'0.7' }));
-  farLeg.appendChild(svgEl('ellipse', { cx:'4', cy:'47', rx:'7', ry:'3.5', fill:`url(#${grad})`, opacity:'0.7' }));
+  // Far leg (behind body, alternate phase)
+  const farLeg = svgEl('g', { style:'transform-origin:0px 18px; animation:leg-far 0.4s ease-in-out infinite;' });
+  farLeg.appendChild(svgEl('path', { d:'M 0,18 Q -2,32 0,42 Q 2,46 4,44', fill:c2, stroke:c2, 'stroke-width':'1' }));
+  farLeg.appendChild(svgEl('ellipse', { cx:'3', cy:'44', rx:'7', ry:'4', fill:c2, opacity:'0.7' }));
   g.appendChild(farLeg);
 
-  // Far arm (back)
-  const farArm = svgEl('g', { id:'far-arm', style:'transform-origin:0px 14px;' });
-  farArm.appendChild(svgEl('ellipse', { cx:'0', cy:'18', rx:'4', ry:'9', fill:`url(#${grad})`, opacity:'0.7', transform:'rotate(10,0,14)' }));
+  // Far arm
+  const farArm = svgEl('g', { style:'transform-origin:0px -8px; animation:arm-far 0.4s ease-in-out infinite;' });
+  farArm.appendChild(svgEl('path', { d:'M 0,-8 Q -8,-2 -6,8 Q -4,14 2,12', fill:c2, stroke:c2, 'stroke-width':'1', opacity:'0.7' }));
   g.appendChild(farArm);
 
   // Body
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'18', rx:'20', ry:'21', fill:`url(#${grad})` }));
-  // Belly (side view - smaller)
-  g.appendChild(svgEl('ellipse', { cx:'6', cy:'20', rx:'10', ry:'13', fill:'url(#rg-belly)' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'0', rx:'16', ry:'22', fill:'url(#rg-body)', stroke:c2, 'stroke-width':'1.5', transform:'rotate(-5)' }));
+  g.appendChild(svgEl('ellipse', { cx:'6', cy:'2', rx:'8', ry:'14', fill:'url(#rg-belly)', opacity:'0.8' }));
+  g.appendChild(svgEl('ellipse', { cx:'-4', cy:'-8', rx:'6', ry:'10', fill:'rgba(255,255,255,0.12)' }));
 
-  // Near leg
-  const nearLeg = svgEl('g', { id:'near-leg', style:'transform-origin:0px 28px;' });
-  nearLeg.appendChild(svgEl('ellipse', { cx:'0', cy:'36', rx:'5.5', ry:'12', fill:`url(#${grad})` }));
-  nearLeg.appendChild(svgEl('ellipse', { cx:'4', cy:'47', rx:'8', ry:'4', fill:`url(#${grad})` }));
-  g.appendChild(nearLeg);
-
-  // Near arm
-  const nearArm = svgEl('g', { id:'near-arm', style:'transform-origin:0px 12px;' });
-  nearArm.appendChild(svgEl('ellipse', { cx:'0', cy:'16', rx:'4.5', ry:'9.5', fill:`url(#${grad})`, transform:'rotate(-10,0,12)' }));
+  // Near arm (front)
+  const nearArm = svgEl('g', { style:'transform-origin:4px -8px; animation:arm-near 0.4s ease-in-out infinite;' });
+  nearArm.appendChild(svgEl('path', { d:'M 4,-8 Q 12,-2 10,8 Q 8,14 4,12', fill:c1, stroke:c2, 'stroke-width':'1' }));
   g.appendChild(nearArm);
 
-  // Head (profile)
-  g.appendChild(svgEl('ellipse', { cx:'12', cy:'-8', rx:'17', ry:'16', fill:'url(#rg-head)' }));
+  // Near leg (front)
+  const nearLeg = svgEl('g', { style:'transform-origin:2px 18px; animation:leg-near 0.4s ease-in-out infinite;' });
+  nearLeg.appendChild(svgEl('path', { d:'M 2,18 Q 6,32 4,42 Q 2,46 6,44', fill:c1, stroke:c2, 'stroke-width':'1' }));
+  nearLeg.appendChild(svgEl('ellipse', { cx:'5', cy:'44', rx:'7', ry:'4', fill:c1 }));
+  g.appendChild(nearLeg);
+
+  // Neck
+  g.appendChild(svgEl('ellipse', { cx:'4', cy:'-24', rx:'7', ry:'6', fill:'url(#rg-head)' }));
+  // Head
+  g.appendChild(svgEl('ellipse', { cx:'8', cy:'-38', rx:'14', ry:'12', fill:'url(#rg-head)', stroke:c2, 'stroke-width':'1.5' }));
+  g.appendChild(svgEl('ellipse', { cx:'2', cy:'-44', rx:'5', ry:'5', fill:'rgba(255,255,255,0.15)' }));
+  // Ear
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-48', rx:'5', ry:'7', fill:c1, stroke:c2, 'stroke-width':'1' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-48', rx:'2.5', ry:'4', fill:'#E87080' }));
   // Snout
-  g.appendChild(svgEl('ellipse', { cx:'26', cy:'-4', rx:'8', ry:'6', fill:'url(#rg-head)' }));
-  // Nose
-  g.appendChild(svgEl('ellipse', { cx:'33', cy:'-5', rx:'4', ry:'3', fill:'#2A1008' }));
-  g.appendChild(svgEl('ellipse', { cx:'31', cy:'-6.5', rx:'1.5', ry:'1.2', fill:'#6A3810', opacity:'0.7' }));
-  // Eye (right side, forward-facing)
-  g.appendChild(svgEl('ellipse', { cx:'18', cy:'-12', rx:'7', ry:'7.5', fill:'#fff' }));
-  g.appendChild(svgEl('ellipse', { cx:'20', cy:'-12', rx:'5', ry:'5.5', fill:'url(#rg-iris)' }));
-  g.appendChild(svgEl('ellipse', { cx:'20', cy:'-12', rx:'2.8', ry:'3', fill:'#0A0500' }));
-  g.appendChild(svgEl('ellipse', { cx:'18.5', cy:'-14', rx:'1.5', ry:'1.5', fill:'#fff', opacity:'0.95' }));
-  g.appendChild(svgEl('ellipse', { cx:'21', cy:'-11', rx:'0.7', ry:'0.7', fill:'#fff', opacity:'0.8' }));
-  // Ear (one visible)
-  const earG = svgEl('g');
-  earG.appendChild(svgEl('ellipse', { cx:'4', cy:'-23', rx:'6', ry:'7.5', fill:`url(#${grad})` }));
-  earG.appendChild(svgEl('ellipse', { cx:'4', cy:'-23', rx:'3.5', ry:'4.5', fill:'#C87840', opacity:'0.65' }));
-  g.appendChild(earG);
-
-  // Highlight
-  g.appendChild(svgEl('ellipse', { cx:'-2', cy:'8', rx:'9', ry:'9', fill:'#ffffff15' }));
+  g.appendChild(svgEl('path', { d:'M 14,-38 Q 24,-36 22,-32 Q 20,-28 14,-30 Z', fill:c1 }));
+  g.appendChild(svgEl('ellipse', { cx:'22', cy:'-34', rx:'3', ry:'2.5', fill:'#3A1A00' }));
+  g.appendChild(svgEl('ellipse', { cx:'21', cy:'-35', rx:'1.2', ry:'1', fill:'rgba(255,255,255,0.5)' }));
+  // Eye (profile, facing right)
+  drawEye(g, 10, -40, 5);
+  // Stripe
+  g.appendChild(svgEl('path', { d:'M -10,-6 Q -2,-10 4,-6', stroke:c2, 'stroke-width':'1.2', fill:'none', opacity:'0.6' }));
 
   return g;
 }
 
-// ─────────────────────────────────────────────
-//  DRAW: Alex (lion) - Pixar quality
-// ─────────────────────────────────────────────
-function drawAlex() {
-  const g = svgEl('g');
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'40', rx:'28', ry:'8', fill:'#00000035' }));
-  // Legs
-  g.appendChild(svgEl('ellipse', { cx:'-12', cy:'32', rx:'8', ry:'13', fill:'url(#rg-lion)' }));
-  g.appendChild(svgEl('ellipse', { cx:'12',  cy:'32', rx:'8', ry:'13', fill:'url(#rg-lion)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-14', cy:'44', rx:'10', ry:'5', fill:'url(#rg-lion)' }));
-  g.appendChild(svgEl('ellipse', { cx:'14',  cy:'44', rx:'10', ry:'5', fill:'url(#rg-lion)' }));
-  // Body
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'16', rx:'26', ry:'24', fill:'url(#rg-lion)' }));
-  // Belly lighter
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'18', rx:'15', ry:'15', fill:'#FFE8A0', opacity:'0.5' }));
-  // Arms
-  g.appendChild(svgEl('ellipse', { cx:'-28', cy:'14', rx:'7', ry:'13', fill:'url(#rg-lion)', transform:'rotate(-15,-28,14)' }));
-  g.appendChild(svgEl('ellipse', { cx:'28',  cy:'14', rx:'7', ry:'13', fill:'url(#rg-lion)', transform:'rotate(15,28,14)' }));
+// ─── Madagascar Characters ───────────────────────────────────────────────────
+function drawAlex(x, y) {
+  const g = svgEl('g', { id:'alex', transform:`translate(${x},${y})` });
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'55', rx:'30', ry:'9', fill:'rgba(0,0,0,0.25)' }));
+  g.appendChild(svgEl('path', { d:'M 12,10 Q 28,5 26,-10 Q 24,-20 16,-18', stroke:'#C89030', 'stroke-width':'5', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'10', rx:'26', ry:'34', fill:'url(#rg-lion)', stroke:'#8A6010', 'stroke-width':'1.5' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'14', rx:'16', ry:'22', fill:'#FFF0B0' }));
+  g.appendChild(svgEl('ellipse', { cx:'-7', cy:'-2', rx:'12', ry:'16', fill:'rgba(255,255,255,0.1)' }));
+  g.appendChild(svgEl('path', { d:'M -22,0 Q -36,-6 -32,8 Q -28,18 -18,14', fill:'#C89030', stroke:'#8A6010', 'stroke-width':'1' }));
+  g.appendChild(svgEl('path', { d:'M 22,0 Q 36,-6 32,8 Q 28,18 18,14', fill:'#C89030', stroke:'#8A6010', 'stroke-width':'1' }));
+  g.appendChild(svgEl('path', { d:'M -12,36 Q -16,46 -14,56', stroke:'#C89030', 'stroke-width':'8', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('path', { d:'M 12,36 Q 16,46 14,56', stroke:'#C89030', 'stroke-width':'8', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('ellipse', { cx:'-14', cy:'58', rx:'12', ry:'6', fill:'#8A6010' }));
+  g.appendChild(svgEl('ellipse', { cx:'14', cy:'58', rx:'12', ry:'6', fill:'#8A6010' }));
   // Mane
-  const mane = svgEl('ellipse', { cx:'0', cy:'-12', rx:'30', ry:'28', fill:'#8A5010', opacity:'0.85' });
-  g.appendChild(mane);
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-28', rx:'28', ry:'26', fill:'#6A3800' }));
+  g.appendChild(svgEl('ellipse', { cx:'-8', cy:'-38', rx:'14', ry:'12', fill:'rgba(120,70,0,0.4)' }));
   // Head
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-14', rx:'22', ry:'20', fill:'url(#rg-lion)' }));
-  // Eye mask area
-  g.appendChild(svgEl('ellipse', { cx:'-8',cy:'-15',rx:'8',ry:'6',fill:'#6A3808',opacity:'0.25' }));
-  g.appendChild(svgEl('ellipse', { cx:'8', cy:'-15',rx:'8',ry:'6',fill:'#6A3808',opacity:'0.25' }));
-  // Eyes
-  const eyeL = svgEl('g', { transform:'translate(-8,-16)' }); eyeL.appendChild(mkEye({})); g.appendChild(eyeL);
-  const eyeR = svgEl('g', { transform:'translate(8,-16)' });  eyeR.appendChild(mkEye({})); g.appendChild(eyeR);
-  // Nose
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-2', rx:'8', ry:'5', fill:'#5A2808' }));
-  g.appendChild(svgEl('ellipse', { cx:'-3', cy:'-4', rx:'3', ry:'2.5', fill:'#8A4818', opacity:'0.6' }));
-  // Mouth
-  g.appendChild(svgEl('path', { d:'M -5,4 Q 0,10 5,4', fill:'none', stroke:'#3A1808', 'stroke-width':'2', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('circle', { cx:'0', cy:'-32', r:'22', fill:'url(#rg-lion)', stroke:'#8A6010', 'stroke-width':'1.5' }));
+  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-40', rx:'9', ry:'7', fill:'rgba(255,255,255,0.15)' }));
   // Ears
-  g.appendChild(svgEl('ellipse', { cx:'-18', cy:'-30', rx:'9', ry:'8', fill:'url(#rg-lion)' }));
-  g.appendChild(svgEl('ellipse', { cx:'18',  cy:'-30', rx:'9', ry:'8', fill:'url(#rg-lion)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-18', cy:'-30', rx:'5', ry:'4.5', fill:'#C87840', opacity:'0.5' }));
-  g.appendChild(svgEl('ellipse', { cx:'18',  cy:'-30', rx:'5', ry:'4.5', fill:'#C87840', opacity:'0.5' }));
-  // Highlight
-  g.appendChild(svgEl('ellipse', { cx:'-8', cy:'-2', rx:'12', ry:'12', fill:'#ffffff12' }));
-  return g;
-}
-
-// ─────────────────────────────────────────────
-//  DRAW: Marty (zebra) - Pixar quality
-// ─────────────────────────────────────────────
-function drawMarty() {
-  const g = svgEl('g');
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'42', rx:'28', ry:'7', fill:'#00000030' }));
-  // Legs
-  g.appendChild(svgEl('ellipse', { cx:'-11', cy:'30', rx:'7', ry:'14', fill:'url(#rg-zebra)' }));
-  g.appendChild(svgEl('ellipse', { cx:'11',  cy:'30', rx:'7', ry:'14', fill:'url(#rg-zebra)' }));
-  // Zebra leg stripes
-  g.appendChild(svgEl('rect', { x:'-16', y:'26', width:'10', height:'4', fill:'#222', rx:'2', opacity:'0.7' }));
-  g.appendChild(svgEl('rect', { x:'6',   y:'28', width:'10', height:'4', fill:'#222', rx:'2', opacity:'0.7' }));
-  // Hooves
-  g.appendChild(svgEl('ellipse', { cx:'-12', cy:'43', rx:'8', ry:'4.5', fill:'#1A1A1A' }));
-  g.appendChild(svgEl('ellipse', { cx:'12',  cy:'43', rx:'8', ry:'4.5', fill:'#1A1A1A' }));
-  // Body
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'14', rx:'24', ry:'22', fill:'url(#rg-zebra)' }));
-  // Zebra body stripes
-  for (let i = -1; i <= 1; i++) {
-    g.appendChild(svgEl('rect', { x:`${i*14-4}`, y:'0', width:'5', height:'24', fill:'#222', rx:'2', opacity:'0.65', transform:`rotate(${i*10},${i*14},12)` }));
-  }
-  // Arms
-  g.appendChild(svgEl('ellipse', { cx:'-25', cy:'12', rx:'6', ry:'12', fill:'url(#rg-zebra)', transform:'rotate(-12,-25,12)' }));
-  g.appendChild(svgEl('ellipse', { cx:'25',  cy:'12', rx:'6', ry:'12', fill:'url(#rg-zebra)', transform:'rotate(12,25,12)' }));
-  // Head
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-14', rx:'18', ry:'17', fill:'url(#rg-zebra)' }));
+  g.appendChild(svgEl('ellipse', { cx:'-18', cy:'-50', rx:'7', ry:'8', fill:'#C89030' }));
+  g.appendChild(svgEl('ellipse', { cx:'-18', cy:'-50', rx:'3.5', ry:'4', fill:'#8A5010' }));
+  g.appendChild(svgEl('ellipse', { cx:'18', cy:'-50', rx:'7', ry:'8', fill:'#C89030' }));
+  g.appendChild(svgEl('ellipse', { cx:'18', cy:'-50', rx:'3.5', ry:'4', fill:'#8A5010' }));
   // Muzzle
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-4', rx:'11', ry:'8', fill:'#E0E0E0' }));
-  // Eyes
-  g.appendChild(svgEl('ellipse', { cx:'-7',cy:'-18',rx:'7',ry:'7.5',fill:'#fff' }));
-  g.appendChild(svgEl('ellipse', { cx:'-7',cy:'-18',rx:'5',ry:'5.5',fill:'url(#rg-iris)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-7',cy:'-18',rx:'2.8',ry:'3',fill:'#0A0500' }));
-  g.appendChild(svgEl('ellipse', { cx:'-8.5',cy:'-20',rx:'1.5',ry:'1.5',fill:'#fff',opacity:'0.95' }));
-  g.appendChild(svgEl('ellipse', { cx:'-5.5',cy:'-17',rx:'0.7',ry:'0.7',fill:'#fff',opacity:'0.8' }));
-  g.appendChild(svgEl('ellipse', { cx:'7', cy:'-18',rx:'7',ry:'7.5',fill:'#fff' }));
-  g.appendChild(svgEl('ellipse', { cx:'7', cy:'-18',rx:'5',ry:'5.5',fill:'url(#rg-iris)' }));
-  g.appendChild(svgEl('ellipse', { cx:'7', cy:'-18',rx:'2.8',ry:'3',fill:'#0A0500' }));
-  g.appendChild(svgEl('ellipse', { cx:'5.5',cy:'-20',rx:'1.5',ry:'1.5',fill:'#fff',opacity:'0.95' }));
-  g.appendChild(svgEl('ellipse', { cx:'8.5',cy:'-17',rx:'0.7',ry:'0.7',fill:'#fff',opacity:'0.8' }));
-  // Nostrils
-  g.appendChild(svgEl('ellipse', { cx:'-4', cy:'-2', rx:'2.5', ry:'2', fill:'#555' }));
-  g.appendChild(svgEl('ellipse', { cx:'4',  cy:'-2', rx:'2.5', ry:'2', fill:'#555' }));
-  // Mane/mohawk
-  for (let i = -3; i <= 3; i++) {
-    g.appendChild(svgEl('ellipse', { cx:`${i*4}`, cy:'-30', rx:'4', ry:'7', fill:'#1A1A1A' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-24', rx:'12', ry:'9', fill:'#E0C080' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-30', rx:'5', ry:'3.5', fill:'#3A1A00' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-31', rx:'3', ry:'2', fill:'#5A2A00' }));
+  g.appendChild(svgEl('ellipse', { cx:'-1', cy:'-32', rx:'1.2', ry:'0.8', fill:'rgba(255,255,255,0.5)' }));
+  drawEye(g,-10,-36); drawEye(g,10,-36);
+  return g;
+}
+
+function drawMarty(x, y) {
+  const g = svgEl('g', { id:'marty', transform:`translate(${x},${y})` });
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'55', rx:'28', ry:'8', fill:'rgba(0,0,0,0.25)' }));
+  g.appendChild(svgEl('path', { d:'M 10,10 Q 22,2 20,-12', stroke:'#333', 'stroke-width':'4', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('ellipse', { cx:'20', cy:'-14', rx:'5', ry:'4', fill:'#222' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'10', rx:'24', ry:'32', fill:'url(#rg-zebra)', stroke:'#555', 'stroke-width':'1.5' }));
+  for(let i=-2;i<=3;i++) {
+    g.appendChild(svgEl('path', { d:`M ${-20+i*2},${-5+i*8} Q 0,${-8+i*8} ${20-i*2},${-5+i*8}`, stroke:'#333', 'stroke-width':'2.5', fill:'none', opacity:'0.6' }));
   }
-  // Ears
-  g.appendChild(svgEl('ellipse', { cx:'-14', cy:'-28', rx:'6', ry:'9', fill:'url(#rg-zebra)' }));
-  g.appendChild(svgEl('ellipse', { cx:'14',  cy:'-28', rx:'6', ry:'9', fill:'url(#rg-zebra)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-14', cy:'-28', rx:'3', ry:'5', fill:'#FFC0CB', opacity:'0.6' }));
-  g.appendChild(svgEl('ellipse', { cx:'14',  cy:'-28', rx:'3', ry:'5', fill:'#FFC0CB', opacity:'0.6' }));
-  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-2', rx:'11', ry:'11', fill:'#ffffff10' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'12', rx:'12', ry:'18', fill:'white', opacity:'0.5' }));
+  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-2', rx:'10', ry:'14', fill:'rgba(255,255,255,0.1)' }));
+  g.appendChild(svgEl('path', { d:'M -20,0 Q -32,-4 -28,10 Q -24,18 -16,14', fill:'#CCC', stroke:'#555', 'stroke-width':'1' }));
+  g.appendChild(svgEl('path', { d:'M 20,0 Q 32,-4 28,10 Q 24,18 16,14', fill:'#CCC', stroke:'#555', 'stroke-width':'1' }));
+  g.appendChild(svgEl('path', { d:'M -10,34 L -10,58', stroke:'#333', 'stroke-width':'8', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('path', { d:'M 10,34 L 10,58', stroke:'#333', 'stroke-width':'8', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('ellipse', { cx:'-10', cy:'58', rx:'10', ry:'5', fill:'#222' }));
+  g.appendChild(svgEl('ellipse', { cx:'10', cy:'58', rx:'10', ry:'5', fill:'#222' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-18', rx:'10', ry:'8', fill:'#DDD' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-32', rx:'18', ry:'16', fill:'url(#rg-zebra)', stroke:'#555', 'stroke-width':'1.5' }));
+  for(let i=0;i<3;i++) {
+    g.appendChild(svgEl('path', { d:`M ${-16+i*2},${-38+i*6} Q 0,${-41+i*6} ${16-i*2},${-38+i*6}`, stroke:'#333', 'stroke-width':'2', fill:'none' }));
+  }
+  g.appendChild(svgEl('ellipse', { cx:'-5', cy:'-40', rx:'7', ry:'6', fill:'rgba(255,255,255,0.12)' }));
+  g.appendChild(svgEl('ellipse', { cx:'-14', cy:'-46', rx:'5', ry:'8', fill:'#DDD', stroke:'#555', 'stroke-width':'1' }));
+  g.appendChild(svgEl('ellipse', { cx:'-14', cy:'-46', rx:'2.5', ry:'4.5', fill:'#FF9090' }));
+  g.appendChild(svgEl('ellipse', { cx:'14', cy:'-46', rx:'5', ry:'8', fill:'#DDD', stroke:'#555', 'stroke-width':'1' }));
+  g.appendChild(svgEl('ellipse', { cx:'14', cy:'-46', rx:'2.5', ry:'4.5', fill:'#FF9090' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-26', rx:'10', ry:'8', fill:'#FFF' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-32', rx:'4', ry:'3', fill:'#333' }));
+  g.appendChild(svgEl('ellipse', { cx:'-1', cy:'-33', rx:'1.5', ry:'1', fill:'rgba(255,255,255,0.5)' }));
+  drawEye(g,-8,-36); drawEye(g,8,-36);
   return g;
 }
 
-// ─────────────────────────────────────────────
-//  DRAW: Melman (giraffe) - Pixar quality
-// ─────────────────────────────────────────────
-function drawMelman() {
-  const g = svgEl('g');
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'48', rx:'22', ry:'6', fill:'#00000030' }));
-  // Long neck
-  g.appendChild(svgEl('rect', { x:'-10', y:'-38', width:'20', height:'55', fill:'url(#rg-giraffe)', rx:'8' }));
-  // Neck spots
-  g.appendChild(svgEl('ellipse', { cx:'-2', cy:'-20', rx:'5', ry:'6', fill:'#8A4010', opacity:'0.5' }));
-  g.appendChild(svgEl('ellipse', { cx:'5',  cy:'-5',  rx:'4', ry:'5', fill:'#8A4010', opacity:'0.5' }));
-  g.appendChild(svgEl('ellipse', { cx:'-4', cy:'8',   rx:'4', ry:'5', fill:'#8A4010', opacity:'0.5' }));
-  // Legs (long)
-  g.appendChild(svgEl('rect', { x:'-16', y:'14', width:'10', height:'32', fill:'url(#rg-giraffe)', rx:'4' }));
-  g.appendChild(svgEl('rect', { x:'6',   y:'14', width:'10', height:'32', fill:'url(#rg-giraffe)', rx:'4' }));
-  g.appendChild(svgEl('ellipse', { cx:'-11', cy:'46', rx:'8', ry:'4', fill:'#3A2010' }));
-  g.appendChild(svgEl('ellipse', { cx:'11',  cy:'46', rx:'8', ry:'4', fill:'#3A2010' }));
-  // Body
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'14', rx:'22', ry:'18', fill:'url(#rg-giraffe)' }));
-  // Body spots
-  g.appendChild(svgEl('ellipse', { cx:'-8', cy:'12', rx:'6', ry:'7', fill:'#8A4010', opacity:'0.45' }));
-  g.appendChild(svgEl('ellipse', { cx:'8',  cy:'18', rx:'5', ry:'6', fill:'#8A4010', opacity:'0.45' }));
-  // Small arms
-  g.appendChild(svgEl('ellipse', { cx:'-22', cy:'10', rx:'5', ry:'10', fill:'url(#rg-giraffe)', transform:'rotate(-10,-22,10)' }));
-  g.appendChild(svgEl('ellipse', { cx:'22',  cy:'10', rx:'5', ry:'10', fill:'url(#rg-giraffe)', transform:'rotate(10,22,10)' }));
-  // Small head at top of neck
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-42', rx:'14', ry:'12', fill:'url(#rg-giraffe)' }));
-  // Muzzle
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-36', rx:'8', ry:'6', fill:'#FFD080' }));
-  // Eyes
-  g.appendChild(svgEl('ellipse', { cx:'-6',cy:'-46',rx:'5.5',ry:'6',fill:'#fff' }));
-  g.appendChild(svgEl('ellipse', { cx:'-6',cy:'-46',rx:'3.8',ry:'4.2',fill:'url(#rg-iris)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-6',cy:'-46',rx:'2.2',ry:'2.4',fill:'#0A0500' }));
-  g.appendChild(svgEl('ellipse', { cx:'-7.2',cy:'-47.8',rx:'1.3',ry:'1.3',fill:'#fff',opacity:'0.95' }));
-  g.appendChild(svgEl('ellipse', { cx:'6', cy:'-46',rx:'5.5',ry:'6',fill:'#fff' }));
-  g.appendChild(svgEl('ellipse', { cx:'6', cy:'-46',rx:'3.8',ry:'4.2',fill:'url(#rg-iris)' }));
-  g.appendChild(svgEl('ellipse', { cx:'6', cy:'-46',rx:'2.2',ry:'2.4',fill:'#0A0500' }));
-  g.appendChild(svgEl('ellipse', { cx:'4.8',cy:'-47.8',rx:'1.3',ry:'1.3',fill:'#fff',opacity:'0.95' }));
-  // Ossicones (horns)
-  g.appendChild(svgEl('rect', { x:'-8', y:'-60', width:'4', height:'12', fill:'url(#rg-giraffe)', rx:'2' }));
-  g.appendChild(svgEl('rect', { x:'4',  y:'-58', width:'4', height:'10', fill:'url(#rg-giraffe)', rx:'2' }));
-  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-61', rx:'3', ry:'3', fill:'#8A5020' }));
-  g.appendChild(svgEl('ellipse', { cx:'6',  cy:'-59', rx:'3', ry:'3', fill:'#8A5020' }));
-  // Ears
-  g.appendChild(svgEl('ellipse', { cx:'-13', cy:'-50', rx:'5', ry:'7', fill:'url(#rg-giraffe)' }));
-  g.appendChild(svgEl('ellipse', { cx:'13',  cy:'-50', rx:'5', ry:'7', fill:'url(#rg-giraffe)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-13', cy:'-50', rx:'3', ry:'4', fill:'#FFB070', opacity:'0.65' }));
-  g.appendChild(svgEl('ellipse', { cx:'13',  cy:'-50', rx:'3', ry:'4', fill:'#FFB070', opacity:'0.65' }));
-  // Tail
-  g.appendChild(svgEl('path', { d:'M 12,22 Q 28,28 22,40', fill:'none', stroke:'url(#rg-giraffe)', 'stroke-width':'5', 'stroke-linecap':'round' }));
-  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-5', rx:'10', ry:'10', fill:'#ffffff10' }));
+function drawMelman(x, y) {
+  const g = svgEl('g', { id:'melman', transform:`translate(${x},${y})` });
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'55', rx:'25', ry:'7', fill:'rgba(0,0,0,0.25)' }));
+  g.appendChild(svgEl('rect', { x:'-8', y:'-60', width:'16', height:'60', rx:'8', fill:'url(#rg-giraffe)', stroke:'#806020', 'stroke-width':'1' }));
+  for(let i=0;i<4;i++) {
+    g.appendChild(svgEl('ellipse', { cx:String((i%2===0)?-3:3), cy:String(-50+i*12), rx:'4', ry:'5', fill:'#A06020', opacity:'0.5' }));
+  }
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'12', rx:'22', ry:'28', fill:'url(#rg-giraffe)', stroke:'#806020', 'stroke-width':'1.5' }));
+  for(let i=0;i<5;i++) {
+    const sx = -12 + (i%3)*12, sy = -6 + Math.floor(i/3)*14;
+    g.appendChild(svgEl('ellipse', { cx:String(sx), cy:String(sy), rx:'6', ry:'7', fill:'#A06020', opacity:'0.45' }));
+  }
+  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-2', rx:'9', ry:'14', fill:'rgba(255,255,255,0.12)' }));
+  g.appendChild(svgEl('path', { d:'M -18,-4 Q -28,-8 -24,6 Q -20,14 -14,10', fill:'#C8A040', stroke:'#806020', 'stroke-width':'1' }));
+  g.appendChild(svgEl('path', { d:'M 18,-4 Q 28,-8 24,6 Q 20,14 14,10', fill:'#C8A040', stroke:'#806020', 'stroke-width':'1' }));
+  g.appendChild(svgEl('path', { d:'M -10,32 L -10,58', stroke:'#C8A040', 'stroke-width':'7', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('path', { d:'M 10,32 L 10,58', stroke:'#C8A040', 'stroke-width':'7', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('ellipse', { cx:'-10', cy:'58', rx:'8', ry:'5', fill:'#806020' }));
+  g.appendChild(svgEl('ellipse', { cx:'10', cy:'58', rx:'8', ry:'5', fill:'#806020' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-68', rx:'16', ry:'14', fill:'url(#rg-giraffe)', stroke:'#806020', 'stroke-width':'1.5' }));
+  g.appendChild(svgEl('ellipse', { cx:'-4', cy:'-76', rx:'6', ry:'5', fill:'rgba(255,255,255,0.15)' }));
+  g.appendChild(svgEl('rect', { x:'-9', y:'-84', width:'4', height:'10', rx:'2', fill:'#806020' }));
+  g.appendChild(svgEl('rect', { x:'5', y:'-84', width:'4', height:'10', rx:'2', fill:'#806020' }));
+  g.appendChild(svgEl('ellipse', { cx:'-16', cy:'-74', rx:'4', ry:'6', fill:'#C8A040', stroke:'#806020', 'stroke-width':'1' }));
+  g.appendChild(svgEl('ellipse', { cx:'16', cy:'-74', rx:'4', ry:'6', fill:'#C8A040', stroke:'#806020', 'stroke-width':'1' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-62', rx:'9', ry:'7', fill:'#E0C070' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-67', rx:'4', ry:'3', fill:'#6A4010' }));
+  g.appendChild(svgEl('ellipse', { cx:'-1', cy:'-68', rx:'1.5', ry:'1', fill:'rgba(255,255,255,0.5)' }));
+  drawEye(g,-8,-73); drawEye(g,8,-73);
   return g;
 }
 
-// ─────────────────────────────────────────────
-//  DRAW: Gloria (hippo) - Pixar quality
-// ─────────────────────────────────────────────
-function drawGloria() {
-  const g = svgEl('g');
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'44', rx:'35', ry:'10', fill:'#00000038' }));
-  // Legs (stumpy)
-  g.appendChild(svgEl('ellipse', { cx:'-16', cy:'30', rx:'12', ry:'14', fill:'url(#rg-hippo)' }));
-  g.appendChild(svgEl('ellipse', { cx:'16',  cy:'30', rx:'12', ry:'14', fill:'url(#rg-hippo)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-18', cy:'42', rx:'14', ry:'6', fill:'#3A2040' }));
-  g.appendChild(svgEl('ellipse', { cx:'18',  cy:'42', rx:'14', ry:'6', fill:'#3A2040' }));
-  // Body (big round)
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'12', rx:'34', ry:'28', fill:'url(#rg-hippo)' }));
-  // Belly lighter
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'16', rx:'22', ry:'18', fill:'#D0A8E0', opacity:'0.4' }));
-  // Arms (chubby)
-  g.appendChild(svgEl('ellipse', { cx:'-36', cy:'8', rx:'10', ry:'14', fill:'url(#rg-hippo)', transform:'rotate(-8,-36,8)' }));
-  g.appendChild(svgEl('ellipse', { cx:'36',  cy:'8', rx:'10', ry:'14', fill:'url(#rg-hippo)', transform:'rotate(8,36,8)' }));
-  // Big head
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-14', rx:'28', ry:'22', fill:'url(#rg-hippo)' }));
-  // Big muzzle
-  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-6', rx:'20', ry:'14', fill:'#B090C0' }));
-  // Nostrils
-  g.appendChild(svgEl('ellipse', { cx:'-7', cy:'-8', rx:'4', ry:'3', fill:'#6A4880' }));
-  g.appendChild(svgEl('ellipse', { cx:'7',  cy:'-8', rx:'4', ry:'3', fill:'#6A4880' }));
-  // Eyes (on top of head)
-  g.appendChild(svgEl('ellipse', { cx:'-11',cy:'-26',rx:'7.5',ry:'8',fill:'#fff' }));
-  g.appendChild(svgEl('ellipse', { cx:'-11',cy:'-26',rx:'5',ry:'5.5',fill:'url(#rg-iris)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-11',cy:'-26',rx:'2.8',ry:'3',fill:'#0A0500' }));
-  g.appendChild(svgEl('ellipse', { cx:'-12.5',cy:'-28',rx:'1.5',ry:'1.5',fill:'#fff',opacity:'0.95' }));
-  g.appendChild(svgEl('ellipse', { cx:'11', cy:'-26',rx:'7.5',ry:'8',fill:'#fff' }));
-  g.appendChild(svgEl('ellipse', { cx:'11', cy:'-26',rx:'5',ry:'5.5',fill:'url(#rg-iris)' }));
-  g.appendChild(svgEl('ellipse', { cx:'11', cy:'-26',rx:'2.8',ry:'3',fill:'#0A0500' }));
-  g.appendChild(svgEl('ellipse', { cx:'9.5',cy:'-28',rx:'1.5',ry:'1.5',fill:'#fff',opacity:'0.95' }));
-  // Ears
-  g.appendChild(svgEl('ellipse', { cx:'-25', cy:'-32', rx:'9', ry:'8', fill:'url(#rg-hippo)' }));
-  g.appendChild(svgEl('ellipse', { cx:'25',  cy:'-32', rx:'9', ry:'8', fill:'url(#rg-hippo)' }));
-  g.appendChild(svgEl('ellipse', { cx:'-25', cy:'-32', rx:'5', ry:'4', fill:'#E090F0', opacity:'0.6' }));
-  g.appendChild(svgEl('ellipse', { cx:'25',  cy:'-32', rx:'5', ry:'4', fill:'#E090F0', opacity:'0.6' }));
-  // Highlight
-  g.appendChild(svgEl('ellipse', { cx:'-12', cy:'-4', rx:'16', ry:'14', fill:'#ffffff10' }));
+function drawGloria(x, y) {
+  const g = svgEl('g', { id:'gloria', transform:`translate(${x},${y})` });
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'60', rx:'35', ry:'10', fill:'rgba(0,0,0,0.25)' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'14', rx:'32', ry:'38', fill:'url(#rg-hippo)', stroke:'#403060', 'stroke-width':'2' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'18', rx:'20', ry:'26', fill:'#C0A0E0', opacity:'0.5' }));
+  g.appendChild(svgEl('ellipse', { cx:'-8', cy:'-2', rx:'14', ry:'20', fill:'rgba(255,255,255,0.1)' }));
+  g.appendChild(svgEl('path', { d:'M 14,30 Q 24,28 22,38 Q 20,44 16,42', fill:'#7060A0', stroke:'#403060', 'stroke-width':'1' }));
+  g.appendChild(svgEl('path', { d:'M -28,0 Q -42,-6 -38,10 Q -34,22 -24,18', fill:'#7060A0', stroke:'#403060', 'stroke-width':'1.5' }));
+  g.appendChild(svgEl('path', { d:'M 28,0 Q 42,-6 38,10 Q 34,22 24,18', fill:'#7060A0', stroke:'#403060', 'stroke-width':'1.5' }));
+  g.appendChild(svgEl('path', { d:'M -16,40 L -16,62', stroke:'#6050A0', 'stroke-width':'12', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('path', { d:'M 16,40 L 16,62', stroke:'#6050A0', 'stroke-width':'12', fill:'none', 'stroke-linecap':'round' }));
+  g.appendChild(svgEl('ellipse', { cx:'-16', cy:'62', rx:'14', ry:'7', fill:'#403060' }));
+  g.appendChild(svgEl('ellipse', { cx:'16', cy:'62', rx:'14', ry:'7', fill:'#403060' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-24', rx:'26', ry:'22', fill:'url(#rg-hippo)', stroke:'#403060', 'stroke-width':'2' }));
+  g.appendChild(svgEl('ellipse', { cx:'-7', cy:'-34', rx:'11', ry:'8', fill:'rgba(255,255,255,0.12)' }));
+  g.appendChild(svgEl('ellipse', { cx:'-20', cy:'-44', rx:'7', ry:'7', fill:'#7060A0', stroke:'#403060', 'stroke-width':'1' }));
+  g.appendChild(svgEl('ellipse', { cx:'-20', cy:'-44', rx:'3.5', ry:'3.5', fill:'#E080B0' }));
+  g.appendChild(svgEl('ellipse', { cx:'20', cy:'-44', rx:'7', ry:'7', fill:'#7060A0', stroke:'#403060', 'stroke-width':'1' }));
+  g.appendChild(svgEl('ellipse', { cx:'20', cy:'-44', rx:'3.5', ry:'3.5', fill:'#E080B0' }));
+  g.appendChild(svgEl('ellipse', { cx:'0', cy:'-16', rx:'18', ry:'12', fill:'#9080C0' }));
+  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-16', rx:'4', ry:'3', fill:'#5040A0' }));
+  g.appendChild(svgEl('ellipse', { cx:'6', cy:'-16', rx:'4', ry:'3', fill:'#5040A0' }));
+  g.appendChild(svgEl('ellipse', { cx:'-6', cy:'-17', rx:'2', ry:'1.5', fill:'rgba(255,255,255,0.4)' }));
+  g.appendChild(svgEl('ellipse', { cx:'6', cy:'-17', rx:'2', ry:'1.5', fill:'rgba(255,255,255,0.4)' }));
+  drawEye(g,-12,-30); drawEye(g,12,-30);
   return g;
 }
 
-// ─────────────────────────────────────────────
-//  POPULATE MEERKATS (initial lounge)
-// ─────────────────────────────────────────────
-function initMeerkats() {
-  MK_DATA.forEach(mk => {
-    const el = document.getElementById(mk.id);
-    el.innerHTML = '';
-    const drawn = drawMeerkat(mk.grad, mk.belly, { lounge: true });
-    el.appendChild(drawn);
+// ─── Biome Decorations ────────────────────────────────────────────────────────
+function clearDecorations() {
+  document.getElementById('biome-decorations').innerHTML = '';
+}
+
+function makeTree(x, y, h, color) {
+  h = h || 80; color = color || '#2d6a4f';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('style',`position:absolute;left:${x-30}px;top:${y-h}px;width:60px;height:${h+20}px;overflow:visible`);
+  const trunk = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  trunk.setAttribute('x','22'); trunk.setAttribute('y',String(h)); trunk.setAttribute('width','16'); trunk.setAttribute('height','20');
+  trunk.setAttribute('rx','4'); trunk.setAttribute('fill','#6B3A2A'); svg.appendChild(trunk);
+  const colors = [color,'#1a5c3f','#136832'];
+  for(let i=0;i<3;i++) {
+    const c = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+    c.setAttribute('cx','30'); c.setAttribute('cy',String(h-i*20)); c.setAttribute('rx',String(30-i*5)); c.setAttribute('ry',String(22-i*3));
+    c.setAttribute('fill',colors[i]); c.setAttribute('opacity',String(0.9-i*0.1)); svg.appendChild(c);
+  }
+  return svg;
+}
+
+function makeCactus(x, y) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('style',`position:absolute;left:${x-20}px;top:${y-80}px;width:40px;height:90px;overflow:visible`);
+  const trunk = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  trunk.setAttribute('x','14'); trunk.setAttribute('y','10'); trunk.setAttribute('width','12'); trunk.setAttribute('height','70');
+  trunk.setAttribute('rx','6'); trunk.setAttribute('fill','#4a8c3a'); svg.appendChild(trunk);
+  const armL = document.createElementNS('http://www.w3.org/2000/svg','path');
+  armL.setAttribute('d','M 14,40 Q 0,38 0,28 Q 0,18 8,18'); armL.setAttribute('stroke','#4a8c3a'); armL.setAttribute('stroke-width','8'); armL.setAttribute('fill','none'); armL.setAttribute('stroke-linecap','round'); svg.appendChild(armL);
+  const armR = document.createElementNS('http://www.w3.org/2000/svg','path');
+  armR.setAttribute('d','M 26,50 Q 40,48 40,38 Q 40,28 32,28'); armR.setAttribute('stroke','#4a8c3a'); armR.setAttribute('stroke-width','8'); armR.setAttribute('fill','none'); armR.setAttribute('stroke-linecap','round'); svg.appendChild(armR);
+  return svg;
+}
+
+function makeMountain(x, y, h, color) {
+  h = h || 120; color = color || '#606878';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('style',`position:absolute;left:${x-70}px;top:${y-h}px;width:140px;height:${h+10}px;overflow:visible`);
+  const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+  poly.setAttribute('points',`70,0 0,${h} 140,${h}`); poly.setAttribute('fill',color); svg.appendChild(poly);
+  const snow = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+  snow.setAttribute('points',`70,0 42,${Math.floor(h*0.35)} 98,${Math.floor(h*0.35)}`); snow.setAttribute('fill','white'); snow.setAttribute('opacity','0.9'); svg.appendChild(snow);
+  return svg;
+}
+
+function makePalmTree(x, y) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('style',`position:absolute;left:${x-30}px;top:${y-100}px;width:60px;height:110px;overflow:visible`);
+  const trunk = document.createElementNS('http://www.w3.org/2000/svg','path');
+  trunk.setAttribute('d','M 30,100 Q 35,60 28,20'); trunk.setAttribute('stroke','#8B6020'); trunk.setAttribute('stroke-width','8'); trunk.setAttribute('fill','none'); trunk.setAttribute('stroke-linecap','round'); svg.appendChild(trunk);
+  const fronds = [[-20,-10],[10,-5],[-10,5],[15,0],[-15,-20],[5,-25]];
+  fronds.forEach(function(fd) {
+    const f = document.createElementNS('http://www.w3.org/2000/svg','path');
+    f.setAttribute('d',`M 28,20 Q ${28+fd[0]/2},${20+fd[1]/2} ${28+fd[0]},${20+fd[1]}`);
+    f.setAttribute('stroke','#2d8040'); f.setAttribute('stroke-width','5'); f.setAttribute('fill','none'); f.setAttribute('stroke-linecap','round');
+    svg.appendChild(f);
+  });
+  return svg;
+}
+
+function makeBaobab(x, y) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('style',`position:absolute;left:${x-40}px;top:${y-110}px;width:80px;height:120px;overflow:visible`);
+  const trunk = document.createElementNS('http://www.w3.org/2000/svg','path');
+  trunk.setAttribute('d','M 20,110 Q 16,70 20,40 Q 24,20 40,18 Q 56,20 60,40 Q 64,70 60,110 Z'); trunk.setAttribute('fill','#8B6020'); svg.appendChild(trunk);
+  const crown = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+  crown.setAttribute('cx','40'); crown.setAttribute('cy','18'); crown.setAttribute('rx','30'); crown.setAttribute('ry','18'); crown.setAttribute('fill','#2d6a4f'); svg.appendChild(crown);
+  return svg;
+}
+
+function showBiomeDecorations(biome) {
+  const dec = document.getElementById('biome-decorations');
+  dec.innerHTML = '';
+  if(biome==='jungle') {
+    dec.appendChild(makeTree(80, 380, 90, '#1a6a40'));
+    dec.appendChild(makeTree(200, 380, 80, '#2d7a50'));
+    dec.appendChild(makeTree(600, 380, 85, '#156030'));
+    dec.appendChild(makeTree(720, 380, 95, '#1a7040'));
+  } else if(biome==='desert') {
+    dec.appendChild(makeCactus(100, 380));
+    dec.appendChild(makeCactus(300, 375));
+    dec.appendChild(makeCactus(650, 380));
+    dec.appendChild(makeCactus(750, 378));
+  } else if(biome==='mountains') {
+    dec.appendChild(makeMountain(160, 380, 130));
+    dec.appendChild(makeMountain(400, 380, 160));
+    dec.appendChild(makeMountain(640, 380, 120));
+  } else if(biome==='madagascar') {
+    dec.appendChild(makePalmTree(100, 380));
+    dec.appendChild(makeBaobab(250, 380));
+    dec.appendChild(makePalmTree(650, 380));
+    dec.appendChild(makeBaobab(730, 380));
+  }
+}
+
+// ─── Camera Shake ─────────────────────────────────────────────────────────────
+function cameraShake() {
+  const stage = document.getElementById('stage');
+  stage.classList.add('shake');
+  setTimeout(function() { stage.classList.remove('shake'); }, 500);
+}
+
+// ─── Music Notes ──────────────────────────────────────────────────────────────
+function startNoteRain() {
+  const layer = document.getElementById('music-notes-layer');
+  const notes = ['♪','♫','♬','♭'];
+  noteInterval = setInterval(function() {
+    const n = document.createElement('div');
+    const sz = 20 + Math.random()*20;
+    const hue = Math.floor(Math.random()*360);
+    const lx = Math.random()*760;
+    const ty = 350 + Math.random()*30;
+    n.style.cssText = `position:absolute;font-size:${sz}px;color:hsl(${hue},80%,60%);left:${lx}px;top:${ty}px;animation:note-float 1.5s ease-out forwards;pointer-events:none;`;
+    n.textContent = notes[Math.floor(Math.random()*notes.length)];
+    layer.appendChild(n);
+    setTimeout(function() { n.remove(); }, 1600);
+  }, 130);
+}
+
+function stopNoteRain() {
+  if(noteInterval) { clearInterval(noteInterval); noteInterval = null; }
+  document.getElementById('music-notes-layer').innerHTML = '';
+}
+
+// ─── Finale Text ──────────────────────────────────────────────────────────────
+function showFinaleText() {
+  document.getElementById('finale-text').style.opacity = '1';
+  document.getElementById('finale-span').style.animation = 'big-pop 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards';
+}
+
+function hideFinaleText() {
+  document.getElementById('finale-text').style.opacity = '0';
+  document.getElementById('finale-span').style.animation = '';
+}
+
+// ─── Rock Hiding/Showing ──────────────────────────────────────────────────────
+function hideRocks() {
+  const rg = document.getElementById('rocks-group');
+  rg.style.transform = 'translateY(100px)';
+  rg.style.opacity = '0';
+}
+
+function showRocks() {
+  const rg = document.getElementById('rocks-group');
+  rg.style.transform = 'translateY(0px)';
+  rg.style.opacity = '1';
+}
+
+// ─── Initialize Meerkats ─────────────────────────────────────────────────────
+function initMeerkats(lounging) {
+  const lou = (lounging !== false);
+  const grp = document.getElementById('mk-group');
+  grp.innerHTML = '';
+  mkEls = {};
+  MK_DATA.forEach(function(mk) {
+    const el = drawMeerkatFront(mk, { lounging: lou });
+    grp.appendChild(el);
     mkEls[mk.id] = el;
   });
 }
 
-// ─────────────────────────────────────────────
-//  POPULATE MADAGASCAR CHARS
-// ─────────────────────────────────────────────
-function initMadChars() {
-  const alex = document.getElementById('ch-alex');
-  alex.innerHTML = '';
-  alex.appendChild(drawAlex());
-
-  const marty = document.getElementById('ch-marty');
-  marty.innerHTML = '';
-  marty.appendChild(drawMarty());
-
-  const melman = document.getElementById('ch-melman');
-  melman.innerHTML = '';
-  melman.appendChild(drawMelman());
-
-  const gloria = document.getElementById('ch-gloria');
-  gloria.innerHTML = '';
-  gloria.appendChild(drawGloria());
+function setMkAnim(id, anim) {
+  if(mkEls[id]) mkEls[id].style.animation = anim;
 }
 
-// ─────────────────────────────────────────────
-//  SET ANIMATION on an element
-// ─────────────────────────────────────────────
-function setAnim(id, animCss) {
-  const el = mkEls[id] || document.getElementById(id);
-  if (!el) return;
-  el.style.animation = animCss;
-  el.style.transformOrigin = '50% 80%';
+function setAllMkAnim(anim) {
+  MK_DATA.forEach(function(mk) { setMkAnim(mk.id, anim); });
 }
 
-function clearAnim(id) {
-  const el = mkEls[id] || document.getElementById(id);
-  if (el) { el.style.animation = ''; el.style.transformOrigin = ''; }
+function replaceMeerkatStanding(mk, options) {
+  const opts = options || {};
+  const grp = document.getElementById('mk-group');
+  if(mkEls[mk.id]) mkEls[mk.id].remove();
+  const el = drawMeerkatFront(mk, Object.assign({ lounging:false }, opts));
+  el.setAttribute('transform', `translate(${mk.cx},${STAND_Y})`);
+  grp.appendChild(el);
+  mkEls[mk.id] = el;
+  return el;
 }
 
-function setAllAnim(animCss) {
-  MK_DATA.forEach(mk => setAnim(mk.id, animCss));
-}
-function clearAllAnim() {
-  MK_DATA.forEach(mk => clearAnim(mk.id));
-}
-
-// ─────────────────────────────────────────────
-//  REPLACE meerkat with standing version
-// ─────────────────────────────────────────────
-function replaceWithStanding(mkId, opts={}) {
-  const mk = MK_DATA.find(m => m.id === mkId);
-  const el = document.getElementById(mkId);
-  el.innerHTML = '';
-  const drawn = drawMeerkat(mk.grad, mk.belly, opts);
-  el.appendChild(drawn);
-  mkEls[mkId] = el;
-}
-
-function replaceWithLounge(mkId) {
-  const mk = MK_DATA.find(m => m.id === mkId);
-  const el = document.getElementById(mkId);
-  el.innerHTML = '';
-  const drawn = drawMeerkat(mk.grad, mk.belly, { lounge: true });
-  el.appendChild(drawn);
-  mkEls[mkId] = el;
-}
-
-// ─────────────────────────────────────────────
-//  JUMP TO GROUND
-// ─────────────────────────────────────────────
-function jumpToGround(mkId, staggerMs) {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const el = document.getElementById(mkId);
-      const mk = MK_DATA.find(m => m.id === mkId);
+// ─── Jump to Ground ──────────────────────────────────────────────────────────
+function jumpToGround(id, staggerMs) {
+  const delay = staggerMs || 0;
+  return new Promise(function(resolve) {
+    setTimeout(function() {
+      const el = mkEls[id];
+      if(!el) { resolve(); return; }
+      const mk = MK_DATA.find(function(m) { return m.id===id; });
       playJumpSound();
-
-      // Set position to starting cy, then jump up
-      el.style.transition = `transform 280ms cubic-bezier(.4,0,.6,1)`;
-      el.style.transform = `translate(${mk.cx}px,${mk.cy - 80}px)`;
-
-      setTimeout(() => {
-        el.style.transition = `transform 320ms cubic-bezier(.4,0,1,1)`;
-        el.style.transform = `translate(${mk.cx}px,${STAND_Y}px)`;
-
-        setTimeout(() => {
-          playThudSound();
-          el.style.transition = '';
-          // Replace with standing version, reposition
-          replaceWithStanding(mkId, {});
-          // Move the group element
-          el.setAttribute('transform', `translate(${mk.cx},${STAND_Y})`);
-          el.style.transform = '';
+      const origY = mk.cy;
+      // Go up
+      el.style.transition = 'transform 0.28s ease-out';
+      el.setAttribute('transform', `translate(${mk.cx},${origY-80})`);
+      setTimeout(function() {
+        // Come down to ground
+        el.style.transition = 'transform 0.32s cubic-bezier(0.55,0,1,0.45)';
+        el.setAttribute('transform', `translate(${mk.cx},${STAND_Y})`);
+        setTimeout(function() {
+          playThud();
+          cameraShake();
+          replaceMeerkatStanding(mk, {});
           resolve();
         }, 340);
       }, 290);
-    }, staggerMs);
+    }, delay);
   });
 }
 
-// ─────────────────────────────────────────────
-//  HIDE / SHOW ROCKS
-// ─────────────────────────────────────────────
-function hideRocks() {
-  document.getElementById('rocks-group').classList.add('hidden');
-  rockHidden = true;
-}
-function showRocks() {
-  document.getElementById('rocks-group').classList.remove('hidden');
-  rockHidden = false;
-}
-
-// ─────────────────────────────────────────────
-//  SHAKE STAGE
-// ─────────────────────────────────────────────
-function shakeStage() {
-  const s = document.getElementById('stage');
-  s.classList.remove('shake');
-  void s.offsetWidth;
-  s.classList.add('shake');
-  setTimeout(() => s.classList.remove('shake'), 600);
-}
-
-// ─────────────────────────────────────────────
-//  MUSIC NOTES RAIN
-// ─────────────────────────────────────────────
-let noteInterval = null;
-function startNoteRain() {
-  const notes = ['♩','♪','♫','♬','🎵'];
-  const colors = ['#FFD700','#FF8C00','#FF4500','#FF69B4','#00BFFF'];
-  noteInterval = setInterval(() => {
-    const stage = document.getElementById('stage');
-    const n = document.createElement('div');
-    n.className = 'music-note';
-    n.textContent = notes[Math.floor(Math.random()*notes.length)];
-    n.style.color = colors[Math.floor(Math.random()*colors.length)];
-    n.style.left  = Math.random()*740 + 20 + 'px';
-    n.style.top   = Math.random()*200 + 50 + 'px';
-    n.style.animationDuration = (1.2 + Math.random()) + 's';
-    stage.appendChild(n);
-    setTimeout(() => n.remove(), 2500);
-  }, 250);
-}
-function stopNoteRain() {
-  if (noteInterval) { clearInterval(noteInterval); noteInterval = null; }
-}
-
-// ─────────────────────────────────────────────
-//  SET BIOME
-// ─────────────────────────────────────────────
-function setBiome(name) {
-  document.querySelectorAll('.bg').forEach(b => b.classList.remove('active'));
-  const bg = document.getElementById(`bg-${name}`);
-  if (bg) bg.classList.add('active');
-
-  // Show/hide biome decorations
-  ['jungle','desert','mountains'].forEach(b => {
-    const d = document.getElementById(`deco-${b}`);
-    if (d) d.setAttribute('display', b === name ? 'block' : 'none');
-  });
-}
-
-// ─────────────────────────────────────────────
-//  WALK THROUGH BIOMES (side profile)
-// ─────────────────────────────────────────────
-async function walkThroughBiomes() {
-  // Create profile versions of each meerkat
-  const walkG = document.getElementById('walk-group');
-  walkG.setAttribute('display', 'block');
-  walkG.innerHTML = '';
-
-  // 5 meerkats in profile, spread across screen
-  const profileMks = [];
-  const startXs = [50, 150, 250, 350, 450];
-  const profileGrads = ['rg-body','rg-body2','rg-body3','rg-body4','rg-body5'];
-
-  startXs.forEach((sx, i) => {
-    const pg = svgEl('g', { transform: `translate(${sx},${STAND_Y})` });
-    const drawn = drawMeerkatProfile(profileGrads[i]);
-    // Walking animation on sub-elements
-    drawn.style.animation = 'mk-walk 0.4s ease-in-out infinite';
-    drawn.style.transformOrigin = '0 10px';
-    // Animate legs
-    const farLeg = drawn.querySelector('#far-leg');
-    const nearLeg = drawn.querySelector('#near-leg');
-    const farArm  = drawn.querySelector('#far-arm');
-    const nearArm = drawn.querySelector('#near-arm');
-    if (farLeg)  { farLeg.style.animation  = 'leg-swing-far 0.4s ease-in-out infinite';  farLeg.style.transformOrigin  = '0px 28px'; }
-    if (nearLeg) { nearLeg.style.animation = 'leg-swing-near 0.4s ease-in-out infinite'; nearLeg.style.transformOrigin = '0px 28px'; }
-    if (farArm)  { farArm.style.animation  = 'arm-swing-far 0.4s ease-in-out infinite';  farArm.style.transformOrigin  = '0px 14px'; }
-    if (nearArm) { nearArm.style.animation = 'arm-swing-near 0.4s ease-in-out infinite'; nearArm.style.transformOrigin = '0px 12px'; }
-
-    pg.appendChild(drawn);
-    walkG.appendChild(pg);
-    profileMks.push(pg);
-  });
-
-  const biomes = ['jungle','desert','mountains','desert','jungle','madagascar'];
-  const biomeNames = ['Jungle','Desert','Mountains','Desert','Jungle','Madagascar'];
-
-  for (let b = 0; b < biomes.length; b++) {
-    setBiome(biomes[b]);
-    // Animate walking across screen
-    await new Promise(resolve => {
-      const duration = 2200;
-      const startTime = performance.now();
-      const baseXs = startXs.map(x => x);
-      const targetXs = startXs.map(x => x + 700);
-
-      function frame(now) {
-        const elapsed = now - startTime;
-        const t = Math.min(elapsed / duration, 1);
-        profileMks.forEach((pg, i) => {
-          const cx = baseXs[i] + (targetXs[i] - baseXs[i]) * t;
-          pg.setAttribute('transform', `translate(${cx},${STAND_Y})`);
-        });
-        if (t < 1) {
-          requestAnimationFrame(frame);
-        } else {
-          // Reset positions for next biome (wrap around)
-          profileMks.forEach((pg, i) => {
-            pg.setAttribute('transform', `translate(${baseXs[i]},${STAND_Y})`);
-          });
-          resolve();
-        }
-      }
-      requestAnimationFrame(frame);
-    });
-  }
-
-  // Clean up
-  walkG.setAttribute('display','none');
-  walkG.innerHTML = '';
-}
-
-// ─────────────────────────────────────────────
-//  FINALE TEXT SHOW/HIDE
-// ─────────────────────────────────────────────
-function showFinaleText(text) {
-  const ft = document.getElementById('finale-text');
-  ft.textContent = text;
-  ft.setAttribute('display','block');
-  ft.style.animation = '';
-  void ft.getBoundingClientRect();
-  ft.style.animation = 'big-pop 0.8s cubic-bezier(.34,1.56,.64,1) forwards';
-}
-function hideFinaleText() {
-  const ft = document.getElementById('finale-text');
-  ft.setAttribute('display','none');
-  ft.style.animation = '';
-}
-
-// ─────────────────────────────────────────────
-//  MAKE MEERKAT LOOK UP (swap eyes to look-up)
-// ─────────────────────────────────────────────
-function mkLookUp(id) {
-  replaceWithStanding(id, { lounge: false });
-  const el = document.getElementById(id);
-  el.style.animation = 'lounge-sway 2s ease-in-out infinite';
-}
-
-// ─────────────────────────────────────────────
-//  SET SPIRAL EYES on a meerkat
-// ─────────────────────────────────────────────
-function setSpiralEyes(id) {
-  const mk = MK_DATA.find(m => m.id === id);
-  const el = document.getElementById(id);
-  el.innerHTML = '';
-  const drawn = drawMeerkat(mk.grad, mk.belly, { lounge: true, spiral: true });
-  el.appendChild(drawn);
-}
-
-// ─────────────────────────────────────────────
-//  DANCE CHARACTERS
-// ─────────────────────────────────────────────
-function danceAll() {
-  const anims = ['mk-dance 0.5s ease-in-out infinite','mk-goofy 0.6s ease-in-out infinite',
-                 'mk-bounce 0.45s ease-in-out infinite','mk-dance 0.55s ease-in-out infinite 0.1s',
-                 'mk-goofy 0.65s ease-in-out infinite 0.2s'];
-  MK_DATA.forEach((mk,i) => setAnim(mk.id, anims[i]));
-}
-
-function danceFinaleAll() {
-  const anims = ['mk-goofy 0.4s ease-in-out infinite','mk-dance 0.45s ease-in-out infinite 0.05s',
-                 'mk-bounce 0.38s ease-in-out infinite 0.1s','mk-goofy 0.42s ease-in-out infinite 0.15s',
-                 'mk-dance 0.46s ease-in-out infinite 0.08s'];
-  MK_DATA.forEach((mk,i) => setAnim(mk.id, anims[i]));
-  ['ch-alex','ch-marty','ch-melman','ch-gloria'].forEach((id,i) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.style.animation = ['mk-goofy 0.5s ease-in-out infinite',
-                            'mk-dance 0.48s ease-in-out infinite 0.1s',
-                            'mk-bounce 0.55s ease-in-out infinite 0.05s',
-                            'mk-goofy 0.52s ease-in-out infinite 0.12s'][i] || '';
-      el.style.transformOrigin = '50% 80%';
-    }
-  });
-}
-
-// ─────────────────────────────────────────────
-//  JUMP BACK TO ROCKS (end of walk)
-// ─────────────────────────────────────────────
-async function jumpBackToRocks() {
-  // All jump back to their lounge positions
-  const promises = MK_DATA.map((mk, i) => new Promise(resolve => {
-    setTimeout(() => {
-      const el = document.getElementById(mk.id);
-      playJumpSound();
-      el.style.transition = 'transform 280ms cubic-bezier(.4,0,.6,1)';
-      el.style.transform = `translate(${mk.cx}px,${mk.cy - 80}px)`;
-      setTimeout(() => {
-        el.style.transition = 'transform 320ms cubic-bezier(.4,0,1,1)';
-        el.style.transform = `translate(${mk.cx}px,${mk.cy}px)`;
-        setTimeout(() => {
-          playThudSound();
-          el.style.transition = '';
-          el.style.transform = '';
-          replaceWithLounge(mk.id);
-          el.setAttribute('transform', `translate(${mk.cx},${mk.cy})`);
-          resolve();
-        }, 340);
-      }, 290);
-    }, i * 120);
-  }));
-  await Promise.all(promises);
-}
-
-// ─────────────────────────────────────────────
-//  RESET POSITIONS for meerkats
-// ─────────────────────────────────────────────
-function resetMkPositions() {
-  MK_DATA.forEach(mk => {
-    const el = document.getElementById(mk.id);
-    el.style.transform = '';
-    el.style.transition = '';
-    el.setAttribute('transform', `translate(${mk.cx},${mk.cy})`);
-  });
-}
-
-// ─────────────────────────────────────────────
-//  JUMP OFF ROCKS for finale (stand + slide rocks away)
-// ─────────────────────────────────────────────
-async function jumpOffRocksFinale() {
-  const promises = MK_DATA.map((mk, i) => jumpToGround(mk.id, i * 100));
-  await Promise.all(promises);
-}
-
-// ─────────────────────────────────────────────
-//  MAIN ANIMATION SEQUENCE
-// ─────────────────────────────────────────────
-async function runShow() {
-  // Setup
-  document.getElementById('the-end').classList.remove('visible');
-  document.getElementById('bg-madagascar').classList.add('active');
-  initMeerkats();
-  initMadChars();
-  resetMkPositions();
-  showRocks();
-  clearAllAnim();
-  hideFinaleText();
-  stopMusic();
-  stopNoteRain();
-
-  // Make sure mad chars are hidden
-  document.getElementById('mad-chars').setAttribute('display','none');
-  document.getElementById('walk-group').setAttribute('display','none');
-
-  // STEP 1: Meerkats lounging, gentle sway
-  MK_DATA.forEach(mk => {
-    const el = document.getElementById(mk.id);
-    el.style.animation = 'lounge-sway 2.5s ease-in-out infinite';
-    el.style.transformOrigin = '50% 60%';
-  });
-  await sleep(2000);
-
-  // STEP 2: Center meerkat slowly looks up, blinks, looks around annoyed
-  // Convert center to standing with animation
-  const mk3el = document.getElementById('mk3');
-  mk3el.style.animation = '';
-  replaceWithStanding('mk3', {});
-  mk3el.style.animation = 'mk-look-around 2s ease-in-out';
-  await sleep(800);
-  // Blink
-  replaceWithStanding('mk3', { blink: true });
-  await sleep(400);
-  replaceWithStanding('mk3', {});
-  await sleep(400);
-  replaceWithStanding('mk3', { blink: true });
-  await sleep(300);
-  replaceWithStanding('mk3', {});
-  mk3el.style.animation = 'mk-look-around 1.5s ease-in-out';
-  await sleep(1500);
-
-  // STEP 3: Center meerkat SLAMS hands on rock
-  replaceWithStanding('mk3', { slam: true });
-  mk3el.style.animation = 'mk-slam 0.4s ease-in-out';
-  mk3el.style.transformOrigin = '50% 70%';
-  playSlamSound();
-  shakeStage();
-
-  // Other meerkats startle with spiral eyes
-  await sleep(150);
-  ['mk1','mk2','mk4','mk5'].forEach(id => {
-    setSpiralEyes(id);
-    setAnim(id, 'mk-startle 0.5s ease-in-out');
-  });
-  await sleep(700);
-
-  // STEP 4: SPEECH
-  replaceWithStanding('mk3', {});
-  mk3el.style.animation = 'mk-bounce 0.8s ease-in-out infinite';
-
-  await say("I need... I just... I can't take this anymore!!", { rate: 0.95, pitch: 1.4 });
-
-  // Others say Huh? and What?!
-  ['mk1','mk2','mk4','mk5'].forEach(id => {
-    const mk = MK_DATA.find(m => m.id === id);
-    const el = document.getElementById(id);
-    el.innerHTML = '';
-    el.appendChild(drawMeerkat(mk.grad, mk.belly, { lounge: true }));
-  });
-
-  await say("Huh?", { rate: 0.9, pitch: 1.5 });
-  await say("What?!", { rate: 1.0, pitch: 1.45 });
-  await sleep(400);
-
-  // STEP 5: "I need to... move it."
-  mk3el.style.animation = 'mk-bounce 0.6s ease-in-out infinite';
-  await say("I need to... move it.", { rate: 0.9, pitch: 1.4 });
-
-  await say("What?!", { rate: 1.0, pitch: 1.5 });
-  await say("Did he just say...?", { rate: 0.95, pitch: 1.45 });
-  await sleep(300);
-
-  // STEP 6: "I NEED TO MOVE IT! MOVE IT!" - bounces excitedly
-  mk3el.style.animation = 'mk-bounce 0.3s ease-in-out infinite';
-  await say("I NEED TO MOVE IT! MOVE IT!", { rate: 1.1, pitch: 1.5 });
-  await sleep(300);
-
-  // STEP 7: 5-second silence while others stare
-  mk3el.style.animation = 'mk-pant 0.8s ease-in-out infinite';
-  mk3el.style.transformOrigin = '50% 50%';
-  await sleep(5000);
-
-  // STEP 8: ROCKS SLIDE DOWN, Music starts, Center dances solo
-  hideRocks();
-  await sleep(400);
-  startMusic();
-  clearAllAnim();
-  replaceWithStanding('mk3', {});
-  mk3el.setAttribute('transform', `translate(400,${STAND_Y})`);
-  setAnim('mk3', 'mk-dance 0.5s ease-in-out infinite');
-
-  // Others still in lounge at their positions
-  await sleep(3000);
-
-  // STEP 9: 3-second pause — others stare
-  // (meerkats still lounging, center dancing)
-  await sleep(3000);
-
-  // STEP 10: All 5 meerkats jump UP from rock positions, arc through air, LAND ON DIRT
-  // First set all others to standing at original cy
-  ['mk1','mk2','mk4','mk5'].forEach(id => {
-    replaceWithStanding(id, {});
-    const mk = MK_DATA.find(m => m.id === id);
-    document.getElementById(id).setAttribute('transform', `translate(${mk.cx},${mk.cy})`);
-  });
-
-  // Jump all including center (re-do center with proper arc)
-  const jumpPromises = MK_DATA.map((mk, i) => jumpToGround(mk.id, i * 80));
-  await Promise.all(jumpPromises);
-
-  // After landing — goofy dance on ground
-  MK_DATA.forEach((mk, i) => {
-    const anims = ['mk-goofy 0.55s ease-in-out infinite','mk-dance 0.5s ease-in-out infinite',
-                   'mk-bounce 0.45s ease-in-out infinite','mk-goofy 0.6s ease-in-out infinite',
-                   'mk-dance 0.52s ease-in-out infinite'];
-    setAnim(mk.id, anims[i]);
-  });
-  await sleep(2500);
-
-  // STEP 11: Side profile walking through biomes
-  // Hide front-view meerkats temporarily
+// ─── Walking Scene ────────────────────────────────────────────────────────────
+function setupWalkScene() {
   document.getElementById('mk-group').setAttribute('display','none');
-  clearAllAnim();
-  stopMusic();
-  await walkThroughBiomes();
-
-  // STEP 12: Back to madagascar, front view. All panting.
-  setBiome('madagascar');
-  document.getElementById('mk-group').setAttribute('display','block');
-
-  // All in standing position on ground
-  MK_DATA.forEach(mk => {
-    replaceWithStanding(mk.id, {});
-    document.getElementById(mk.id).setAttribute('transform', `translate(${mk.cx},${STAND_Y})`);
+  const wg = document.getElementById('walk-group');
+  wg.setAttribute('display','');
+  wg.innerHTML = '';
+  wg.setAttribute('transform','');
+  const spacing = 90;
+  const startX = 400 - spacing*2;
+  MK_DATA.forEach(function(mk, i) {
+    const xOff = startX + i*spacing;
+    const el = drawMeerkatProfile(mk, xOff);
+    wg.appendChild(el);
+    mkEls[mk.id+'_walk'] = el;
   });
-  clearAllAnim();
-  MK_DATA.forEach(mk => setAnim(mk.id, 'mk-pant 0.6s ease-in-out infinite'));
-
-  await say("Okay... I'm ready to snooze it now...", { rate: 0.85, pitch: 1.3 });
-  await sleep(500);
-
-  // STEP 13: ROCKS REAPPEAR, all jump back to rocks
-  showRocks();
-  await sleep(800);
-  await jumpBackToRocks();
-
-  // STEP 14: Getting comfortable (2s pause)
-  MK_DATA.forEach(mk => {
-    const el = document.getElementById(mk.id);
-    el.style.animation = 'lounge-sway 2.5s ease-in-out infinite';
-    el.style.transformOrigin = '50% 60%';
-  });
-  await sleep(2000);
-
-  // STEP 15: Alex, Marty, Melman, Gloria BURST from behind rocks
-  playCrashSound();
-  shakeStage();
-  await sleep(200);
-  const madEl = document.getElementById('mad-chars');
-  madEl.setAttribute('display','block');
-  ['ch-alex','ch-marty','ch-melman','ch-gloria'].forEach((id, i) => {
-    const el = document.getElementById(id);
-    el.style.animation = `char-pop 0.6s ${i * 0.12}s cubic-bezier(.34,1.56,.64,1) both`;
-    el.style.transformOrigin = '50% 80%';
-  });
-
-  await sleep(800);
-  await say("We heard you guys like to MOVE IT!", { rate: 1.0, pitch: 1.0 });
-  await sleep(200);
-  await say("Can we move it... move it... WITH you?", { rate: 0.95, pitch: 1.05 });
-  await sleep(300);
-
-  // STEP 16: 3-second pause — everyone stares
-  await sleep(3000);
-
-  // STEP 17: Music restarts. Everyone dances wildly.
-  // Meerkats jump off rocks (rocks slide away)
-  hideRocks();
-  await sleep(300);
-  await jumpOffRocksFinale();
-  await sleep(100);
-  startMusic();
-  danceFinaleAll();
-
-  // STEP 17b: Music notes rain, finale text
-  startNoteRain();
-  await sleep(1200);
-  showFinaleText("EVERYBODY MOVE IT MOVE IT!");
-  await sleep(800);
-  await say("EVERYBODY MOVE IT MOVE IT!", { rate: 1.15, pitch: 1.5 });
-  await sleep(3000);
-
-  hideFinaleText();
-  stopNoteRain();
-  stopMusic();
-
-  // STEP 18: THE END
-  document.getElementById('the-end').classList.add('visible');
+  return wg;
 }
 
-// ─────────────────────────────────────────────
-//  START BUTTON
-// ─────────────────────────────────────────────
-document.getElementById('start-btn').addEventListener('click', () => {
-  // Init AudioContext
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+function teardownWalkScene() {
+  document.getElementById('walk-group').setAttribute('display','none');
+  document.getElementById('mk-group').setAttribute('display','');
+}
 
-  // Preload voices
-  if (window.speechSynthesis) {
-    speechSynthesis.getVoices();
-    // Trigger a silent utterance to unlock
-    const u = new SpeechSynthesisUtterance('');
-    u.volume = 0;
-    speechSynthesis.speak(u);
+// ─── Biome Walk ───────────────────────────────────────────────────────────────
+async function doBiomeWalk() {
+  setupWalkScene();
+  const wg = document.getElementById('walk-group');
+  const biomes = [
+    { id:'jungle', bg:'bg-jungle' },
+    { id:'desert', bg:'bg-desert' },
+    { id:'mountains', bg:'bg-mountains' },
+    { id:'desert', bg:'bg-desert' },
+    { id:'jungle', bg:'bg-jungle' },
+    { id:'madagascar', bg:'bg-madagascar' },
+  ];
+
+  for(let b=0; b<biomes.length; b++) {
+    const biome = biomes[b];
+    document.querySelectorAll('.bg').forEach(function(el) { el.classList.remove('active'); });
+    const bgEl = document.getElementById(biome.bg);
+    if(bgEl) bgEl.classList.add('active');
+    showBiomeDecorations(biome.id);
+    wg.style.transition = 'none';
+    wg.setAttribute('transform','translate(-650,0)');
+    wg.getBoundingClientRect(); // force reflow
+    wg.style.transition = 'transform 1.8s linear';
+    wg.setAttribute('transform','translate(450,0)');
+    await wait(1900);
   }
 
-  // Hide start screen
-  document.getElementById('start-screen').style.display = 'none';
+  document.querySelectorAll('.bg').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('bg-madagascar').classList.add('active');
+  showBiomeDecorations('madagascar');
+  await wait(300);
+  teardownWalkScene();
+  clearDecorations();
+}
 
-  // Run the show
-  runShow();
+// ─── Madagascar Characters ────────────────────────────────────────────────────
+function spawnMadChars() {
+  const grp = document.getElementById('mad-chars-group');
+  grp.innerHTML = '';
+  const alex = drawAlex(620, STAND_Y+10);
+  alex.style.animation = 'char-pop 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards';
+  grp.appendChild(alex);
+  const marty = drawMarty(490, STAND_Y+5);
+  marty.style.animation = 'char-pop 0.6s 0.1s cubic-bezier(0.34,1.56,0.64,1) both';
+  grp.appendChild(marty);
+  const melman = drawMelman(700, STAND_Y-20);
+  melman.style.animation = 'char-pop 0.6s 0.2s cubic-bezier(0.34,1.56,0.64,1) both';
+  grp.appendChild(melman);
+  const gloria = drawGloria(760, STAND_Y+20);
+  gloria.style.animation = 'char-pop 0.6s 0.3s cubic-bezier(0.34,1.56,0.64,1) both';
+  grp.appendChild(gloria);
+}
+
+function clearMadChars() {
+  document.getElementById('mad-chars-group').innerHTML = '';
+}
+
+// ─── Grand Finale Dance ───────────────────────────────────────────────────────
+function setupFinaleDance() {
+  MK_DATA.forEach(function(mk) {
+    if(mkEls[mk.id]) mkEls[mk.id].style.animation = 'mk-goofy 0.5s ease-in-out infinite';
+  });
+  ['alex','marty','melman','gloria'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if(el) el.style.animation = 'mk-dance 0.5s ease-in-out infinite';
+  });
+  startNoteRain();
+  showFinaleText();
+}
+
+// ─── MAIN ANIMATION SEQUENCE ─────────────────────────────────────────────────
+async function runAnimation() {
+  // Step 1: Meerkats lounging
+  initMeerkats(true);
+  await wait(1500);
+
+  // Step 2: Center meerkat bounces/looks annoyed
+  setMkAnim('mk3', 'mk-bounce 1.2s ease-in-out 2');
+  await wait(2800);
+  setMkAnim('mk3', '');
+  await wait(400);
+
+  // Step 3: Slam + startle
+  playSlam();
+  cameraShake();
+  setMkAnim('mk3', 'mk-slam 0.6s ease-in-out');
+  await wait(100);
+  ['mk1','mk2','mk4','mk5'].forEach(function(id) {
+    const mk = MK_DATA.find(function(m) { return m.id===id; });
+    const grp = document.getElementById('mk-group');
+    if(mkEls[id]) mkEls[id].remove();
+    const el = drawMeerkatFront(mk, { lounging:true, spiralEyes:true });
+    grp.appendChild(el);
+    mkEls[id] = el;
+    el.style.animation = 'mk-startle 0.5s ease-in-out';
+  });
+  await wait(700);
+  setMkAnim('mk3', '');
+
+  // Step 4: Speech
+  await say("I need... I just... I can't take this anymore!!", {pitch:1.4, rate:1.0});
+  await say("Huh? What?!", {pitch:1.3, rate:1.1});
+
+  // Step 5
+  await say("I need to... move it.", {pitch:1.4, rate:0.95});
+  await say("What?! Did he just say...?", {pitch:1.35, rate:1.0});
+
+  // Step 6: Bounce and shout
+  setMkAnim('mk3', 'mk-bounce 0.3s ease-in-out infinite');
+  await say("I NEED TO MOVE IT! MOVE IT!", {pitch:1.5, rate:1.15});
+  setMkAnim('mk3', '');
+
+  // Step 7: 5-second silence
+  await wait(5000);
+
+  // Step 8: Rocks slide down, music, center dances solo
+  hideRocks();
+  await wait(900);
+  startMusic();
+  const centerMk = MK_DATA.find(function(m) { return m.isCenter; });
+  replaceMeerkatStanding(centerMk, { dancing:true });
+  mkEls['mk3'].style.animation = 'mk-dance 0.5s ease-in-out infinite';
+  await wait(3000);
+
+  // Step 9: 3-second pause - others stare
+  await wait(3000);
+
+  // Step 10: All 5 jump to ground
+  const jumpPromises = MK_DATA.map(function(mk, i) { return jumpToGround(mk.id, i*80); });
+  await Promise.all(jumpPromises);
+  await wait(500);
+  setAllMkAnim('mk-goofy 0.5s ease-in-out infinite');
+  await wait(3000);
+
+  // Step 11: Side-profile walking through biomes
+  stopMusic();
+  setAllMkAnim('');
+  await doBiomeWalk();
+
+  // Back - all panting
+  MK_DATA.forEach(function(mk) {
+    replaceMeerkatStanding(mk, { panting:true });
+    mkEls[mk.id].style.animation = 'mk-pant 0.6s ease-in-out infinite';
+  });
+  await wait(800);
+
+  // Step 12: "Okay... I'm ready to snooze it now..."
+  setAllMkAnim('');
+  await say("Okay... I'm ready to snooze it now...", {pitch:1.4, rate:0.9});
+
+  // Step 13: Rocks reappear, meerkats lounge
+  showRocks();
+  await wait(900);
+  initMeerkats(true);
+  setAllMkAnim('mk-startle 0.4s ease-in-out');
+  await wait(600);
+  setAllMkAnim('');
+
+  // Step 14: 2-second pause
+  await wait(2000);
+
+  // Step 15: Madagascar characters burst out
+  playCrash();
+  cameraShake();
+  spawnMadChars();
+  await wait(600);
+  await say("We heard you guys like to MOVE IT!", {pitch:1.2, rate:1.1});
+  await say("Can we move it... move it... WITH you?", {pitch:1.2, rate:1.0});
+
+  // Step 16: 3-second pause
+  await wait(3000);
+
+  // Step 17: Music restarts, rocks away, everyone dances
+  hideRocks();
+  await wait(800);
+  const jumpPromises2 = MK_DATA.map(function(mk, i) { return jumpToGround(mk.id, i*60); });
+  await Promise.all(jumpPromises2);
+  await wait(300);
+  startMusic();
+  setupFinaleDance();
+  await say("EVERYBODY MOVE IT MOVE IT!", {pitch:1.5, rate:1.2});
+  await wait(6000);
+
+  // Step 18: THE END
+  stopMusic();
+  stopNoteRain();
+  await wait(500);
+  hideFinaleText();
+  document.getElementById('end-screen').style.display = 'flex';
+}
+
+// ─── Startup ──────────────────────────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', function() {
+  if(animationRunning) return;
+  animationRunning = true;
+  initAudio();
+  document.getElementById('start-screen').style.display = 'none';
+  runAnimation();
 });
 
-// ─────────────────────────────────────────────
-//  WATCH AGAIN
-// ─────────────────────────────────────────────
-document.getElementById('watch-again').addEventListener('click', () => {
-  document.getElementById('the-end').classList.remove('visible');
+document.getElementById('watch-again').addEventListener('click', function() {
+  animationRunning = false;
   stopMusic();
   stopNoteRain();
   hideFinaleText();
-  if (speechSynthesis) speechSynthesis.cancel();
-
-  // Reset everything
-  resetMkPositions();
+  clearMadChars();
+  document.getElementById('end-screen').style.display = 'none';
+  document.getElementById('start-screen').style.display = 'flex';
   showRocks();
-  setBiome('madagascar');
-  document.getElementById('mad-chars').setAttribute('display','none');
+  document.getElementById('mk-group').innerHTML = '';
+  mkEls = {};
+  document.querySelectorAll('.bg').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('bg-madagascar').classList.add('active');
+  clearDecorations();
+  document.getElementById('walk-group').innerHTML = '';
   document.getElementById('walk-group').setAttribute('display','none');
-  document.getElementById('mk-group').setAttribute('display','block');
-  clearAllAnim();
-  ['ch-alex','ch-marty','ch-melman','ch-gloria'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) { el.style.animation = ''; }
-  });
-
-  runShow();
+  document.getElementById('mk-group').setAttribute('display','');
+  document.getElementById('mk-group').removeAttribute('display');
 });
-
-// ─────────────────────────────────────────────
-//  INITIAL RENDER (so we see something before start)
-// ─────────────────────────────────────────────
-initMeerkats();
-initMadChars();
-MK_DATA.forEach(mk => {
-  const el = document.getElementById(mk.id);
-  el.style.animation = 'lounge-sway 2.5s ease-in-out infinite';
-  el.style.transformOrigin = '50% 60%';
-});
-
 </script>
 </body>
 </html>
