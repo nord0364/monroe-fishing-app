@@ -80,10 +80,10 @@ svg#main { position: absolute; top: 0; left: 0; width: 800px; height: 480px; }
   100% { transform: translateY(0) rotate(0); }
 }
 @keyframes char-pop {
-  0%   { transform: scale(0) translateY(40px); opacity:0; }
-  60%  { transform: scale(1.15) translateY(-8px); opacity:1; }
-  80%  { transform: scale(0.95) translateY(2px); opacity:1; }
-  100% { transform: scale(1) translateY(0); opacity:1; }
+  0%   { transform: translateY(60px) scale(0.1); opacity:0; }
+  60%  { transform: translateY(-10px) scale(1.12); opacity:1; }
+  80%  { transform: translateY(3px) scale(0.96); opacity:1; }
+  100% { transform: translateY(0) scale(1); opacity:1; }
 }
 @keyframes note-float {
   0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
@@ -496,6 +496,9 @@ function drawMeerkatFront(mk, options) {
     g.appendChild(svgEl('ellipse', { cx:'0', cy:'-26', rx:'5', ry:'3.5', fill:'#3A1A00' }));
     g.appendChild(svgEl('ellipse', { cx:'0', cy:'-27', rx:'3', ry:'2', fill:'#5A2A00' }));
     g.appendChild(svgEl('ellipse', { cx:'-1', cy:'-28', rx:'1.5', ry:'1', fill:'rgba(255,255,255,0.5)' }));
+    // Dark periocular patches
+    g.appendChild(svgEl('ellipse', { cx:'-10', cy:'-33', rx:'9', ry:'8', fill:'#140800', opacity:'0.85' }));
+    g.appendChild(svgEl('ellipse', { cx:'10', cy:'-33', rx:'9', ry:'8', fill:'#140800', opacity:'0.85' }));
     // Eyes
     if(spiralEyes) { drawSpiralEye(g,-10,-32); drawSpiralEye(g,10,-32); }
     else { drawEye(g,-10,-32); drawEye(g,10,-32); }
@@ -509,14 +512,18 @@ function drawMeerkatFront(mk, options) {
     g.appendChild(svgEl('path', { d:'M -10,5 Q 0,2 10,5', stroke:c2, 'stroke-width':'1.5', fill:'none', opacity:'0.5' }));
   } else {
     // Standing pose
-    // Tail
-    g.appendChild(svgEl('path', { d:'M 8,10 Q 22,0 20,-15 Q 18,-25 10,-22 Q 2,-20 6,-12 Q 10,-5 6,4 Z', fill:c2 }));
-    g.appendChild(svgEl('ellipse', { cx:'10', cy:'-23', rx:'6', ry:'4', fill:'#2A1A00' }));
-    g.appendChild(svgEl('ellipse', { cx:'10', cy:'-23', rx:'3', ry:'2', fill:c2 }));
-    // Body
+    // Tail with characteristic dark tip and banding
+    g.appendChild(svgEl('path', { d:'M 8,10 Q 24,2 22,-14 Q 20,-26 10,-23 Q 2,-20 6,-11 Q 10,-4 6,4 Z', fill:c1 }));
+    g.appendChild(svgEl('path', { d:'M 17,-4 Q 23,-2 22,-11 Q 21,-16 17,-13', fill:'#1A0A00', opacity:'0.45' }));
+    g.appendChild(svgEl('path', { d:'M 13,-17 Q 18,-16 17,-22 Q 16,-25 12,-23', fill:'#1A0A00', opacity:'0.5' }));
+    g.appendChild(svgEl('ellipse', { cx:'10', cy:'-24', rx:'6', ry:'4', fill:'#1A0A00' }));
+    g.appendChild(svgEl('ellipse', { cx:'10', cy:'-24', rx:'3', ry:'2', fill:'#3A1A00' }));
+    // Body with richer shading
     g.appendChild(svgEl('ellipse', { cx:'0', cy:'0', rx:'20', ry:'26', fill:'url(#rg-body)', stroke:c2, 'stroke-width':'1.5' }));
     g.appendChild(svgEl('ellipse', { cx:'0', cy:'2', rx:'12', ry:'17', fill:'url(#rg-belly)' }));
-    g.appendChild(svgEl('ellipse', { cx:'-5', cy:'-10', rx:'8', ry:'12', fill:'rgba(255,255,255,0.12)' }));
+    g.appendChild(svgEl('ellipse', { cx:'-5', cy:'-10', rx:'8', ry:'12', fill:'rgba(255,255,255,0.14)' }));
+    // Dorsal stripe
+    g.appendChild(svgEl('path', { d:'M 0,-24 Q 1,0 0,24', stroke:c2, 'stroke-width':'1', fill:'none', opacity:'0.35' }));
     // Arms
     if(dancing) {
       g.appendChild(svgEl('path', { d:'M -16,-8 Q -30,-20 -26,-8 Q -22,2 -14,-2', fill:c1, stroke:c2, 'stroke-width':'1' }));
@@ -549,9 +556,16 @@ function drawMeerkatFront(mk, options) {
     g.appendChild(svgEl('ellipse', { cx:'0', cy:'-45', rx:'4.5', ry:'3', fill:'#3A1A00' }));
     g.appendChild(svgEl('ellipse', { cx:'0', cy:'-46', rx:'2.5', ry:'1.8', fill:'#5A2A00' }));
     g.appendChild(svgEl('ellipse', { cx:'-1', cy:'-47', rx:'1.2', ry:'0.8', fill:'rgba(255,255,255,0.5)' }));
-    // Eyes
+    // Dark periocular patches — meerkats' most distinctive marking
+    g.appendChild(svgEl('ellipse', { cx:'-9', cy:'-51', rx:'11', ry:'10', fill:'#140800', opacity:'0.85' }));
+    g.appendChild(svgEl('ellipse', { cx:'9', cy:'-51', rx:'11', ry:'10', fill:'#140800', opacity:'0.85' }));
+    // Eyes (drawn on top of dark patches)
     if(spiralEyes) { drawSpiralEye(g,-9,-50); drawSpiralEye(g,9,-50); }
     else { drawEye(g,-9,-50); drawEye(g,9,-50); }
+    // Whisker follicle dots on muzzle
+    [-7,-2,3,7].forEach(function(wx) {
+      g.appendChild(svgEl('circle', { cx:String(wx), cy:'-38', r:'0.9', fill:'#2A1000', opacity:'0.65' }));
+    });
     // Stripes
     g.appendChild(svgEl('path', { d:'M -8,-18 Q 0,-21 8,-18', stroke:c2, 'stroke-width':'1.5', fill:'none', opacity:'0.6' }));
     g.appendChild(svgEl('path', { d:'M -10,-8 Q 0,-11 10,-8', stroke:c2, 'stroke-width':'1.5', fill:'none', opacity:'0.5' }));
@@ -617,7 +631,8 @@ function drawMeerkatProfile(mk, xOff) {
   g.appendChild(svgEl('path', { d:'M 14,-38 Q 24,-36 22,-32 Q 20,-28 14,-30 Z', fill:c1 }));
   g.appendChild(svgEl('ellipse', { cx:'22', cy:'-34', rx:'3', ry:'2.5', fill:'#3A1A00' }));
   g.appendChild(svgEl('ellipse', { cx:'21', cy:'-35', rx:'1.2', ry:'1', fill:'rgba(255,255,255,0.5)' }));
-  // Eye (profile, facing right)
+  // Dark periocular patch + eye (profile)
+  g.appendChild(svgEl('ellipse', { cx:'10', cy:'-40', rx:'8', ry:'7', fill:'#140800', opacity:'0.85' }));
   drawEye(g, 10, -40, 5);
   // Stripe
   g.appendChild(svgEl('path', { d:'M -10,-6 Q -2,-10 4,-6', stroke:c2, 'stroke-width':'1.2', fill:'none', opacity:'0.6' }));
@@ -915,7 +930,10 @@ function initMeerkats(lounging) {
 }
 
 function setMkAnim(id, anim) {
-  if(mkEls[id]) mkEls[id].style.animation = anim;
+  if(!mkEls[id]) return;
+  mkEls[id].style.transformBox = 'fill-box';
+  mkEls[id].style.transformOrigin = 'center';
+  mkEls[id].style.animation = anim;
 }
 
 function setAllMkAnim(anim) {
@@ -997,18 +1015,17 @@ async function doBiomeWalk() {
     { id:'madagascar', bg:'bg-madagascar' },
   ];
 
+  // Keep characters visible on screen — just cycle biome backgrounds
+  wg.style.transition = 'none';
+  wg.setAttribute('transform', 'translate(0,0)');
+
   for(let b=0; b<biomes.length; b++) {
     const biome = biomes[b];
     document.querySelectorAll('.bg').forEach(function(el) { el.classList.remove('active'); });
     const bgEl = document.getElementById(biome.bg);
     if(bgEl) bgEl.classList.add('active');
     showBiomeDecorations(biome.id);
-    wg.style.transition = 'none';
-    wg.setAttribute('transform','translate(-650,0)');
-    wg.getBoundingClientRect(); // force reflow
-    wg.style.transition = 'transform 1.8s linear';
-    wg.setAttribute('transform','translate(450,0)');
-    await wait(1900);
+    await wait(1800);
   }
 
   document.querySelectorAll('.bg').forEach(function(el) { el.classList.remove('active'); });
@@ -1023,18 +1040,20 @@ async function doBiomeWalk() {
 function spawnMadChars() {
   const grp = document.getElementById('mad-chars-group');
   grp.innerHTML = '';
-  const alex = drawAlex(620, STAND_Y+10);
-  alex.style.animation = 'char-pop 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards';
-  grp.appendChild(alex);
-  const marty = drawMarty(490, STAND_Y+5);
-  marty.style.animation = 'char-pop 0.6s 0.1s cubic-bezier(0.34,1.56,0.64,1) both';
-  grp.appendChild(marty);
-  const melman = drawMelman(700, STAND_Y-20);
-  melman.style.animation = 'char-pop 0.6s 0.2s cubic-bezier(0.34,1.56,0.64,1) both';
-  grp.appendChild(melman);
-  const gloria = drawGloria(760, STAND_Y+20);
-  gloria.style.animation = 'char-pop 0.6s 0.3s cubic-bezier(0.34,1.56,0.64,1) both';
-  grp.appendChild(gloria);
+  // Spread evenly across screen, all within 800px viewbox
+  const chars = [
+    { el: drawAlex(90, STAND_Y+10),    delay: '0s'   },
+    { el: drawMarty(270, STAND_Y+5),   delay: '0.1s' },
+    { el: drawMelman(550, STAND_Y-20), delay: '0.2s' },
+    { el: drawGloria(710, STAND_Y+20), delay: '0.3s' },
+  ];
+  chars.forEach(function(c) {
+    // transform-box:fill-box makes transform-origin relative to element, not SVG origin
+    c.el.style.transformBox = 'fill-box';
+    c.el.style.transformOrigin = 'center bottom';
+    c.el.style.animation = 'char-pop 0.6s ' + c.delay + ' cubic-bezier(0.34,1.56,0.64,1) both';
+    grp.appendChild(c.el);
+  });
 }
 
 function clearMadChars() {
@@ -1044,11 +1063,19 @@ function clearMadChars() {
 // ─── Grand Finale Dance ───────────────────────────────────────────────────────
 function setupFinaleDance() {
   MK_DATA.forEach(function(mk) {
-    if(mkEls[mk.id]) mkEls[mk.id].style.animation = 'mk-goofy 0.5s ease-in-out infinite';
+    if(mkEls[mk.id]) {
+      mkEls[mk.id].style.transformBox = 'fill-box';
+      mkEls[mk.id].style.transformOrigin = 'center';
+      mkEls[mk.id].style.animation = 'mk-goofy 0.5s ease-in-out infinite';
+    }
   });
   ['alex','marty','melman','gloria'].forEach(function(id) {
     const el = document.getElementById(id);
-    if(el) el.style.animation = 'mk-dance 0.5s ease-in-out infinite';
+    if(el) {
+      el.style.transformBox = 'fill-box';
+      el.style.transformOrigin = 'center';
+      el.style.animation = 'mk-dance 0.5s ease-in-out infinite';
+    }
   });
   startNoteRain();
   showFinaleText();
